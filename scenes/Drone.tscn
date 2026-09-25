@@ -1,6 +1,7 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/drone.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/motor_audio.gd" id="2"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_drone"]
 size = Vector3(0.25, 0.08, 0.25)
@@ -50,6 +51,9 @@ surface_material_override/0 = SubResource("StandardMaterial3D_motor")
 position = Vector3(-0.11, 0.02, 0.11)
 mesh = SubResource("BoxMesh_motor")
 surface_material_override/0 = SubResource("StandardMaterial3D_motor")
+
+[node name="MotorSound" type="AudioStreamPlayer" parent="."]
+script = ExtResource("2")
 
 [node name="CameraMount" type="Node3D" parent="."]
 position = Vector3(0, 0.06, -0.16)

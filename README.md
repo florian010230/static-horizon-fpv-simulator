@@ -5,10 +5,12 @@ A free, open-source FPV drone flight simulator built in [Godot 4](https://godote
 hardware (4GB RAM, integrated graphics) and to fly with real FPV radios —
 starting with the RadioMaster Pocket — over USB.
 
-This is a first playable slice: one drone, one building, a rate-mode
-("acro") flight model with live-tunable PID gains and an adjustable FPV
-camera angle. Not a Betaflight-accurate simulation — a simplified rigid-body
-model good enough to feel like flying, and to build on.
+This is a first playable slice: a small flying park (a tower, two houses,
+three fly-through gates, and a slalom row of poles) with a rate-mode
+("acro") flight model, live-tunable PID/rates/camera/throttle response,
+and a procedurally synthesized motor sound (no audio assets needed). Not
+a Betaflight-accurate simulation — a simplified rigid-body model good
+enough to feel like flying, and to build on.
 
 ## Requirements
 
@@ -35,6 +37,7 @@ Project Settings -> Rendering -> Renderer.
 - `Enter` arm / disarm
 - `R` reset drone to spawn
 - `O` show/hide the tuning panel
+- `Esc` quit (the game launches in fullscreen by default)
 
 **RadioMaster Pocket (or any radio in USB Joystick mode):**
 1. Plug in via USB-C. On the Pocket, make sure USB mode is set to
@@ -60,19 +63,28 @@ worked so the defaults can be fixed for everyone else.
 
 ## Tuning
 
-Press `O` in-game for live sliders: Roll/Pitch/Yaw P, I, D gains, and the
-FPV camera tilt angle. Changes apply immediately, no restart needed.
+Press `O` in-game for live sliders: roll/pitch rate and yaw rate (how
+aggressive the sticks feel), Roll/Pitch/Yaw P/I/D gains, FPV camera tilt
+angle, camera FOV, and throttle response curve. Changes apply
+immediately, no restart needed.
 
 ## Project layout
 
-- `scenes/Main.tscn` — the world: ground, one building, the drone, the UI.
+- `scenes/Main.tscn` — the world: ground, a tower, two houses, three
+  gates, six slalom poles, the drone, the UI.
 - `scenes/Drone.tscn` — the quadcopter: collision shape, visuals, camera
-  mount, `scripts/drone.gd` (the flight physics).
+  mount, motor sound, `scripts/drone.gd` (the flight physics).
+- `scenes/Gate.tscn` / `scenes/Pole.tscn` — reusable fly-through
+  obstacles; instance either one multiple times in `Main.tscn` (with a
+  different position/rotation/scale) to add more.
 - `scenes/InputManager.tscn` — autoloaded singleton for radio/keyboard
   input and calibration (`scripts/input_manager.gd`).
 - `scenes/UI.tscn` — HUD + tuning panel, built at runtime
   (`scripts/ui.gd`).
 - `scripts/pid.gd` — small reusable PID controller class.
+- `scripts/motor_audio.gd` — procedurally synthesized motor whine
+  (detuned sawtooth oscillators + a touch of noise), no audio file
+  needed. Pitch/volume follow throttle.
 
 ## How the flight model works
 
@@ -89,9 +101,9 @@ that individually per motor isn't worth the complexity for now.
 
 ## Known gaps (before this is really ready for the FPV world)
 
-- Radio axis defaults are unverified against real hardware.
-- No crash/damage model, no race track or gates, no sound.
-- Single drone, single building — no variety yet.
+- No crash/damage model or lap timing for the gates yet — flying through
+  the frame just collides like any other obstacle, no scoring.
+- Single drone, no cockpit/prop visuals beyond simple placeholder shapes.
 - No Steam/export packaging yet.
 
 ## License

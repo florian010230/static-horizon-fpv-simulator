@@ -46,12 +46,14 @@ func _handle_toggle() -> void:
 	if key and not _prev_toggle_key:
 		_panel_visible = not _panel_visible
 	_prev_toggle_key = key
+	if Input.is_action_just_pressed("ui_cancel"):
+		get_tree().quit()
 
 func _update_hud() -> void:
 	var armed_text := "ARMED" if InputManager.armed else "DISARMED"
 	var throttle_pct := int(round(InputManager.get_throttle() * 100.0))
 	var fps := Engine.get_frames_per_second()
-	_hud_label.text = "%s   Throttle: %d%%   FPS: %d\n[Enter] Arm/Disarm   [R] Reset   [O] Tuning panel\nKeyboard: A/D roll, W/S pitch, Q/E yaw, Shift/Ctrl throttle" % [armed_text, throttle_pct, fps]
+	_hud_label.text = "%s   Throttle: %d%%   FPS: %d\n[Enter] Arm/Disarm   [R] Reset   [O] Tuning panel   [Esc] Quit\nKeyboard: A/D roll, W/S pitch, Q/E yaw, Shift/Ctrl throttle" % [armed_text, throttle_pct, fps]
 
 func _build_tuning_panel() -> void:
 	_tuning_panel = PanelContainer.new()

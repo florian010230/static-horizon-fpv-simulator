@@ -22,6 +22,10 @@ InputManager="*res://scenes/InputManager.tscn"
 
 common/physics_ticks_per_second=120
 
+[display]
+
+window/size/mode=3
+
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
