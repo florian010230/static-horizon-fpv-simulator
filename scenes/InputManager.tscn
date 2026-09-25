@@ -4,3 +4,5 @@
 
 [node name="InputManager" type="Node"]
 script = ExtResource("1")
+invert_roll = true
+invert_pitch = true

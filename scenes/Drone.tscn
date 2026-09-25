@@ -52,9 +52,9 @@ mesh = SubResource("BoxMesh_motor")
 surface_material_override/0 = SubResource("StandardMaterial3D_motor")
 
 [node name="CameraMount" type="Node3D" parent="."]
-position = Vector3(0, 0.03, -0.09)
+position = Vector3(0, 0.06, -0.16)
 
 [node name="Camera3D" type="Camera3D" parent="CameraMount"]
 current = true
-fov = 130.0
-near = 0.03
+fov = 100.0
+near = 0.05
