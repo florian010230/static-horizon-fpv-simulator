@@ -141,11 +141,13 @@ mount on a real frame. In pure Acro mode with no self-leveling, the body
 can end up resting at almost any attitude, so the camera tilt combines
 with whatever that drift is, unpredictably. In Angle mode, centering the
 sticks always returns the body to level, so camera angle now means what
-it should: "how many degrees below the horizon do I look when hovering."
-Typical real values: 15-30° for beginners/cinematic, 25-35° for
-freestyle, 45-60° for racing (higher angle = more forward-tilted cruise
-attitude = less of your thrust point straight down, which is also why a
-high angle makes throttle feel less twitchy at speed).
+it should: "how many degrees do I look, relative to the horizon, when
+hovering." `camera_angle_deg` tilts the view **up** as it increases
+(real racing/freestyle rigs mount the camera tilted down instead, to
+keep sight of the track while pitched forward at speed — this sim tilts
+it up instead since that's what felt right in testing; flip the sign in
+`_apply_camera_settings()` in `drone.gd` if you'd rather match the real
+convention).
 
 ## Frame: DeepSpace Seeker3
 

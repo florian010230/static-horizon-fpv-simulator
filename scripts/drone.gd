@@ -169,7 +169,7 @@ func _apply_camera_settings() -> void:
 	if _camera_mount == null:
 		return
 	var rot: Vector3 = _camera_mount.rotation_degrees
-	rot.x = -camera_angle_deg
+	rot.x = camera_angle_deg
 	_camera_mount.rotation_degrees = rot
 	if _camera:
 		_camera.fov = camera_fov_deg
