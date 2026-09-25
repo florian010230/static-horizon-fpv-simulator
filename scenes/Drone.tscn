@@ -20,7 +20,6 @@ albedo_color = Color(0.08, 0.08, 0.08, 1)
 
 [node name="Drone" type="RigidBody3D"]
 mass = 0.245
-linear_damp = 0.4
 angular_damp = 4.0
 can_sleep = false
 continuous_cd = true

@@ -5,6 +5,14 @@ extends Node
 
 var crosshair_enabled: bool = true
 var shadows_enabled: bool = false ## Off by default - shadow rendering is one of the more expensive things a weak GPU does.
+var max_fps: int = 60 ## 0 means uncapped ("Unlimited" in the menu slider).
+
+func _ready() -> void:
+	Engine.max_fps = max_fps
+
+func set_max_fps(v: int) -> void:
+	max_fps = v
+	Engine.max_fps = v
 
 func apply_shadow_setting() -> void:
 	var sun := get_tree().root.find_child("Sun", true, false)

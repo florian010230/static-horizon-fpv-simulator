@@ -22,6 +22,17 @@ extends RigidBody3D
 @export var arm_length: float = 0.06
 @export var max_motor_thrust_n: float = 4.2
 
+## Real air resistance is roughly quadratic in speed (F = k * v^2), not
+## RigidBody3D's default linear_damp - linear damping barely slows a
+## quad like this down at all, so top speed just kept climbing well
+## past anything real (verified: >470 km/h and still rising after 10s
+## simulated at max thrust before this was added). Calibrated so a
+## drone in a steady, level-altitude dive at max thrust settles near
+## the DeepSpace Seeker3's real claimed top speed of 150 km/h (41.7 m/s):
+## k = (max thrust's horizontal component once vertical thrust exactly
+## cancels gravity) / target_speed^2.
+@export var drag_coefficient: float = 0.009
+
 ## Betaflight's real default "Actual Rates" (since BF 4.3): Center
 ## Sensitivity 70 deg/s, Max Rate 670 deg/s, same on roll/pitch/yaw.
 ## The curve is soft near center and steep at full deflection - a flat
@@ -105,6 +116,10 @@ func _physics_process(delta: float) -> void:
 
 	_apply_camera_settings()
 
+	var speed_sq: float = linear_velocity.length_squared()
+	if speed_sq > 0.0001:
+		apply_central_force(-linear_velocity.normalized() * drag_coefficient * speed_sq)
+
 	if InputManager.reset_key_pressed():
 		reset_to_spawn()
 		return
@@ -123,15 +138,9 @@ func _physics_process(delta: float) -> void:
 	var desired_roll_rate: float
 	var desired_pitch_rate: float
 	if InputManager.self_level:
-		# Outer attitude loop: roll/pitch angle extracted from how far the
-		# body's right/forward axes tilt away from horizontal.
-		var roll_angle: float = asin(clamp(global_transform.basis.x.y, -1.0, 1.0))
-		var pitch_angle: float = asin(clamp(-global_transform.basis.z.y, -1.0, 1.0))
-		var target_roll_angle: float = roll_in * deg_to_rad(max_angle_deg)
-		var target_pitch_angle: float = pitch_in * deg_to_rad(max_angle_deg)
-		var max_rate_rad: float = deg_to_rad(max_rate_deg)
-		desired_roll_rate = clamp((target_roll_angle - roll_angle) * angle_p_gain, -max_rate_rad, max_rate_rad)
-		desired_pitch_rate = clamp((target_pitch_angle - pitch_angle) * angle_p_gain, -max_rate_rad, max_rate_rad)
+		var rates: Vector2 = _compute_self_level_rates(roll_in, pitch_in)
+		desired_roll_rate = rates.x
+		desired_pitch_rate = rates.y
 	else:
 		desired_roll_rate = _actual_rate(roll_in)
 		desired_pitch_rate = _actual_rate(pitch_in)
@@ -164,6 +173,60 @@ func _physics_process(delta: float) -> void:
 func _actual_rate(stick: float) -> float:
 	var deg: float = center_sensitivity_deg * stick + (max_rate_deg - center_sensitivity_deg) * stick * stick * stick
 	return deg_to_rad(deg)
+
+## Angle mode's outer attitude loop, robust to ANY orientation including
+## upside-down. Extracting separate roll/pitch angles with asin() (the
+## old approach) has a blind spot: asin(sin(x)) folds anything past 90
+## degrees back down, so a drone tilted 170 degrees (nearly inverted)
+## reads as only 10 degrees off - the controller then applies a tiny
+## correction when it needs a huge one, and as the true angle keeps
+## changing the reading swings non-monotonically, which is what read as
+## "it can spin" after a hard crash tumbles it upside-down. Verified
+## empirically (frame-by-frame headless test) that recovery from a
+## near-inverted start swung angular velocity up to ~500 deg/s before
+## settling under the old method.
+##
+## This instead compares the body's up vector to a target up vector
+## (built from stick input in the drone's current heading frame) via
+## cross/dot product - well-defined for any angle except the exact
+## 180-degree singularity every attitude representation has.
+func _compute_self_level_rates(roll_in: float, pitch_in: float) -> Vector2:
+	var world_up := Vector3.UP
+	var current_up: Vector3 = global_transform.basis.y
+
+	var fwd_h: Vector3 = -global_transform.basis.z
+	fwd_h.y = 0.0
+	if fwd_h.length_squared() < 0.0001:
+		fwd_h = -global_transform.basis.x
+		fwd_h.y = 0.0
+	fwd_h = fwd_h.normalized()
+	var right_h: Vector3 = fwd_h.cross(world_up)
+
+	var target_roll_angle: float = roll_in * deg_to_rad(max_angle_deg)
+	var target_pitch_angle: float = pitch_in * deg_to_rad(max_angle_deg)
+
+	# Rodrigues' rotation formula, simplified since the rotation axes
+	# here are always perpendicular to the vector being rotated.
+	var target_up: Vector3 = world_up * cos(target_pitch_angle) + right_h.cross(world_up) * sin(target_pitch_angle)
+	target_up = target_up * cos(target_roll_angle) + fwd_h.cross(target_up) * sin(target_roll_angle)
+
+	var error_axis: Vector3 = current_up.cross(target_up)
+	var error_axis_len: float = error_axis.length()
+	var error_angle: float = asin(clamp(error_axis_len, -1.0, 1.0))
+	if current_up.dot(target_up) < 0.0:
+		error_angle = PI - error_angle # more than 90 degrees off - unfold asin's reflection
+	if error_axis_len > 0.0001:
+		error_axis /= error_axis_len
+	else:
+		error_axis = fwd_h # current/target exactly aligned or exactly opposite - pick an arbitrary recovery axis
+
+	var max_rate_rad: float = deg_to_rad(max_rate_deg)
+	var correction: Vector3 = error_axis * error_angle * angle_p_gain
+	var correction_local: Vector3 = global_transform.basis.inverse() * correction
+	return Vector2(
+		clamp(correction_local.z, -max_rate_rad, max_rate_rad),
+		clamp(correction_local.x, -max_rate_rad, max_rate_rad)
+	)
 
 func _apply_camera_settings() -> void:
 	if _camera_mount == null:

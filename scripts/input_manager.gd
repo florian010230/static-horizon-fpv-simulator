@@ -29,7 +29,7 @@ extends Node
 const KEYBOARD_THROTTLE_RATE: float = 0.6 # units/sec while Shift/Ctrl held
 
 var armed: bool = false
-var self_level: bool = true ## Angle (self-level) mode by default, like a real FC's beginner setting. Toggle with L.
+var self_level: bool = false ## Acro by default. Toggle with L.
 
 var _prev_arm_key: bool = false
 var _prev_arm_button: bool = false

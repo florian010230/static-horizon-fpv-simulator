@@ -13,16 +13,17 @@ fly-through gates, a slalom row of poles, a ring "loop" gate, and a
 fly-through pipe), a couple of in-map hills you can fly around, ~80
 trees, a sky, more distant backdrop hills, and an invisible border wall
 around the flight zone - with both Angle (self-level) and Acro flight
-modes, live-tunable PID/rates/camera/throttle response, an optional
-crosshair, and a procedurally synthesized motor sound (no audio or image
+modes (Acro by default), live-tunable PID/rates/camera/throttle
+response, a menu with real settings (fullscreen, crosshair, shadows,
+max FPS), and a procedurally synthesized motor sound (no audio or image
 assets needed anywhere in the project). Not a Betaflight-accurate
-simulation — a simplified rigid-body model, sized and weighted to match
-a real drone (the [DeepSpace Seeker3](https://oscarliang.com/deepspace-seeker3/),
-a ~245g 3" freestyle quad) and grounded in Betaflight's real default
-rate curve and mode behavior, good enough to feel like flying, and to
-build on. Deliberately no crash/damage simulation - the drone is a
-normal rigid body that collides and tumbles like everything else in the
-scene, nothing more.
+simulation — a simplified rigid-body model, sized/weighted/geared to
+match a real drone (the [DeepSpace Seeker3](https://oscarliang.com/deepspace-seeker3/),
+a ~245g 3" freestyle quad with a claimed 150 km/h top speed) and
+grounded in Betaflight's real default rate curve and mode behavior,
+good enough to feel like flying, and to build on. Deliberately no
+crash/damage simulation - the drone is a normal rigid body that
+collides and tumbles like everything else in the scene, nothing more.
 
 ## Previewing it
 
@@ -65,7 +66,7 @@ that way deliberately as the project grew:
 - "Compatibility" (GL) renderer by default — the lightest Godot 4
   option, for old/integrated GPUs. Change it in Project Settings ->
   Rendering -> Renderer if you have a decent GPU and want more later.
-- Shadows are off by default (toggle in the menu's Options — one of the
+- Shadows are off by default (toggle in the menu's Settings — one of the
   more expensive things a weak GPU does; everything still reads fine
   under the ambient + direct lighting alone).
 - Physics runs at 60Hz, not higher.
@@ -96,12 +97,13 @@ that way deliberately as the project grew:
 - `W`/`S` pitch, `A`/`D` roll, `Q`/`E` yaw
 - `Shift`/`Ctrl` throttle up/down (holds its value, like a real stick)
 - `Enter` arm / disarm
-- `L` toggle Angle (self-level) / Acro mode — starts in Angle mode
+- `L` toggle Angle (self-level) / Acro mode — starts in **Acro**
 - `R` reset drone to spawn
 - `O` show/hide the tuning panel
-- `Esc` return to the main menu (the game launches in fullscreen by
-  default — toggle that, the crosshair, and shadows from the menu's
-  Options)
+- `Esc` return to the main menu
+
+The menu has a **Settings** button: fullscreen, crosshair, shadows, and
+a max FPS slider (50 up to "Unlimited" — drag it all the way right).
 
 **RadioMaster Pocket (or any radio in USB Joystick mode):**
 1. Plug in via USB-C. On the Pocket, make sure USB mode is set to
@@ -143,15 +145,34 @@ of a true 0.
 Tested this directly (headless, a drone launched at 25 m/s into a wall,
 logging position/velocity every physics frame): the collision itself is
 clean — velocity drops close to zero in a single step, a modest angular
-kick that damps out fast, no explosive bounce. What can look "strange"
-happens *after*: if the drone stays **armed** and self-leveling while
-resting against something, the flight controller keeps trying to fly
-back to level indefinitely, which can show up as a slow re-accelerating
-spin or a drone that keeps twitching/scraping against whatever it hit.
-That's not a bug so much as it's exactly why real FPV pilots disarm the
-instant they crash - an armed quad wedged against something behaves the
-same way in real life. Hit `Enter` (disarm) or `R` (reset to spawn)
-right after a hard crash, same as you would on a real radio.
+kick that damps out fast, no explosive bounce. Two things can still look
+"strange" after a hard crash:
+
+- If the drone stays **armed** and self-leveling while resting against
+  something, the flight controller keeps trying to fly back to level
+  indefinitely - a slow re-accelerating spin or a drone that keeps
+  twitching against whatever it hit. Not a bug so much as it's exactly
+  why real FPV pilots disarm the instant they crash - an armed quad
+  wedged against something behaves the same way in real life. `Enter`
+  (disarm) or `R` (reset) right after a crash, same as a real radio.
+- **A real bug, now fixed:** if a tumble left the drone anywhere near
+  upside-down, Angle mode's old self-level math could make it spin
+  violently while "recovering." It extracted roll/pitch as separate
+  angles with `asin()`, which has a blind spot — `asin(sin(x))` folds
+  anything past 90 degrees back down, so a drone tilted 170 degrees
+  (nearly inverted) read as only 10 degrees off. The controller applied
+  a tiny correction when it needed a huge one, and as the true angle
+  kept changing the misread swung non-monotonically. Verified with a
+  frame-by-frame headless test (178 degrees roll, small initial spin):
+  the old method took until t=1.0s to settle and analysis wasn't even
+  needed to see it thrashing on the way there. Replaced with a proper
+  3D comparison of the body's up vector against the target up vector
+  (cross/dot product, not decomposed Euler angles) — well-defined for
+  any orientation short of the exact 180-degree singularity every
+  attitude representation has. Same test now settles by ~0.6-0.8s, and
+  starts correcting at full strength from frame one instead of the old
+  method's weak, confused initial response. See
+  `_compute_self_level_rates()` in `drone.gd`.
 
 ## Tuning
 
@@ -176,8 +197,8 @@ gains stable.
 ## Project layout
 
 - `scenes/MainMenu.tscn` — the real entry point (`project.godot`'s
-  `run/main_scene`). Play / Options (fullscreen, crosshair, shadows) /
-  Quit, built at runtime (`scripts/main_menu.gd`) - flat 2D UI only, no
+  `run/main_scene`). Play / Settings (fullscreen, crosshair, shadows,
+  max FPS) / Quit, built at runtime (`scripts/main_menu.gd`) - flat 2D UI only, no
   3D scene behind it, so it's essentially free to render.
 - `scenes/Main.tscn` — the flying park: ground, sky, a Wohngebiet
   (roofed/windowed/doored tower + two houses, street, sidewalks), an
@@ -260,6 +281,22 @@ Seeker3 "ripping" with instant, crisp throttle response. A smaller,
 lighter frame has much less rotational inertia than the old 5"-scale
 placeholder this used to use, so PID gains were scaled down to match -
 same torque now produces a noticeably bigger angular acceleration.
+
+**Top speed is calibrated to the Seeker3's claimed 150 km/h**, which
+needed real drag, not just a bigger number. `RigidBody3D.linear_damp`
+(the previous approach) barely slows a quad like this down at all -
+measured empirically at max thrust in a steady dive: speed was still
+climbing past 470 km/h after 10 simulated seconds and hadn't leveled
+off. Real air resistance is roughly quadratic in speed
+(`F = k * v^2`), so `drone.gd` now applies that directly and
+`linear_damp` is 0. `drag_coefficient` is calibrated so a steady,
+level-altitude dive at max thrust settles at ~150 km/h (verified: the
+same test now cleanly converges to 149.9 km/h and holds there, instead
+of climbing indefinitely) - which also makes the acceleration curve
+itself more realistic: it's still explosively fast off the line (this
+sim's own 0-100 km/h is well under half a second, consistent with
+"rips"), but now actually tapers off approaching a real top speed
+instead of climbing forever.
 
 ## The world: bounded but not obviously so
 

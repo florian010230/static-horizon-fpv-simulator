@@ -23,6 +23,12 @@ func _go() -> void:
 	await get_tree().create_timer(1.0).timeout
 	_shot("preview_menu.png")
 
+	var settings_btn: Button = _find_button(get_tree().current_scene, "Settings")
+	if settings_btn:
+		settings_btn.pressed.emit()
+	await get_tree().create_timer(0.5).timeout
+	_shot("preview_settings.png")
+
 	get_tree().change_scene_to_file("res://scenes/Main.tscn")
 	await get_tree().create_timer(2.0).timeout
 	_shot("preview_gameplay.png")
@@ -44,3 +50,14 @@ func _shot(filename: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png("res://previews/%s" % filename)
 	print("SCREENSHOT_SAVED: previews/", filename)
+
+func _find_button(node: Node, text: String) -> Button:
+	if node == null:
+		return null
+	if node is Button and node.text == text:
+		return node
+	for child in node.get_children():
+		var found := _find_button(child, text)
+		if found:
+			return found
+	return null
