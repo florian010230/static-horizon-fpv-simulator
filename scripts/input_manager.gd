@@ -25,13 +25,16 @@ extends Node
 const KEYBOARD_THROTTLE_RATE: float = 0.6 # units/sec while Shift/Ctrl held
 
 var armed: bool = false
+var self_level: bool = true ## Angle (self-level) mode by default, like a real FC's beginner setting. Toggle with L.
 
 var _prev_arm_key: bool = false
 var _prev_arm_button: bool = false
+var _prev_level_key: bool = false
 var _kb_throttle: float = 0.0
 
 func _process(delta: float) -> void:
 	_handle_arm_toggle()
+	_handle_level_toggle()
 	if not _joy_connected():
 		_update_keyboard_throttle(delta)
 
@@ -48,6 +51,12 @@ func _handle_arm_toggle() -> void:
 		armed = not armed
 	_prev_arm_key = key_pressed
 	_prev_arm_button = button_pressed
+
+func _handle_level_toggle() -> void:
+	var key_pressed := Input.is_key_pressed(KEY_L)
+	if key_pressed and not _prev_level_key:
+		self_level = not self_level
+	_prev_level_key = key_pressed
 
 func _update_keyboard_throttle(delta: float) -> void:
 	if Input.is_key_pressed(KEY_SHIFT):

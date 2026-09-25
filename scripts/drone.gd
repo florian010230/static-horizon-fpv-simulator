@@ -1,21 +1,39 @@
 class_name Drone
 extends RigidBody3D
 
-## Simplified quadcopter (X-frame) acro/rate-mode flight model.
+## Simplified quadcopter (X-frame) flight model with both Angle
+## (self-level, default) and Acro flight modes - toggle with L via
+## InputManager.self_level.
 ##
-## Sticks set a target ANGULAR RATE per axis (like Betaflight acro mode),
-## a PID loop per axis drives the actual rate towards that target, and the
-## PID outputs are mixed into 4 virtual motor thrusts (roll/pitch) plus a
-## direct reaction torque (yaw - a spinning prop's drag torque can't be
-## produced by a purely vertical thrust force, so it's modelled directly).
+## Both modes ultimately drive the same inner-loop rate PID per axis; they
+## only differ in how the target rate is produced (see _actual_rate() for
+## Acro's Betaflight-style curve, and the self_level branch below for
+## Angle mode's outer attitude loop). PID outputs are mixed into 4 virtual
+## motor thrusts (roll/pitch) plus a direct reaction torque (yaw - a
+## spinning prop's drag torque can't be produced by a purely vertical
+## thrust force, so it's modelled directly).
 
 @export_group("Frame")
 @export var arm_length: float = 0.11
 @export var max_motor_thrust_n: float = 6.0
 
-@export_group("Rates (deg/s)")
-@export var max_roll_pitch_rate_deg: float = 300.0
-@export var max_yaw_rate_deg: float = 180.0
+## Betaflight's real default "Actual Rates" (since BF 4.3): Center
+## Sensitivity 70 deg/s, Max Rate 670 deg/s, same on roll/pitch/yaw.
+## The curve is soft near center and steep at full deflection - a flat
+## linear mapping (what this used to be) is objectively twitchier.
+@export_group("Acro Rates (deg/s)")
+@export var center_sensitivity_deg: float = 70.0
+@export var max_rate_deg: float = 670.0
+
+## Angle (self-level) mode: sticks command a target tilt angle instead
+## of a rotation rate, and an outer P-loop corrects back to it - this is
+## what every real flight controller defaults beginners to, since pure
+## acro has no attitude reference and just keeps whatever tilt it drifts
+## to. Toggle with L; yaw is always rate-controlled, even in angle mode,
+## same as a real FC.
+@export_group("Angle Mode")
+@export_range(10.0, 60.0, 1.0) var max_angle_deg: float = 45.0
+@export_range(2.0, 15.0, 0.5) var angle_p_gain: float = 8.0
 
 @export_group("PID Roll")
 @export var roll_p: float = 0.06
@@ -94,9 +112,22 @@ func _physics_process(delta: float) -> void:
 	var yaw_in: float = InputManager.get_yaw()
 	var throttle_in: float = InputManager.get_throttle()
 
-	var desired_roll_rate: float = roll_in * deg_to_rad(max_roll_pitch_rate_deg)
-	var desired_pitch_rate: float = pitch_in * deg_to_rad(max_roll_pitch_rate_deg)
-	var desired_yaw_rate: float = yaw_in * deg_to_rad(max_yaw_rate_deg)
+	var desired_roll_rate: float
+	var desired_pitch_rate: float
+	if InputManager.self_level:
+		# Outer attitude loop: roll/pitch angle extracted from how far the
+		# body's right/forward axes tilt away from horizontal.
+		var roll_angle: float = asin(clamp(global_transform.basis.x.y, -1.0, 1.0))
+		var pitch_angle: float = asin(clamp(-global_transform.basis.z.y, -1.0, 1.0))
+		var target_roll_angle: float = roll_in * deg_to_rad(max_angle_deg)
+		var target_pitch_angle: float = pitch_in * deg_to_rad(max_angle_deg)
+		var max_rate_rad: float = deg_to_rad(max_rate_deg)
+		desired_roll_rate = clamp((target_roll_angle - roll_angle) * angle_p_gain, -max_rate_rad, max_rate_rad)
+		desired_pitch_rate = clamp((target_pitch_angle - pitch_angle) * angle_p_gain, -max_rate_rad, max_rate_rad)
+	else:
+		desired_roll_rate = _actual_rate(roll_in)
+		desired_pitch_rate = _actual_rate(pitch_in)
+	var desired_yaw_rate: float = _actual_rate(yaw_in)
 
 	# Angular velocity in the drone's own body frame (roll = about local Z,
 	# pitch = about local X, yaw = about local Y, since -Z is "forward").
@@ -119,6 +150,12 @@ func _physics_process(delta: float) -> void:
 		apply_force(up_global * thrust, offset)
 
 	apply_torque(up_global * yaw_out)
+
+## Betaflight-style Actual Rates curve: soft near center (slope =
+## center_sensitivity_deg), steep at full stick (reaches max_rate_deg).
+func _actual_rate(stick: float) -> float:
+	var deg: float = center_sensitivity_deg * stick + (max_rate_deg - center_sensitivity_deg) * stick * stick * stick
+	return deg_to_rad(deg)
 
 func _apply_camera_settings() -> void:
 	if _camera_mount == null:

@@ -53,7 +53,8 @@ func _update_hud() -> void:
 	var armed_text := "ARMED" if InputManager.armed else "DISARMED"
 	var throttle_pct := int(round(InputManager.get_throttle() * 100.0))
 	var fps := Engine.get_frames_per_second()
-	_hud_label.text = "%s   Throttle: %d%%   FPS: %d\n[Enter] Arm/Disarm   [R] Reset   [O] Tuning panel   [Esc] Quit\nKeyboard: A/D roll, W/S pitch, Q/E yaw, Shift/Ctrl throttle" % [armed_text, throttle_pct, fps]
+	var mode_text := "ANGLE (self-level)" if InputManager.self_level else "ACRO"
+	_hud_label.text = "%s   Mode: %s   Throttle: %d%%   FPS: %d\n[Enter] Arm/Disarm   [L] Angle/Acro   [R] Reset   [O] Tuning panel   [Esc] Quit\nKeyboard: A/D roll, W/S pitch, Q/E yaw, Shift/Ctrl throttle" % [armed_text, mode_text, throttle_pct, fps]
 
 func _build_tuning_panel() -> void:
 	_tuning_panel = PanelContainer.new()
@@ -68,8 +69,10 @@ func _build_tuning_panel() -> void:
 	title.text = "PID & Camera Tuning (O to hide)"
 	vbox.add_child(title)
 
-	_add_slider(vbox, "Roll/Pitch Rate", 30.0, 800.0, 5.0, _drone.max_roll_pitch_rate_deg, func(v: float): _drone.max_roll_pitch_rate_deg = v)
-	_add_slider(vbox, "Yaw Rate", 30.0, 500.0, 5.0, _drone.max_yaw_rate_deg, func(v: float): _drone.max_yaw_rate_deg = v)
+	_add_slider(vbox, "Center Sensitivity", 10.0, 200.0, 5.0, _drone.center_sensitivity_deg, func(v: float): _drone.center_sensitivity_deg = v)
+	_add_slider(vbox, "Max Rate", 100.0, 1200.0, 10.0, _drone.max_rate_deg, func(v: float): _drone.max_rate_deg = v)
+	_add_slider(vbox, "Max Angle (self-level)", 10.0, 60.0, 1.0, _drone.max_angle_deg, func(v: float): _drone.max_angle_deg = v)
+	_add_slider(vbox, "Angle P Gain", 2.0, 15.0, 0.5, _drone.angle_p_gain, func(v: float): _drone.angle_p_gain = v)
 	_add_slider(vbox, "Roll P", 0.0, 0.5, 0.002, _drone.roll_p, func(v: float): _drone.roll_p = v)
 	_add_slider(vbox, "Roll I", 0.0, 0.2, 0.001, _drone.roll_i, func(v: float): _drone.roll_i = v)
 	_add_slider(vbox, "Roll D", 0.0, 0.05, 0.0005, _drone.roll_d, func(v: float): _drone.roll_d = v)
