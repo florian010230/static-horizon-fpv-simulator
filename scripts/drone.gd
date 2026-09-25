@@ -38,24 +38,24 @@ extends RigidBody3D
 ## same as a real FC.
 @export_group("Angle Mode")
 @export_range(10.0, 60.0, 1.0) var max_angle_deg: float = 45.0
-@export_range(2.0, 15.0, 0.5) var angle_p_gain: float = 8.0
+@export_range(2.0, 15.0, 0.5) var angle_p_gain: float = 11.0
 
 ## Lower than they'd be for the old 5"-scale frame: a smaller, lighter
 ## body has proportionally much less rotational inertia, so the same PID
 ## output now produces a much bigger angular acceleration.
 @export_group("PID Roll")
-@export var roll_p: float = 0.014
-@export var roll_i: float = 0.005
-@export var roll_d: float = 0.001
+@export var roll_p: float = 0.024
+@export var roll_i: float = 0.008
+@export var roll_d: float = 0.0022
 
 @export_group("PID Pitch")
-@export var pitch_p: float = 0.014
-@export var pitch_i: float = 0.005
-@export var pitch_d: float = 0.001
+@export var pitch_p: float = 0.024
+@export var pitch_i: float = 0.008
+@export var pitch_d: float = 0.0022
 
 @export_group("PID Yaw")
-@export var yaw_p: float = 0.01
-@export var yaw_i: float = 0.0015
+@export var yaw_p: float = 0.016
+@export var yaw_i: float = 0.0025
 @export var yaw_d: float = 0.0
 
 @export_group("Camera")

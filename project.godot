@@ -11,16 +11,17 @@ config_version=5
 [application]
 
 config/name="Static Horizon FPV Sim"
-run/main_scene="res://scenes/Main.tscn"
+run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.7")
 
 [autoload]
 
 InputManager="*res://scenes/InputManager.tscn"
+Settings="*res://scripts/settings.gd"
 
 [physics]
 
-common/physics_ticks_per_second=120
+common/physics_ticks_per_second=60
 
 [display]
 

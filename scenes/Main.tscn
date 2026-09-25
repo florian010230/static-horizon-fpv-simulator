@@ -6,7 +6,20 @@
 [ext_resource type="PackedScene" path="res://scenes/Gate.tscn" id="4"]
 [ext_resource type="PackedScene" path="res://scenes/Pole.tscn" id="5"]
 
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_main"]
+sky_top_color = Color(0.28, 0.5, 0.75, 1)
+sky_horizon_color = Color(0.75, 0.82, 0.85, 1)
+ground_bottom_color = Color(0.3, 0.27, 0.22, 1)
+ground_horizon_color = Color(0.75, 0.82, 0.85, 1)
+
+[sub_resource type="Sky" id="Sky_main"]
+sky_material = SubResource("ProceduralSkyMaterial_main")
+radiance_size = 0
+process_mode = 1
+
 [sub_resource type="Environment" id="Environment_main"]
+background_mode = 2
+sky = SubResource("Sky_main")
 ambient_light_source = 2
 ambient_light_color = Color(0.55, 0.6, 0.68, 1)
 
@@ -67,6 +80,33 @@ size = Vector3(0.5, 7, 30)
 [sub_resource type="BoxShape3D" id="BoxShape3D_tunnel_wall"]
 size = Vector3(0.5, 7, 30)
 
+[sub_resource type="BoxMesh" id="BoxMesh_door"]
+size = Vector3(1.4, 2.2, 0.1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_door"]
+albedo_color = Color(0.25, 0.15, 0.1, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_hill"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hill"]
+albedo_color = Color(0.28, 0.42, 0.22, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_border_ns"]
+size = Vector3(460, 120, 2)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_border_ns"]
+size = Vector3(460, 120, 2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_border_ew"]
+size = Vector3(2, 120, 460)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_border_ew"]
+size = Vector3(2, 120, 460)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_border"]
+albedo_color = Color(0.5, 0.75, 0.95, 0.12)
+transparency = 1
+
 [node name="Main" type="Node3D" unique_id=1537932311]
 script = ExtResource("1")
 
@@ -76,7 +116,7 @@ environment = SubResource("Environment_main")
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=1382993395]
 transform = Transform3D(0.87758255, 0.37554693, -0.2980157, 0, 0.62161, 0.7833269, 0.47942555, -0.687434, 0.54551405, 0, 30, 0)
 light_energy = 1.4
-shadow_enabled = true
+shadow_enabled = false
 
 [node name="Ground" type="StaticBody3D" parent="." unique_id=1730777446]
 
@@ -186,6 +226,101 @@ surface_material_override/0 = SubResource("StandardMaterial3D_tunnel")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="TunnelWallRight" unique_id=1226256587]
 shape = SubResource("BoxShape3D_tunnel_wall")
+
+[node name="BuildingDoor" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 1.6, -25.05)
+mesh = SubResource("BoxMesh_door")
+surface_material_override/0 = SubResource("StandardMaterial3D_door")
+
+[node name="House1Door" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 1.6, -19.55)
+mesh = SubResource("BoxMesh_door")
+surface_material_override/0 = SubResource("StandardMaterial3D_door")
+
+[node name="House2Door" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 1.6, 25.45)
+mesh = SubResource("BoxMesh_door")
+surface_material_override/0 = SubResource("StandardMaterial3D_door")
+
+[node name="Hill1" type="MeshInstance3D" parent="."]
+transform = Transform3D(60, 0, 0, 0, 25, 0, 0, 0, 60, 280, 0, 0)
+mesh = SubResource("SphereMesh_hill")
+surface_material_override/0 = SubResource("StandardMaterial3D_hill")
+
+[node name="Hill2" type="MeshInstance3D" parent="."]
+transform = Transform3D(55, 0, 0, 0, 22, 0, 0, 0, 55, -280, 0, 0)
+mesh = SubResource("SphereMesh_hill")
+surface_material_override/0 = SubResource("StandardMaterial3D_hill")
+
+[node name="Hill3" type="MeshInstance3D" parent="."]
+transform = Transform3D(65, 0, 0, 0, 28, 0, 0, 0, 65, 0, 0, 280)
+mesh = SubResource("SphereMesh_hill")
+surface_material_override/0 = SubResource("StandardMaterial3D_hill")
+
+[node name="Hill4" type="MeshInstance3D" parent="."]
+transform = Transform3D(58, 0, 0, 0, 24, 0, 0, 0, 58, 0, 0, -280)
+mesh = SubResource("SphereMesh_hill")
+surface_material_override/0 = SubResource("StandardMaterial3D_hill")
+
+[node name="Hill5" type="MeshInstance3D" parent="."]
+transform = Transform3D(50, 0, 0, 0, 20, 0, 0, 0, 50, 200, 0, 200)
+mesh = SubResource("SphereMesh_hill")
+surface_material_override/0 = SubResource("StandardMaterial3D_hill")
+
+[node name="Hill6" type="MeshInstance3D" parent="."]
+transform = Transform3D(52, 0, 0, 0, 21, 0, 0, 0, 52, -200, 0, 200)
+mesh = SubResource("SphereMesh_hill")
+surface_material_override/0 = SubResource("StandardMaterial3D_hill")
+
+[node name="Hill7" type="MeshInstance3D" parent="."]
+transform = Transform3D(48, 0, 0, 0, 19, 0, 0, 0, 48, 200, 0, -200)
+mesh = SubResource("SphereMesh_hill")
+surface_material_override/0 = SubResource("StandardMaterial3D_hill")
+
+[node name="Hill8" type="MeshInstance3D" parent="."]
+transform = Transform3D(55, 0, 0, 0, 23, 0, 0, 0, 55, -200, 0, -200)
+mesh = SubResource("SphereMesh_hill")
+surface_material_override/0 = SubResource("StandardMaterial3D_hill")
+
+[node name="BorderNorth" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 60, -230)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BorderNorth"]
+mesh = SubResource("BoxMesh_border_ns")
+surface_material_override/0 = SubResource("StandardMaterial3D_border")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BorderNorth"]
+shape = SubResource("BoxShape3D_border_ns")
+
+[node name="BorderSouth" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 60, 230)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BorderSouth"]
+mesh = SubResource("BoxMesh_border_ns")
+surface_material_override/0 = SubResource("StandardMaterial3D_border")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BorderSouth"]
+shape = SubResource("BoxShape3D_border_ns")
+
+[node name="BorderEast" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 230, 60, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BorderEast"]
+mesh = SubResource("BoxMesh_border_ew")
+surface_material_override/0 = SubResource("StandardMaterial3D_border")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BorderEast"]
+shape = SubResource("BoxShape3D_border_ew")
+
+[node name="BorderWest" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -230, 60, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BorderWest"]
+mesh = SubResource("BoxMesh_border_ew")
+surface_material_override/0 = SubResource("StandardMaterial3D_border")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BorderWest"]
+shape = SubResource("BoxShape3D_border_ew")
 
 [node name="Gate1" parent="." unique_id=2011873533 instance=ExtResource("4")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -35)

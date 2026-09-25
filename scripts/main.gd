@@ -7,6 +7,8 @@ func _ready() -> void:
 	if _ui.has_method("set_drone"):
 		_ui.set_drone(_drone)
 	_apply_textures()
+	_spawn_trees()
+	Settings.apply_shadow_setting()
 
 func _apply_textures() -> void:
 	var grass: ImageTexture = ProceduralTextures.grass_texture()
@@ -30,3 +32,60 @@ func _apply_textures() -> void:
 		var tunnel_mat: StandardMaterial3D = get_node(path).get_surface_override_material(0)
 		tunnel_mat.albedo_texture = concrete
 		tunnel_mat.uv1_scale = Vector3(6, 20, 1)
+
+## Trees are drawn with MultiMeshInstance3D - hundreds of instances cost
+## just 2 draw calls total (one per layer), instead of hundreds of
+## individual nodes. No collision on them (deliberate trade-off: cheap
+## decoration, not obstacles - keeps the instance count free of any
+## per-tree physics cost).
+func _spawn_trees() -> void:
+	var trunk_mesh := CylinderMesh.new()
+	trunk_mesh.top_radius = 0.35
+	trunk_mesh.bottom_radius = 0.45
+	trunk_mesh.height = 4.0
+	var trunk_mat := StandardMaterial3D.new()
+	trunk_mat.albedo_color = Color(0.35, 0.24, 0.15)
+	trunk_mesh.material = trunk_mat
+
+	var foliage_mesh := CylinderMesh.new()
+	foliage_mesh.top_radius = 0.0
+	foliage_mesh.bottom_radius = 3.0
+	foliage_mesh.height = 6.0
+	var foliage_mat := StandardMaterial3D.new()
+	foliage_mat.albedo_color = Color(0.2, 0.38, 0.18)
+	foliage_mesh.material = foliage_mat
+
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 42
+	var positions: Array[Vector3] = []
+	while positions.size() < 80:
+		var x: float = rng.randf_range(-215.0, 215.0)
+		var z: float = rng.randf_range(-215.0, 215.0)
+		if Vector2(x, z).length() < 70.0:
+			continue # keep the core play area (buildings/gates/tunnel) clear
+		positions.append(Vector3(x, 0.5, z))
+
+	var trunk_mm := MultiMesh.new()
+	trunk_mm.transform_format = MultiMesh.TRANSFORM_3D
+	trunk_mm.mesh = trunk_mesh
+	trunk_mm.instance_count = positions.size()
+
+	var foliage_mm := MultiMesh.new()
+	foliage_mm.transform_format = MultiMesh.TRANSFORM_3D
+	foliage_mm.mesh = foliage_mesh
+	foliage_mm.instance_count = positions.size()
+
+	for i in range(positions.size()):
+		var p: Vector3 = positions[i]
+		var s: float = rng.randf_range(0.7, 1.3)
+		var basis := Basis().scaled(Vector3(s, s, s))
+		trunk_mm.set_instance_transform(i, Transform3D(basis, p + Vector3(0, 2.0 * s, 0)))
+		foliage_mm.set_instance_transform(i, Transform3D(basis, p + Vector3(0, 7.0 * s, 0)))
+
+	var trunk_instance := MultiMeshInstance3D.new()
+	trunk_instance.multimesh = trunk_mm
+	add_child(trunk_instance)
+
+	var foliage_instance := MultiMeshInstance3D.new()
+	foliage_instance.multimesh = foliage_mm
+	add_child(foliage_instance)

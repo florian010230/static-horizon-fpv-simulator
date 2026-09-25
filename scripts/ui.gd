@@ -9,6 +9,7 @@ var _root: Control
 var _hud_label: Label
 var _debug_label: Label
 var _tuning_panel: PanelContainer
+var _crosshair: Control
 var _panel_visible: bool = true
 var _prev_toggle_key: bool = false
 
@@ -17,6 +18,12 @@ func _ready() -> void:
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_root)
+
+	_crosshair = Control.new()
+	_crosshair.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_crosshair.draw.connect(_draw_crosshair)
+	_root.add_child(_crosshair)
 
 	_hud_label = Label.new()
 	_hud_label.position = Vector2(16, 16)
@@ -31,6 +38,7 @@ func _ready() -> void:
 func set_drone(drone: Drone) -> void:
 	_drone = drone
 	_build_tuning_panel()
+	_crosshair.queue_redraw()
 
 func _process(_delta: float) -> void:
 	_handle_toggle()
@@ -40,6 +48,19 @@ func _process(_delta: float) -> void:
 	_debug_label.visible = _panel_visible
 	if _panel_visible:
 		_debug_label.text = InputManager.raw_axes_debug_text()
+	_crosshair.visible = Settings.crosshair_enabled
+
+func _draw_crosshair() -> void:
+	var center: Vector2 = _crosshair.size / 2.0
+	var color := Color(1, 1, 1, 0.75)
+	var gap := 6.0
+	var length := 10.0
+	var thickness := 2.0
+	_crosshair.draw_line(center + Vector2(0, -gap - length), center + Vector2(0, -gap), color, thickness)
+	_crosshair.draw_line(center + Vector2(0, gap), center + Vector2(0, gap + length), color, thickness)
+	_crosshair.draw_line(center + Vector2(-gap - length, 0), center + Vector2(-gap, 0), color, thickness)
+	_crosshair.draw_line(center + Vector2(gap, 0), center + Vector2(gap + length, 0), color, thickness)
+	_crosshair.draw_circle(center, 1.5, color)
 
 func _handle_toggle() -> void:
 	var key := Input.is_key_pressed(KEY_O)
@@ -47,7 +68,7 @@ func _handle_toggle() -> void:
 		_panel_visible = not _panel_visible
 	_prev_toggle_key = key
 	if Input.is_action_just_pressed("ui_cancel"):
-		get_tree().quit()
+		get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
 
 func _update_hud() -> void:
 	var armed_text := "ARMED" if InputManager.armed else "DISARMED"
@@ -56,7 +77,7 @@ func _update_hud() -> void:
 	var throttle_pct := int(round(InputManager.get_throttle() * 100.0))
 	var fps := Engine.get_frames_per_second()
 	var mode_text := "ANGLE (self-level)" if InputManager.self_level else "ACRO"
-	_hud_label.text = "%s   Mode: %s   Throttle: %d%%   FPS: %d\n[Enter] Arm/Disarm   [L] Angle/Acro   [R] Reset   [O] Tuning panel   [Esc] Quit\nKeyboard: A/D roll, W/S pitch, Q/E yaw, Shift/Ctrl throttle" % [armed_text, mode_text, throttle_pct, fps]
+	_hud_label.text = "%s   Mode: %s   Throttle: %d%%   FPS: %d\n[Enter] Arm/Disarm   [L] Angle/Acro   [R] Reset   [O] Tuning panel   [Esc] Menu\nKeyboard: A/D roll, W/S pitch, Q/E yaw, Shift/Ctrl throttle" % [armed_text, mode_text, throttle_pct, fps]
 
 func _build_tuning_panel() -> void:
 	_tuning_panel = PanelContainer.new()
