@@ -56,5 +56,5 @@ position = Vector3(0, 0.06, -0.16)
 
 [node name="Camera3D" type="Camera3D" parent="CameraMount"]
 current = true
-fov = 100.0
+fov = 80.0
 near = 0.05

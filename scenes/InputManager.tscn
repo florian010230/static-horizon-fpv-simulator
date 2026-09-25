@@ -6,3 +6,4 @@
 script = ExtResource("1")
 invert_roll = true
 invert_pitch = true
+invert_yaw = true

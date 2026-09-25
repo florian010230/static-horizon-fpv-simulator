@@ -34,6 +34,12 @@ extends RigidBody3D
 
 @export_group("Camera")
 @export_range(0.0, 90.0, 0.5) var camera_angle_deg: float = 25.0
+@export_range(50.0, 150.0, 1.0) var camera_fov_deg: float = 80.0
+
+@export_group("Throttle")
+## >1 softens low-stick response (more resolution around hover) and
+## sharpens the top end; 1.0 is linear.
+@export_range(0.5, 3.0, 0.05) var throttle_curve: float = 1.6
 
 # Motor order: front-right, front-left, back-right, back-left.
 const ROLL_MIX: Array[float] = [1.0, -1.0, 1.0, -1.0]
@@ -48,6 +54,7 @@ var _yaw_pid := PIDController.new()
 var _spawn_transform: Transform3D
 
 @onready var _camera_mount: Node3D = $CameraMount
+@onready var _camera: Camera3D = $CameraMount/Camera3D
 
 func _ready() -> void:
 	_spawn_transform = global_transform
@@ -57,7 +64,7 @@ func _ready() -> void:
 		Vector3(arm_length, 0.0, arm_length),   # back right
 		Vector3(-arm_length, 0.0, arm_length),  # back left
 	]
-	_apply_camera_angle()
+	_apply_camera_settings()
 
 func _physics_process(delta: float) -> void:
 	_roll_pid.kp = roll_p
@@ -70,7 +77,7 @@ func _physics_process(delta: float) -> void:
 	_yaw_pid.ki = yaw_i
 	_yaw_pid.kd = yaw_d
 
-	_apply_camera_angle()
+	_apply_camera_settings()
 
 	if InputManager.reset_key_pressed():
 		reset_to_spawn()
@@ -99,7 +106,8 @@ func _physics_process(delta: float) -> void:
 	var pitch_out: float = _pitch_pid.update(desired_pitch_rate - local_ang_vel.x, delta)
 	var yaw_out: float = _yaw_pid.update(desired_yaw_rate - local_ang_vel.y, delta)
 
-	var throttle_force_total: float = throttle_in * max_motor_thrust_n * 4.0
+	var throttle_shaped: float = pow(throttle_in, throttle_curve)
+	var throttle_force_total: float = throttle_shaped * max_motor_thrust_n * 4.0
 	var up_global: Vector3 = global_transform.basis.y
 
 	for i in range(4):
@@ -112,12 +120,14 @@ func _physics_process(delta: float) -> void:
 
 	apply_torque(up_global * yaw_out)
 
-func _apply_camera_angle() -> void:
+func _apply_camera_settings() -> void:
 	if _camera_mount == null:
 		return
 	var rot: Vector3 = _camera_mount.rotation_degrees
 	rot.x = -camera_angle_deg
 	_camera_mount.rotation_degrees = rot
+	if _camera:
+		_camera.fov = camera_fov_deg
 
 func reset_to_spawn() -> void:
 	global_transform = _spawn_transform

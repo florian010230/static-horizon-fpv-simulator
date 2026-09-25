@@ -78,6 +78,8 @@ func _build_tuning_panel() -> void:
 	_add_slider(vbox, "Yaw I", 0.0, 0.2, 0.001, _drone.yaw_i, func(v: float): _drone.yaw_i = v)
 	_add_slider(vbox, "Yaw D", 0.0, 0.05, 0.0005, _drone.yaw_d, func(v: float): _drone.yaw_d = v)
 	_add_slider(vbox, "Camera Angle", 0.0, 90.0, 1.0, _drone.camera_angle_deg, func(v: float): _drone.camera_angle_deg = v)
+	_add_slider(vbox, "Camera FOV", 50.0, 150.0, 1.0, _drone.camera_fov_deg, func(v: float): _drone.camera_fov_deg = v)
+	_add_slider(vbox, "Throttle Curve", 0.5, 3.0, 0.05, _drone.throttle_curve, func(v: float): _drone.throttle_curve = v)
 
 func _add_slider(parent: VBoxContainer, label_text: String, min_v: float, max_v: float, step: float, initial: float, on_change: Callable) -> void:
 	var row := HBoxContainer.new()

@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/Drone.tscn" id="2"]
@@ -36,6 +36,21 @@ albedo_color = Color(0.7, 0.52, 0.38, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_house"]
 size = Vector3(9, 7, 9)
+
+[sub_resource type="BoxMesh" id="BoxMesh_gate_pole"]
+size = Vector3(0.35, 4.5, 0.35)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_gate_pole"]
+size = Vector3(0.35, 4.5, 0.35)
+
+[sub_resource type="BoxMesh" id="BoxMesh_gate_bar"]
+size = Vector3(5.35, 0.35, 0.35)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_gate_bar"]
+size = Vector3(5.35, 0.35, 0.35)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_gate"]
+albedo_color = Color(0.95, 0.55, 0.05, 1)
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1")
@@ -87,6 +102,36 @@ surface_material_override/0 = SubResource("StandardMaterial3D_house")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="House2"]
 shape = SubResource("BoxShape3D_house")
+
+[node name="GatePoleLeft" type="StaticBody3D" parent="."]
+position = Vector3(-2.5, 2.75, -35)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="GatePoleLeft"]
+mesh = SubResource("BoxMesh_gate_pole")
+surface_material_override/0 = SubResource("StandardMaterial3D_gate")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="GatePoleLeft"]
+shape = SubResource("BoxShape3D_gate_pole")
+
+[node name="GatePoleRight" type="StaticBody3D" parent="."]
+position = Vector3(2.5, 2.75, -35)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="GatePoleRight"]
+mesh = SubResource("BoxMesh_gate_pole")
+surface_material_override/0 = SubResource("StandardMaterial3D_gate")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="GatePoleRight"]
+shape = SubResource("BoxShape3D_gate_pole")
+
+[node name="GateTopBar" type="StaticBody3D" parent="."]
+position = Vector3(0, 5.0, -35)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="GateTopBar"]
+mesh = SubResource("BoxMesh_gate_bar")
+surface_material_override/0 = SubResource("StandardMaterial3D_gate")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="GateTopBar"]
+shape = SubResource("BoxShape3D_gate_bar")
 
 [node name="Drone" parent="." instance=ExtResource("2")]
 position = Vector3(0, 0.6, 0)
