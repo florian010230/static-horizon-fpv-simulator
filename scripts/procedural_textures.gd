@@ -38,6 +38,19 @@ static func brick_texture(size: int = 128) -> ImageTexture:
 				img.set_pixel(x, y, Color(brick_color.r * shade, brick_color.g * shade, brick_color.b * shade))
 	return ImageTexture.create_from_image(img)
 
+static func concrete_texture(size: int = 128) -> ImageTexture:
+	var noise := FastNoiseLite.new()
+	noise.seed = 3
+	noise.frequency = 0.05
+	var img := Image.create(size, size, false, Image.FORMAT_RGB8)
+	var low := Color(0.38, 0.38, 0.4)
+	var high := Color(0.5, 0.5, 0.52)
+	for y in range(size):
+		for x in range(size):
+			var n: float = (noise.get_noise_2d(x, y) + 1.0) * 0.5
+			img.set_pixel(x, y, low.lerp(high, n))
+	return ImageTexture.create_from_image(img)
+
 static func siding_texture(size: int = 128) -> ImageTexture:
 	var plank_color := Color(0.72, 0.55, 0.4)
 	var line_color := Color(0.5, 0.37, 0.26)

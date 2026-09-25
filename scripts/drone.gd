@@ -13,9 +13,14 @@ extends RigidBody3D
 ## spinning prop's drag torque can't be produced by a purely vertical
 ## thrust force, so it's modelled directly).
 
+## Sized to match a real 3" freestyle quad (DeepSpace Seeker3: ~245g
+## flying weight, ~60mm motor arm) rather than a 5" frame. Thrust set
+## for a thrust-to-weight ratio of ~7:1 (total thrust = 7 * weight),
+## typical for a high-KV 4S 3" freestyle build - "rips" with instant,
+## crisp throttle response rather than a lazy 5" cruiser feel.
 @export_group("Frame")
-@export var arm_length: float = 0.11
-@export var max_motor_thrust_n: float = 6.0
+@export var arm_length: float = 0.06
+@export var max_motor_thrust_n: float = 4.2
 
 ## Betaflight's real default "Actual Rates" (since BF 4.3): Center
 ## Sensitivity 70 deg/s, Max Rate 670 deg/s, same on roll/pitch/yaw.
@@ -35,19 +40,22 @@ extends RigidBody3D
 @export_range(10.0, 60.0, 1.0) var max_angle_deg: float = 45.0
 @export_range(2.0, 15.0, 0.5) var angle_p_gain: float = 8.0
 
+## Lower than they'd be for the old 5"-scale frame: a smaller, lighter
+## body has proportionally much less rotational inertia, so the same PID
+## output now produces a much bigger angular acceleration.
 @export_group("PID Roll")
-@export var roll_p: float = 0.06
-@export var roll_i: float = 0.02
-@export var roll_d: float = 0.004
+@export var roll_p: float = 0.014
+@export var roll_i: float = 0.005
+@export var roll_d: float = 0.001
 
 @export_group("PID Pitch")
-@export var pitch_p: float = 0.06
-@export var pitch_i: float = 0.02
-@export var pitch_d: float = 0.004
+@export var pitch_p: float = 0.014
+@export var pitch_i: float = 0.005
+@export var pitch_d: float = 0.001
 
 @export_group("PID Yaw")
-@export var yaw_p: float = 0.08
-@export var yaw_i: float = 0.01
+@export var yaw_p: float = 0.01
+@export var yaw_i: float = 0.0015
 @export var yaw_d: float = 0.0
 
 @export_group("Camera")

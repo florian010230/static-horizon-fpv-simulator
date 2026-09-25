@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=26 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/Drone.tscn" id="2"]
@@ -39,6 +39,36 @@ albedo_color = Color(0.7, 0.52, 0.38, 1)
 [sub_resource type="BoxShape3D" id="BoxShape3D_house"]
 size = Vector3(9, 7, 9)
 
+[sub_resource type="PrismMesh" id="PrismMesh_tower_roof"]
+size = Vector3(10, 4, 10)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_tower_roof"]
+size = Vector3(10, 4, 10)
+
+[sub_resource type="PrismMesh" id="PrismMesh_house_roof"]
+size = Vector3(9, 3, 9)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_house_roof"]
+size = Vector3(9, 3, 9)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_roof"]
+albedo_color = Color(0.35, 0.18, 0.15, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_tunnel_floor"]
+size = Vector3(9, 0.5, 30)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_tunnel_floor"]
+size = Vector3(9, 0.5, 30)
+
+[sub_resource type="BoxMesh" id="BoxMesh_tunnel_wall"]
+size = Vector3(0.5, 7, 30)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_tunnel_wall"]
+size = Vector3(0.5, 7, 30)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tunnel"]
+albedo_color = Color(0.45, 0.45, 0.47, 1)
+
 [node name="Main" type="Node3D"]
 script = ExtResource("1")
 
@@ -70,6 +100,16 @@ surface_material_override/0 = SubResource("StandardMaterial3D_building")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Building"]
 shape = SubResource("BoxShape3D_building")
 
+[node name="BuildingRoof" type="StaticBody3D" parent="."]
+position = Vector3(25, 26.5, -20)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BuildingRoof"]
+mesh = SubResource("PrismMesh_tower_roof")
+surface_material_override/0 = SubResource("StandardMaterial3D_roof")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BuildingRoof"]
+shape = SubResource("BoxShape3D_tower_roof")
+
 [node name="House1" type="StaticBody3D" parent="."]
 position = Vector3(-28, 3.5, -15)
 
@@ -80,6 +120,16 @@ surface_material_override/0 = SubResource("StandardMaterial3D_house")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="House1"]
 shape = SubResource("BoxShape3D_house")
 
+[node name="House1Roof" type="StaticBody3D" parent="."]
+position = Vector3(-28, 8.5, -15)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="House1Roof"]
+mesh = SubResource("PrismMesh_house_roof")
+surface_material_override/0 = SubResource("StandardMaterial3D_roof")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="House1Roof"]
+shape = SubResource("BoxShape3D_house_roof")
+
 [node name="House2" type="StaticBody3D" parent="."]
 position = Vector3(22, 3.5, 30)
 
@@ -89,6 +139,56 @@ surface_material_override/0 = SubResource("StandardMaterial3D_house")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="House2"]
 shape = SubResource("BoxShape3D_house")
+
+[node name="House2Roof" type="StaticBody3D" parent="."]
+position = Vector3(22, 8.5, 30)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="House2Roof"]
+mesh = SubResource("PrismMesh_house_roof")
+surface_material_override/0 = SubResource("StandardMaterial3D_roof")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="House2Roof"]
+shape = SubResource("BoxShape3D_house_roof")
+
+[node name="TunnelFloor" type="StaticBody3D" parent="."]
+position = Vector3(-40, 0.75, -55)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="TunnelFloor"]
+mesh = SubResource("BoxMesh_tunnel_floor")
+surface_material_override/0 = SubResource("StandardMaterial3D_tunnel")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TunnelFloor"]
+shape = SubResource("BoxShape3D_tunnel_floor")
+
+[node name="TunnelCeiling" type="StaticBody3D" parent="."]
+position = Vector3(-40, 7.25, -55)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="TunnelCeiling"]
+mesh = SubResource("BoxMesh_tunnel_floor")
+surface_material_override/0 = SubResource("StandardMaterial3D_tunnel")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TunnelCeiling"]
+shape = SubResource("BoxShape3D_tunnel_floor")
+
+[node name="TunnelWallLeft" type="StaticBody3D" parent="."]
+position = Vector3(-44.25, 4.0, -55)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="TunnelWallLeft"]
+mesh = SubResource("BoxMesh_tunnel_wall")
+surface_material_override/0 = SubResource("StandardMaterial3D_tunnel")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TunnelWallLeft"]
+shape = SubResource("BoxShape3D_tunnel_wall")
+
+[node name="TunnelWallRight" type="StaticBody3D" parent="."]
+position = Vector3(-35.75, 4.0, -55)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="TunnelWallRight"]
+mesh = SubResource("BoxMesh_tunnel_wall")
+surface_material_override/0 = SubResource("StandardMaterial3D_tunnel")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TunnelWallRight"]
+shape = SubResource("BoxShape3D_tunnel_wall")
 
 [node name="Gate1" parent="." instance=ExtResource("4")]
 position = Vector3(0, 0, -35)

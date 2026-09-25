@@ -51,6 +51,8 @@ func _handle_toggle() -> void:
 
 func _update_hud() -> void:
 	var armed_text := "ARMED" if InputManager.armed else "DISARMED"
+	if not InputManager.armed and not InputManager.can_arm():
+		armed_text = "DISARMED (lower throttle to arm)"
 	var throttle_pct := int(round(InputManager.get_throttle() * 100.0))
 	var fps := Engine.get_frames_per_second()
 	var mode_text := "ANGLE (self-level)" if InputManager.self_level else "ACRO"

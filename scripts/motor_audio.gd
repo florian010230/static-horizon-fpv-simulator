@@ -1,58 +1,68 @@
 extends AudioStreamPlayer
 
-## Procedurally synthesized motor whine (no audio asset needed): 4
-## slightly detuned sawtooth oscillators (one per motor, since real
-## motors never spin in perfect sync - that mismatch is what gives a
-## quad its characteristic buzz) plus a slow tremolo (prop-blade flutter)
-## and a touch of noise. Pitch and volume follow throttle.
+## Procedurally synthesized motor whine, no audio asset needed: 4 detuned
+## sawtooth oscillators (one per motor - real motors never spin in
+## perfect sync, that mismatch is what gives a quad its buzz), a slow
+## tremolo for prop-flutter character, and a touch of noise.
+##
+## This is pre-rendered ONCE into a short looping buffer at startup
+## rather than synthesized sample-by-sample every frame: continuous
+## real-time synthesis in GDScript (an interpreted language) at audio
+## sample rate is a real, measurable CPU cost, which directly fights the
+## weak-hardware target. Pitch/volume then follow throttle live via
+## pitch_scale/volume_db, both cheap native properties.
 
 @export var min_freq: float = 180.0
 @export var max_freq: float = 780.0
 @export var min_volume_db: float = -42.0
 @export var max_volume_db: float = -10.0
 
-const MIX_RATE: float = 22050.0
+const MIX_RATE: int = 22050
+const LOOP_SECONDS: float = 1.5
 const DETUNE: Array[float] = [1.0, 1.013, 0.991, 1.026]
 const TREMOLO_HZ: float = 11.0
 
-var _playback: AudioStreamGeneratorPlayback
-var _phases: Array[float] = [0.0, 0.0, 0.0, 0.0]
-var _tremolo_phase: float = 0.0
-
 func _ready() -> void:
-	var gen := AudioStreamGenerator.new()
-	gen.mix_rate = MIX_RATE
-	gen.buffer_length = 0.1
-	stream = gen
+	stream = _build_loop()
 	play()
-	_playback = get_stream_playback()
-
-func _exit_tree() -> void:
-	_playback = null
 
 func _process(_delta: float) -> void:
-	if _playback == null:
-		return
-
 	var level: float = InputManager.get_throttle() if InputManager.armed else 0.0
 	var base_freq: float = lerp(min_freq, max_freq, level)
+	pitch_scale = base_freq / min_freq
 	volume_db = lerp(min_volume_db, max_volume_db, level)
 
-	var frames: int = _playback.get_frames_available()
-	for i in range(frames):
+func _build_loop() -> AudioStreamWAV:
+	var num_samples: int = int(MIX_RATE * LOOP_SECONDS)
+	var bytes := PackedByteArray()
+	bytes.resize(num_samples * 2)
+
+	var phases: Array[float] = [0.0, 0.0, 0.0, 0.0]
+	var tremolo_phase: float = 0.0
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+
+	for i in range(num_samples):
 		var mix: float = 0.0
 		for m in range(4):
-			_phases[m] = fmod(_phases[m] + base_freq * DETUNE[m] / MIX_RATE, 1.0)
-			mix += _saw(_phases[m])
+			phases[m] = fmod(phases[m] + min_freq * DETUNE[m] / MIX_RATE, 1.0)
+			mix += 2.0 * phases[m] - 1.0
 		mix *= 0.25
 
-		_tremolo_phase = fmod(_tremolo_phase + TREMOLO_HZ / MIX_RATE, 1.0)
-		var tremolo: float = 1.0 - 0.06 * (0.5 + 0.5 * sin(_tremolo_phase * TAU))
+		tremolo_phase = fmod(tremolo_phase + TREMOLO_HZ / MIX_RATE, 1.0)
+		var tremolo: float = 1.0 - 0.06 * (0.5 + 0.5 * sin(tremolo_phase * TAU))
 		mix *= tremolo
 
-		mix += randf_range(-0.025, 0.025)
+		mix += rng.randf_range(-0.025, 0.025)
 		mix = clamp(mix, -1.0, 1.0)
-		_playback.push_frame(Vector2(mix, mix))
+		bytes.encode_s16(i * 2, int(mix * 32767.0))
 
-func _saw(phase: float) -> float:
-	return 2.0 * phase - 1.0
+	var wav := AudioStreamWAV.new()
+	wav.data = bytes
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = MIX_RATE
+	wav.stereo = false
+	wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	wav.loop_begin = 0
+	wav.loop_end = num_samples
+	return wav

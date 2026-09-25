@@ -19,8 +19,12 @@ extends Node
 @export var invert_pitch: bool = false
 @export var invert_yaw: bool = false
 @export var invert_throttle: bool = false
-@export var deadzone: float = 0.03
+@export var deadzone: float = 0.06
 @export var throttle_is_centered: bool = true ## true: raw axis is -1..1 (remapped to 0..1). false: raw axis already 0..1.
+## A real FC refuses to arm unless throttle reads near zero, specifically
+## to avoid the drone surprise-spinning-up if the (non-centering)
+## throttle stick was left somewhere other than idle.
+@export var arm_throttle_safety_threshold: float = 0.08
 
 const KEYBOARD_THROTTLE_RATE: float = 0.6 # units/sec while Shift/Ctrl held
 
@@ -44,11 +48,17 @@ func _joy_connected() -> bool:
 func _apply_deadzone(v: float) -> float:
 	return 0.0 if absf(v) < deadzone else v
 
+func can_arm() -> bool:
+	return get_throttle() <= arm_throttle_safety_threshold
+
 func _handle_arm_toggle() -> void:
 	var key_pressed := Input.is_key_pressed(KEY_ENTER)
 	var button_pressed := _joy_connected() and Input.is_joy_button_pressed(joystick_device, arm_button_index)
 	if (key_pressed and not _prev_arm_key) or (button_pressed and not _prev_arm_button):
-		armed = not armed
+		if armed:
+			armed = false
+		elif can_arm():
+			armed = true
 	_prev_arm_key = key_pressed
 	_prev_arm_button = button_pressed
 

@@ -5,13 +5,16 @@ A free, open-source FPV drone flight simulator built in [Godot 4](https://godote
 hardware (4GB RAM, integrated graphics) and to fly with real FPV radios —
 starting with the RadioMaster Pocket — over USB.
 
-This is a first playable slice: a small flying park (a textured tower,
-two houses, three fly-through gates, and a slalom row of poles) with
-both Angle (self-level) and Acro flight modes, live-tunable PID/rates/
-camera/throttle response, and a procedurally synthesized motor sound
-(no audio assets needed). Not a Betaflight-accurate simulation — a
-simplified rigid-body model, grounded in Betaflight's real default rate
-curve and mode behavior, good enough to feel like flying, and to build on.
+This is a first playable slice: a small flying park (a textured tower
+with a roof, two houses with roofs, a tunnel, three fly-through gates,
+and a slalom row of poles) with both Angle (self-level) and Acro flight
+modes, live-tunable PID/rates/camera/throttle response, and a
+procedurally synthesized motor sound (no audio assets needed). Not a
+Betaflight-accurate simulation — a simplified rigid-body model, sized
+and weighted to match a real drone (the [DeepSpace Seeker3](https://oscarliang.com/deepspace-seeker3/),
+a ~245g 3" freestyle quad) and grounded in Betaflight's real default
+rate curve and mode behavior, good enough to feel like flying, and to
+build on.
 
 ## Requirements
 
@@ -56,12 +59,25 @@ Project Settings -> Rendering -> Renderer.
 5. If a control moves the opposite way you expect, tick the matching
    `invert_*` box on the same node.
 6. Arm with `Enter`, or configure `arm_button_index` to match a switch
-   on your radio.
+   on your radio. Arming is blocked while throttle reads above ~8%
+   (`arm_throttle_safety_threshold`), same as a real flight controller —
+   this exists specifically so a throttle stick that wasn't left at idle
+   can't cause a surprise spin-up the instant you arm.
 
 The default axis mapping (0=roll, 1=pitch, 2=throttle, 3=yaw) is a
 best guess for EdgeTX joystick mode — it has **not yet been verified
 against real Pocket hardware**. If you test it, please report back what
 worked so the defaults can be fixed for everyone else.
+
+**If a control drifts or fires on its own with nothing touched:** open
+the `O` panel and check the device name/axis values shown there first.
+Godot can enumerate a joystick that's technically connected but not
+actually being held/flown (including the Pocket itself, sitting idle),
+and a raw axis reading of exactly `0.0` on a "centered -1..1" channel
+gets read as 50% on that channel (e.g. 50% throttle) — this is also
+exactly why the arm-safety check above exists. Raising `deadzone` (now
+0.06 by default) helps if a stick shows small persistent drift instead
+of a true 0.
 
 ## Tuning
 
@@ -73,8 +89,8 @@ immediately, no restart needed.
 
 ## Project layout
 
-- `scenes/Main.tscn` — the world: ground, a tower, two houses, three
-  gates, six slalom poles, the drone, the UI.
+- `scenes/Main.tscn` — the world: ground, a roofed tower, two roofed
+  houses, a tunnel, three gates, six slalom poles, the drone, the UI.
 - `scenes/Drone.tscn` — the quadcopter: collision shape, visuals, camera
   mount, motor sound, `scripts/drone.gd` (the flight physics).
 - `scenes/Gate.tscn` / `scenes/Pole.tscn` — reusable fly-through
@@ -87,9 +103,12 @@ immediately, no restart needed.
 - `scripts/pid.gd` — small reusable PID controller class.
 - `scripts/motor_audio.gd` — procedurally synthesized motor whine (4
   detuned sawtooth oscillators, one per motor, plus tremolo and a touch
-  of noise), no audio file needed. Pitch/volume follow throttle.
-- `scripts/procedural_textures.gd` — generates the grass/brick/siding
-  textures at runtime, so no image assets are needed either.
+  of noise). Rendered ONCE into a short loop at startup (~40ms), then
+  pitch/volume follow throttle via native `pitch_scale`/`volume_db` -
+  earlier versions synthesized sample-by-sample every frame in GDScript,
+  which is a real, measurable CPU cost on weak hardware; this doesn't.
+- `scripts/procedural_textures.gd` — generates the grass/brick/siding/
+  concrete textures at runtime, so no image assets are needed either.
 
 ## How the flight model works
 
@@ -127,6 +146,17 @@ Typical real values: 15-30° for beginners/cinematic, 25-35° for
 freestyle, 45-60° for racing (higher angle = more forward-tilted cruise
 attitude = less of your thrust point straight down, which is also why a
 high angle makes throttle feel less twitchy at speed).
+
+## Frame: DeepSpace Seeker3
+
+Mass, arm length, and thrust are set to match a real drone rather than
+picked arbitrarily: ~245g flying weight, ~60mm motor arm (3" class), and
+a thrust-to-weight ratio of ~7:1 (total thrust ≈ 7× weight) - typical for
+a high-KV 4S 3" freestyle build, matching reviewer accounts of the
+Seeker3 "ripping" with instant, crisp throttle response. A smaller,
+lighter frame has much less rotational inertia than the old 5"-scale
+placeholder this used to use, so PID gains were scaled down to match -
+same torque now produces a noticeably bigger angular acceleration.
 
 ## Known gaps (before this is really ready for the FPV world)
 

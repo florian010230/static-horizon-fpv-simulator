@@ -24,3 +24,9 @@ func _apply_textures() -> void:
 		var house_mat: StandardMaterial3D = get_node(path).get_surface_override_material(0)
 		house_mat.albedo_texture = siding
 		house_mat.uv1_scale = Vector3(3, 3, 1)
+
+	var concrete: ImageTexture = ProceduralTextures.concrete_texture()
+	for path in ["TunnelFloor/MeshInstance3D", "TunnelCeiling/MeshInstance3D", "TunnelWallLeft/MeshInstance3D", "TunnelWallRight/MeshInstance3D"]:
+		var tunnel_mat: StandardMaterial3D = get_node(path).get_surface_override_material(0)
+		tunnel_mat.albedo_texture = concrete
+		tunnel_mat.uv1_scale = Vector3(6, 20, 1)
