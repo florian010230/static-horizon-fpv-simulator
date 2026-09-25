@@ -14,8 +14,8 @@ extends RigidBody3D
 @export var max_motor_thrust_n: float = 6.0
 
 @export_group("Rates (deg/s)")
-@export var max_roll_pitch_rate_deg: float = 500.0
-@export var max_yaw_rate_deg: float = 250.0
+@export var max_roll_pitch_rate_deg: float = 300.0
+@export var max_yaw_rate_deg: float = 180.0
 
 @export_group("PID Roll")
 @export var roll_p: float = 0.06
