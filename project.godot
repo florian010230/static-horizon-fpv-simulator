@@ -1,0 +1,22 @@
+; Static Horizon FPV Sim - Godot 4 project file
+
+config_version=5
+
+[application]
+
+config/name="Static Horizon FPV Sim"
+run/main_scene="res://scenes/Main.tscn"
+
+[autoload]
+
+InputManager="*res://scenes/InputManager.tscn"
+
+[physics]
+
+common/physics_ticks_per_second=120
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.5, 0.7, 0.9, 1)
