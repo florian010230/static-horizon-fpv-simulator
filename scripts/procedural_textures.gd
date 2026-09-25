@@ -51,6 +51,9 @@ static func brick_texture(size: int = 128) -> ImageTexture:
 				img.set_pixel(x, y, Color(brick_color.r * shade, brick_color.g * shade, brick_color.b * shade))
 	return ImageTexture.create_from_image(img)
 
+## Baked panel seams + an AO gradient toward each seam, in place of real
+## shadows (which cost real-time rendering): reads as distinct tunnel
+## segments with a sense of depth even under flat ambient lighting.
 static func concrete_texture(size: int = 128) -> ImageTexture:
 	var noise := FastNoiseLite.new()
 	noise.seed = 3
@@ -58,10 +61,21 @@ static func concrete_texture(size: int = 128) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGB8)
 	var low := Color(0.38, 0.38, 0.4)
 	var high := Color(0.5, 0.5, 0.52)
+	var seam_color := Color(0.16, 0.16, 0.18)
+	var panel_h: int = size / 2
+	var seam_w: int = max(1, size / 32)
 	for y in range(size):
+		var py: int = y % panel_h
+		var edge_dist: float = min(py, panel_h - py) / float(panel_h / 2)
+		var ao: float = clamp(0.4 + 0.6 * edge_dist, 0.4, 1.0)
+		var is_seam: bool = py < seam_w or py >= panel_h - seam_w
 		for x in range(size):
+			if is_seam:
+				img.set_pixel(x, y, seam_color)
+				continue
 			var n: float = (noise.get_noise_2d(x, y) + 1.0) * 0.5
-			img.set_pixel(x, y, low.lerp(high, n))
+			var c: Color = low.lerp(high, n)
+			img.set_pixel(x, y, Color(c.r * ao, c.g * ao, c.b * ao))
 	return ImageTexture.create_from_image(img)
 
 static func siding_texture(size: int = 128) -> ImageTexture:

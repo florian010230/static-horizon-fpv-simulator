@@ -27,11 +27,26 @@ func _apply_textures() -> void:
 		house_mat.albedo_texture = siding
 		house_mat.uv1_scale = Vector3(3, 3, 1)
 
+	# Baked panel seams (concrete_texture) plus a per-surface tint fake the
+	# directional lighting real shadows would give - floor brightest
+	# (catches bounce light), ceiling darkest (most occluded), walls in
+	# between - so floor/ceiling/walls read as distinct even with shadow
+	# rendering off, and passing each seam gives a sense of speed/depth
+	# while flying through.
 	var concrete: ImageTexture = ProceduralTextures.concrete_texture()
-	for path in ["TunnelFloor/MeshInstance3D", "TunnelCeiling/MeshInstance3D", "TunnelWallLeft/MeshInstance3D", "TunnelWallRight/MeshInstance3D"]:
-		var tunnel_mat: StandardMaterial3D = get_node(path).get_surface_override_material(0)
-		tunnel_mat.albedo_texture = concrete
-		tunnel_mat.uv1_scale = Vector3(6, 20, 1)
+	var tunnel_tints := {
+		"TunnelFloor/MeshInstance3D": Color(1.0, 1.0, 1.0),
+		"TunnelCeiling/MeshInstance3D": Color(0.5, 0.5, 0.53),
+		"TunnelWallLeft/MeshInstance3D": Color(0.72, 0.72, 0.75),
+		"TunnelWallRight/MeshInstance3D": Color(0.72, 0.72, 0.75),
+	}
+	for path: String in tunnel_tints:
+		var mesh_instance: MeshInstance3D = get_node(path)
+		var mat := StandardMaterial3D.new()
+		mat.albedo_texture = concrete
+		mat.albedo_color = tunnel_tints[path]
+		mat.uv1_scale = Vector3(6, 20, 1)
+		mesh_instance.set_surface_override_material(0, mat)
 
 ## Trees are drawn with MultiMeshInstance3D - hundreds of instances cost
 ## just 2 draw calls total (one per layer), instead of hundreds of
