@@ -12,12 +12,14 @@ config_version=5
 
 config/name="Static Horizon FPV Sim"
 run/main_scene="res://scenes/MainMenu.tscn"
+run/max_fps=60
 config/features=PackedStringArray("4.7")
 
 [autoload]
 
 InputManager="*res://scenes/InputManager.tscn"
 Settings="*res://scripts/settings.gd"
+DevPreviewCapture="*res://scripts/dev_preview_capture.gd"
 
 [physics]
 

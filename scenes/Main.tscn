@@ -24,13 +24,13 @@ ambient_light_source = 2
 ambient_light_color = Color(0.55, 0.6, 0.68, 1)
 
 [sub_resource type="BoxMesh" id="BoxMesh_ground"]
-size = Vector3(500, 1, 500)
+size = Vector3(500, 0.2, 500)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
 albedo_color = Color(0.22, 0.35, 0.2, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
-size = Vector3(500, 1, 500)
+size = Vector3(500, 0.2, 500)
 
 [sub_resource type="BoxMesh" id="BoxMesh_building"]
 size = Vector3(10, 24, 10)
@@ -45,7 +45,7 @@ size = Vector3(10, 24, 10)
 size = Vector3(10, 4, 10)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_roof"]
-albedo_color = Color(0.35, 0.18, 0.15, 1)
+albedo_color = Color(0.55, 0.28, 0.22, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_tower_roof"]
 size = Vector3(10, 4, 10)
@@ -109,6 +109,48 @@ size = Vector3(2, 120, 460)
 albedo_color = Color(0.5, 0.75, 0.95, 0.12)
 transparency = 1
 
+[sub_resource type="BoxMesh" id="BoxMesh_street"]
+size = Vector3(130, 0.2, 10)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_street"]
+albedo_color = Color(0.28, 0.28, 0.3, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_street"]
+size = Vector3(130, 0.2, 10)
+
+[sub_resource type="BoxMesh" id="BoxMesh_sidewalk"]
+size = Vector3(3, 0.15, 14)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sidewalk"]
+albedo_color = Color(0.62, 0.61, 0.58, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_sidewalk_wide"]
+size = Vector3(6, 0.15, 14)
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_hill_near"]
+radius = 1.0
+
+[sub_resource type="TorusMesh" id="TorusMesh_loop"]
+inner_radius = 3.0
+outer_radius = 4.0
+ring_segments = 8
+rings = 16
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_loop"]
+albedo_color = Color(0.95, 0.55, 0.05, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_pipe_floor"]
+size = Vector3(4.6, 0.3, 14)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pipe_floor"]
+size = Vector3(4.6, 0.3, 14)
+
+[sub_resource type="BoxMesh" id="BoxMesh_pipe_wall"]
+size = Vector3(0.3, 4.3, 14)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pipe_wall"]
+size = Vector3(0.3, 4.3, 14)
+
 [node name="Main" type="Node3D" unique_id=1537932311]
 script = ExtResource("1")
 
@@ -121,6 +163,7 @@ light_energy = 1.4
 shadow_enabled = false
 
 [node name="Ground" type="StaticBody3D" parent="." unique_id=1730777446]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=104037706]
 mesh = SubResource("BoxMesh_ground")
@@ -130,7 +173,7 @@ surface_material_override/0 = SubResource("StandardMaterial3D_ground")
 shape = SubResource("BoxShape3D_ground")
 
 [node name="Building" type="StaticBody3D" parent="." unique_id=756896859]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 12.5, -20)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55, 12.5, 82)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Building" unique_id=346380669]
 mesh = SubResource("BoxMesh_building")
@@ -140,7 +183,7 @@ surface_material_override/0 = SubResource("StandardMaterial3D_building")
 shape = SubResource("BoxShape3D_building")
 
 [node name="BuildingRoof" type="StaticBody3D" parent="." unique_id=92643964]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 26.5, -20)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55, 26.5, 82)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="BuildingRoof" unique_id=1150111424]
 mesh = SubResource("PrismMesh_tower_roof")
@@ -150,7 +193,7 @@ surface_material_override/0 = SubResource("StandardMaterial3D_roof")
 shape = SubResource("BoxShape3D_tower_roof")
 
 [node name="House1" type="StaticBody3D" parent="." unique_id=349679272]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 3.5, -15)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 3.5, 82)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="House1" unique_id=423722334]
 mesh = SubResource("BoxMesh_house")
@@ -160,7 +203,7 @@ surface_material_override/0 = SubResource("StandardMaterial3D_house")
 shape = SubResource("BoxShape3D_house")
 
 [node name="House1Roof" type="StaticBody3D" parent="." unique_id=333991742]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 8.5, -15)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 8.5, 82)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="House1Roof" unique_id=1556262954]
 mesh = SubResource("PrismMesh_house_roof")
@@ -170,7 +213,7 @@ surface_material_override/0 = SubResource("StandardMaterial3D_roof")
 shape = SubResource("BoxShape3D_house_roof")
 
 [node name="House2" type="StaticBody3D" parent="." unique_id=628171356]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 3.5, 30)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 3.5, 82)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="House2" unique_id=685940175]
 mesh = SubResource("BoxMesh_house")
@@ -180,7 +223,7 @@ surface_material_override/0 = SubResource("StandardMaterial3D_house")
 shape = SubResource("BoxShape3D_house")
 
 [node name="House2Roof" type="StaticBody3D" parent="." unique_id=12791146]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 8.5, 30)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 8.5, 82)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="House2Roof" unique_id=1080340300]
 mesh = SubResource("PrismMesh_house_roof")
@@ -230,19 +273,44 @@ surface_material_override/0 = SubResource("StandardMaterial3D_tunnel")
 shape = SubResource("BoxShape3D_tunnel_wall")
 
 [node name="BuildingDoor" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 1.6, -25.05)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55, 1.6, 76.95)
 mesh = SubResource("BoxMesh_door")
 surface_material_override/0 = SubResource("StandardMaterial3D_door")
 
 [node name="House1Door" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 1.6, -19.55)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 1.6, 77.45)
 mesh = SubResource("BoxMesh_door")
 surface_material_override/0 = SubResource("StandardMaterial3D_door")
 
 [node name="House2Door" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 1.6, 25.45)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 1.6, 77.45)
 mesh = SubResource("BoxMesh_door")
 surface_material_override/0 = SubResource("StandardMaterial3D_door")
+
+[node name="Street" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 0.6, 70)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Street"]
+mesh = SubResource("BoxMesh_street")
+surface_material_override/0 = SubResource("StandardMaterial3D_street")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Street"]
+shape = SubResource("BoxShape3D_street")
+
+[node name="SidewalkHouse1" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0.62, 75)
+mesh = SubResource("BoxMesh_sidewalk")
+surface_material_override/0 = SubResource("StandardMaterial3D_sidewalk")
+
+[node name="SidewalkHouse2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 0.62, 75)
+mesh = SubResource("BoxMesh_sidewalk")
+surface_material_override/0 = SubResource("StandardMaterial3D_sidewalk")
+
+[node name="SidewalkBuilding" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55, 0.62, 75)
+mesh = SubResource("BoxMesh_sidewalk_wide")
+surface_material_override/0 = SubResource("StandardMaterial3D_sidewalk")
 
 [node name="Hill1" type="MeshInstance3D" parent="."]
 transform = Transform3D(60, 0, 0, 0, 25, 0, 0, 0, 60, 280, 0, 0)
@@ -283,6 +351,72 @@ surface_material_override/0 = SubResource("StandardMaterial3D_hill")
 transform = Transform3D(55, 0, 0, 0, 23, 0, 0, 0, 55, -200, 0, -200)
 mesh = SubResource("SphereMesh_hill")
 surface_material_override/0 = SubResource("StandardMaterial3D_hill")
+
+[node name="HillNear1" type="StaticBody3D" parent="."]
+transform = Transform3D(20, 0, 0, 0, 10, 0, 0, 0, 20, -70, 0, 20)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="HillNear1"]
+mesh = SubResource("SphereMesh_hill")
+surface_material_override/0 = SubResource("StandardMaterial3D_hill")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HillNear1"]
+shape = SubResource("SphereShape3D_hill_near")
+
+[node name="HillNear2" type="StaticBody3D" parent="."]
+transform = Transform3D(18, 0, 0, 0, 9, 0, 0, 0, 18, 85, 0, -90)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="HillNear2"]
+mesh = SubResource("SphereMesh_hill")
+surface_material_override/0 = SubResource("StandardMaterial3D_hill")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HillNear2"]
+shape = SubResource("SphereShape3D_hill_near")
+
+[node name="Loop1" type="MeshInstance3D" parent="."]
+position = Vector3(20, 6, 40)
+rotation = Vector3(1.5707963, 0, 0)
+mesh = SubResource("TorusMesh_loop")
+surface_material_override/0 = SubResource("StandardMaterial3D_loop")
+
+[node name="PipeFloor" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 35, 0.65, 52)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="PipeFloor"]
+mesh = SubResource("BoxMesh_pipe_floor")
+surface_material_override/0 = SubResource("StandardMaterial3D_tunnel")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PipeFloor"]
+shape = SubResource("BoxShape3D_pipe_floor")
+
+[node name="PipeCeiling" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 35, 4.95, 52)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="PipeCeiling"]
+mesh = SubResource("BoxMesh_pipe_floor")
+surface_material_override/0 = SubResource("StandardMaterial3D_tunnel")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PipeCeiling"]
+shape = SubResource("BoxShape3D_pipe_floor")
+
+[node name="PipeWallLeft" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32.85, 2.8, 52)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="PipeWallLeft"]
+mesh = SubResource("BoxMesh_pipe_wall")
+surface_material_override/0 = SubResource("StandardMaterial3D_tunnel")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PipeWallLeft"]
+shape = SubResource("BoxShape3D_pipe_wall")
+
+[node name="PipeWallRight" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 37.15, 2.8, 52)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="PipeWallRight"]
+mesh = SubResource("BoxMesh_pipe_wall")
+surface_material_override/0 = SubResource("StandardMaterial3D_tunnel")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PipeWallRight"]
+shape = SubResource("BoxShape3D_pipe_wall")
 
 [node name="BorderNorth" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 60, -230)

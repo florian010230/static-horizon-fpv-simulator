@@ -6,9 +6,12 @@ hardware (4GB RAM, integrated graphics) and to fly with real FPV radios —
 starting with the RadioMaster Pocket — over USB.
 
 This is a first playable slice: a proper main menu outside gameplay, and
-a small flying park - a textured tower and two houses (with roofs,
-windows, and doors), a tunnel, three fly-through gates, a slalom row of
-poles, ~80 trees, a sky, distant hills, and an invisible border wall
+a small flying park - a little Wohngebiet (a tower and two houses, with
+roofs/windows/doors, a street and sidewalks connecting them, the street
+running on toward a tree line), an FPV field (a tunnel, three
+fly-through gates, a slalom row of poles, a ring "loop" gate, and a
+fly-through pipe), a couple of in-map hills you can fly around, ~80
+trees, a sky, more distant backdrop hills, and an invisible border wall
 around the flight zone - with both Angle (self-level) and Acro flight
 modes, live-tunable PID/rates/camera/throttle response, an optional
 crosshair, and a procedurally synthesized motor sound (no audio or image
@@ -20,6 +23,25 @@ rate curve and mode behavior, good enough to feel like flying, and to
 build on. Deliberately no crash/damage simulation - the drone is a
 normal rigid body that collides and tumbles like everything else in the
 scene, nothing more.
+
+## Previewing it
+
+There's no way to get an actual rendered screenshot in headless mode -
+`--headless` never starts a real GPU context. `scripts/dev_preview_capture.gd`
+is a tiny dev tool (registered as an autoload, but does nothing at all
+unless invoked) that automates a real windowed run and saves screenshots:
+
+```
+godot --path . -- --dev-preview
+```
+
+Needs a real display (it's genuinely playing the game for a few seconds,
+just moving the camera around and taking screenshots), and it isn't
+headless-compatible. Saves `previews/preview_menu.png`,
+`preview_gameplay.png`, and `preview_topdown.png` (the last from a frozen
+debug camera high above the map). That folder has a `.gdignore` so Godot
+doesn't treat the screenshots as game assets, and it's gitignored too,
+since they go stale the moment the map changes - regenerate anytime.
 
 ## Requirements
 
@@ -55,6 +77,18 @@ that way deliberately as the project grew:
 - Motor sound is a one-time ~40ms pre-rendered loop, not synthesized
   every frame — see `scripts/motor_audio.gd` for why that distinction
   matters on weak hardware specifically.
+- `run/max_fps` capped at 60 in `project.godot` - rendering faster than
+  that burns CPU/GPU for no visible benefit on most displays, [a general
+  Godot low-end-hardware recommendation](https://dev.to/orlalalala_0d2542b48051ed/shipping-a-godot-4-game-to-cheap-android-phones-what-actually-fixed-my-performance-2ofd).
+- Draw call count for the static world geometry is roughly 45 (tunnel,
+  pipe, gates, poles, hills, border walls, buildings, street/sidewalks)
+  plus 2 for all ~80 trees combined - comfortably under the ~200 mark
+  where budget hardware starts struggling.
+- `Drone`'s `continuous_cd` (continuous collision detection) is on -
+  without it, a small fast-moving body can visibly penetrate thin
+  colliders (gate bars, tunnel/pipe walls) for a frame or two at 60Hz
+  physics before the engine corrects it, which reads as a stutter/pop on
+  impact. With CCD the correction happens a step earlier, cleanly.
 
 ## Controls
 
@@ -104,6 +138,21 @@ exactly why the arm-safety check above exists. Raising `deadzone` (now
 0.06 by default) helps if a stick shows small persistent drift instead
 of a true 0.
 
+## Crashing into things
+
+Tested this directly (headless, a drone launched at 25 m/s into a wall,
+logging position/velocity every physics frame): the collision itself is
+clean — velocity drops close to zero in a single step, a modest angular
+kick that damps out fast, no explosive bounce. What can look "strange"
+happens *after*: if the drone stays **armed** and self-leveling while
+resting against something, the flight controller keeps trying to fly
+back to level indefinitely, which can show up as a slow re-accelerating
+spin or a drone that keeps twitching/scraping against whatever it hit.
+That's not a bug so much as it's exactly why real FPV pilots disarm the
+instant they crash - an armed quad wedged against something behaves the
+same way in real life. Hit `Enter` (disarm) or `R` (reset to spawn)
+right after a hard crash, same as you would on a real radio.
+
 ## Tuning
 
 Press `O` in-game for live sliders: acro rate curve (Center Sensitivity /
@@ -130,10 +179,13 @@ gains stable.
   `run/main_scene`). Play / Options (fullscreen, crosshair, shadows) /
   Quit, built at runtime (`scripts/main_menu.gd`) - flat 2D UI only, no
   3D scene behind it, so it's essentially free to render.
-- `scenes/Main.tscn` — the flying park: ground, sky, a roofed/windowed/
-  doored tower, two roofed/windowed/doored houses, a tunnel, three
-  gates, six slalom poles, ~80 trees, 8 distant hills, an invisible
+- `scenes/Main.tscn` — the flying park: ground, sky, a Wohngebiet
+  (roofed/windowed/doored tower + two houses, street, sidewalks), an
+  FPV field (tunnel, pipe, three gates, a ring loop, six slalom poles),
+  two in-map hills, ~80 trees, 8 distant backdrop hills, an invisible
   border wall, the drone, the UI.
+- `scripts/dev_preview_capture.gd` — dev-only screenshot tool, see
+  "Previewing it" above.
 - `scenes/Drone.tscn` — the quadcopter: collision shape, visuals, camera
   mount, motor sound, `scripts/drone.gd` (the flight physics).
 - `scenes/Gate.tscn` / `scenes/Pole.tscn` — reusable fly-through
@@ -219,6 +271,43 @@ cheapest radiance/process settings), so the world reads as continuing
 past where you can actually fly rather than visibly stopping at a wall -
 "you can see the edge of the map, but you can't fly into it," same idea
 as the boundary in most FPV/racing sims.
+
+Two smaller hills (`HillNear1`/`HillNear2`, around (-70, 20) and
+(85, -90)) sit inside the actual flight zone, with real collision this
+time - unlike the 8 backdrop hills, which are unreachable, these are
+meant to be flown around/over.
+
+## Layout
+
+- **Wohngebiet** around (-15..55, 82): the tower and two houses, facing
+  a street that runs east-west at z=70 with sidewalks bridging each
+  door to it. The street continues out past the houses toward the
+  denser tree line - "a road out of the neighborhood into the forest."
+- **FPV field** around (5..35, 45..70): the slalom poles, plus a ring
+  loop gate and a small square-ish "pipe" tunnel, near the three square
+  gates further out.
+- Both areas are kept explicitly clear of the random tree scatter (see
+  `_spawn_trees()` in `main.gd`) so nothing spawns on top of them.
+
+## Two bugs only real screenshots caught
+
+Headless testing is great for physics/logic but is blind to anything
+visual - `--headless` never starts a real GPU context. Using the preview
+tool above surfaced two real bugs no amount of headless testing would
+have found:
+
+- The ground rendered almost solid black. Not a lighting bug - the
+  ground's `StandardMaterial3D.albedo_color` was still its original flat
+  dark green from before it had a texture at all, and `albedo_color`
+  *multiplies* with `albedo_texture`. An already-moderate-dark grass
+  texture times an already-dark base color crushed it to near-black.
+  Fixed by resetting `albedo_color` to white wherever a texture gets
+  applied in `main.gd` (buildings/houses had the same latent bug, just
+  less visible since their original colors were lighter).
+- The tuning panel's debug axis readout, positioned at a fixed y-offset,
+  started overlapping the tuning sliders once that panel grew past 14
+  rows. Fixed by anchoring it to the top-right corner instead of a
+  fixed left-side offset.
 
 ## Known gaps (before this is really ready for the FPV world)
 

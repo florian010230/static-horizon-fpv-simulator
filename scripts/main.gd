@@ -10,21 +10,29 @@ func _ready() -> void:
 	_spawn_trees()
 	Settings.apply_shadow_setting()
 
+## albedo_color multiplies with albedo_texture - every material below
+## originally had a flat, fairly dark albedo_color from before it had a
+## texture at all (e.g. the ground's near-black-when-multiplied 0.2ish
+## green). Reset to white so the texture's own baked colors show at
+## full brightness instead of being crushed by a leftover tint.
 func _apply_textures() -> void:
 	var grass: ImageTexture = ProceduralTextures.grass_texture()
 	var ground_mat: StandardMaterial3D = $Ground/MeshInstance3D.get_surface_override_material(0)
 	ground_mat.albedo_texture = grass
+	ground_mat.albedo_color = Color.WHITE
 	ground_mat.uv1_scale = Vector3(70, 70, 1)
 
 	var brick: ImageTexture = ProceduralTextures.brick_texture()
 	var building_mat: StandardMaterial3D = $Building/MeshInstance3D.get_surface_override_material(0)
 	building_mat.albedo_texture = brick
+	building_mat.albedo_color = Color.WHITE
 	building_mat.uv1_scale = Vector3(4, 10, 1)
 
 	var siding: ImageTexture = ProceduralTextures.siding_texture()
 	for path in ["House1/MeshInstance3D", "House2/MeshInstance3D"]:
 		var house_mat: StandardMaterial3D = get_node(path).get_surface_override_material(0)
 		house_mat.albedo_texture = siding
+		house_mat.albedo_color = Color.WHITE
 		house_mat.uv1_scale = Vector3(3, 3, 1)
 
 	# Baked panel seams (concrete_texture) plus a per-surface tint fake the
@@ -77,7 +85,11 @@ func _spawn_trees() -> void:
 		var x: float = rng.randf_range(-215.0, 215.0)
 		var z: float = rng.randf_range(-215.0, 215.0)
 		if Vector2(x, z).length() < 70.0:
-			continue # keep the core play area (buildings/gates/tunnel) clear
+			continue # keep the core play area (gates/tunnel) clear
+		if x > -50.0 and x < 100.0 and z > 55.0 and z < 95.0:
+			continue # keep the Wohngebiet (houses/tower/street) clear
+		if x > 25.0 and x < 45.0 and z > 40.0 and z < 62.0:
+			continue # keep the loop/pipe field clear
 		positions.append(Vector3(x, 0.5, z))
 
 	var trunk_mm := MultiMesh.new()

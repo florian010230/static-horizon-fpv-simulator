@@ -31,7 +31,9 @@ func _ready() -> void:
 	_root.add_child(_hud_label)
 
 	_debug_label = Label.new()
-	_debug_label.position = Vector2(16, 430)
+	_debug_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_debug_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_debug_label.position = Vector2(-260, 16)
 	_debug_label.add_theme_font_size_override("font_size", 14)
 	_root.add_child(_debug_label)
 
