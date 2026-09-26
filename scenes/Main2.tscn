@@ -1,0 +1,209 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/main2.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/Drone.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/UI.tscn" id="3"]
+[ext_resource type="PackedScene" path="res://scenes/Mast.tscn" id="4"]
+[ext_resource type="Script" path="res://scripts/hollow_building.gd" id="5"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_main2"]
+sky_top_color = Color(0.45, 0.47, 0.5, 1)
+sky_horizon_color = Color(0.65, 0.63, 0.58, 1)
+ground_bottom_color = Color(0.25, 0.23, 0.2, 1)
+ground_horizon_color = Color(0.65, 0.63, 0.58, 1)
+
+[sub_resource type="Sky" id="Sky_main2"]
+sky_material = SubResource("ProceduralSkyMaterial_main2")
+radiance_size = 0
+process_mode = 1
+
+[sub_resource type="Environment" id="Environment_main2"]
+background_mode = 2
+sky = SubResource("Sky_main2")
+ambient_light_source = 2
+ambient_light_color = Color(0.6, 0.58, 0.55, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ground"]
+size = Vector3(500, 0.2, 500)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+albedo_color = Color(0.35, 0.35, 0.36, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
+size = Vector3(500, 0.2, 500)
+
+[sub_resource type="BoxMesh" id="BoxMesh_border_ns"]
+size = Vector3(460, 120, 2)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_border_ns"]
+size = Vector3(460, 120, 2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_border_ew"]
+size = Vector3(2, 120, 460)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_border_ew"]
+size = Vector3(2, 120, 460)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_border"]
+albedo_color = Color(0.5, 0.75, 0.95, 0.12)
+transparency = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_pipe"]
+top_radius = 1.3
+bottom_radius = 1.3
+height = 34.0
+radial_segments = 12
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pipe"]
+albedo_color = Color(0.65, 0.32, 0.12, 1)
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_pipe"]
+radius = 1.3
+height = 34.0
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_pipe2"]
+top_radius = 1.3
+bottom_radius = 1.3
+height = 40.0
+radial_segments = 12
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_pipe2"]
+radius = 1.3
+height = 40.0
+
+[node name="Main2" type="Node3D"]
+script = ExtResource("1")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_main2")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.87758255, 0.37554693, -0.2980157, 0, 0.62161, 0.7833269, 0.47942555, -0.687434, 0.54551405, 0, 30, 0)
+light_energy = 1.2
+shadow_enabled = false
+
+[node name="Ground" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground"]
+mesh = SubResource("BoxMesh_ground")
+surface_material_override/0 = SubResource("StandardMaterial3D_ground")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
+shape = SubResource("BoxShape3D_ground")
+
+[node name="Hall1" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -30)
+script = ExtResource("5")
+size = Vector3(18, 14, 26)
+wall_thickness = 0.5
+front_width = 8.0
+front_bottom = 0.0
+front_top = 14.0
+back_width = 8.0
+back_bottom = 0.0
+back_top = 14.0
+wall_color = Color(0.5, 0.51, 0.53, 1)
+floor_color = Color(0.4, 0.4, 0.4, 1)
+
+[node name="Hall2" type="StaticBody3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 50, 0.5, -30)
+script = ExtResource("5")
+size = Vector3(26, 12, 18)
+wall_thickness = 0.5
+front_width = 8.0
+front_bottom = 0.0
+front_top = 12.0
+back_width = 8.0
+back_bottom = 0.0
+back_top = 12.0
+wall_color = Color(0.5, 0.51, 0.53, 1)
+floor_color = Color(0.4, 0.4, 0.4, 1)
+
+[node name="Hall3" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, 0.5, 30)
+script = ExtResource("5")
+size = Vector3(22, 20, 22)
+wall_thickness = 0.5
+front_width = 9.0
+front_bottom = 0.0
+front_top = 20.0
+back_width = 9.0
+back_bottom = 0.0
+back_top = 20.0
+wall_color = Color(0.5, 0.51, 0.53, 1)
+floor_color = Color(0.4, 0.4, 0.4, 1)
+
+[node name="Mast1" parent="." instance=ExtResource("4")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 0.5, -30)
+
+[node name="Mast2" parent="." instance=ExtResource("4")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 75, 0.5, 0)
+
+[node name="Mast3" parent="." instance=ExtResource("4")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 0.5, 30)
+
+[node name="BigPipe1" type="StaticBody3D" parent="."]
+transform = Transform3D(0, 1, 0, -1, 0, 0, 0, 0, 1, 25, 16, -30)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BigPipe1"]
+mesh = SubResource("CylinderMesh_pipe")
+surface_material_override/0 = SubResource("StandardMaterial3D_pipe")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BigPipe1"]
+shape = SubResource("CylinderShape3D_pipe")
+
+[node name="BigPipe2" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 50, 16, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BigPipe2"]
+mesh = SubResource("CylinderMesh_pipe2")
+surface_material_override/0 = SubResource("StandardMaterial3D_pipe")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BigPipe2"]
+shape = SubResource("CylinderShape3D_pipe2")
+
+[node name="BorderNorth" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 60, -230)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BorderNorth"]
+mesh = SubResource("BoxMesh_border_ns")
+surface_material_override/0 = SubResource("StandardMaterial3D_border")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BorderNorth"]
+shape = SubResource("BoxShape3D_border_ns")
+
+[node name="BorderSouth" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 60, 230)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BorderSouth"]
+mesh = SubResource("BoxMesh_border_ns")
+surface_material_override/0 = SubResource("StandardMaterial3D_border")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BorderSouth"]
+shape = SubResource("BoxShape3D_border_ns")
+
+[node name="BorderEast" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 230, 60, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BorderEast"]
+mesh = SubResource("BoxMesh_border_ew")
+surface_material_override/0 = SubResource("StandardMaterial3D_border")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BorderEast"]
+shape = SubResource("BoxShape3D_border_ew")
+
+[node name="BorderWest" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -230, 60, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BorderWest"]
+mesh = SubResource("BoxMesh_border_ew")
+surface_material_override/0 = SubResource("StandardMaterial3D_border")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BorderWest"]
+shape = SubResource("BoxShape3D_border_ew")
+
+[node name="Drone" parent="." instance=ExtResource("2")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 0)
+
+[node name="UI" parent="." instance=ExtResource("3")]

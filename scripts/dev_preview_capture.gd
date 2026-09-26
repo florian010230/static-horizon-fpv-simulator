@@ -44,6 +44,39 @@ func _go() -> void:
 	await get_tree().create_timer(0.3).timeout
 	_shot("preview_topdown.png")
 
+	if drone:
+		drone.global_transform.origin = Vector3(-15, 2.5, 80.5)
+		drone.rotation = Vector3.ZERO
+	await get_tree().create_timer(0.3).timeout
+	_shot("preview_house_outside.png")
+
+	if drone:
+		drone.global_transform.origin = Vector3(-15, 2.5, 82)
+		drone.rotation = Vector3(0, deg_to_rad(90), 0)
+	await get_tree().create_timer(0.3).timeout
+	_shot("preview_house_inside.png")
+
+	get_tree().change_scene_to_file("res://scenes/Main2.tscn")
+	await get_tree().create_timer(1.0).timeout
+	_shot("preview_factory_overview.png")
+
+	drone = get_tree().root.find_child("Drone", true, false)
+	if drone:
+		drone.gravity_scale = 0.0
+		drone.linear_velocity = Vector3.ZERO
+		drone.angular_velocity = Vector3.ZERO
+		drone.global_transform.origin = Vector3(0, 8, 25)
+		drone.rotation = Vector3.ZERO
+		InputManager.armed = false
+	await get_tree().create_timer(0.3).timeout
+	_shot("preview_factory_hall.png")
+
+	if drone:
+		drone.global_transform.origin = Vector3(25, 110, -10)
+		drone.rotation = Vector3(deg_to_rad(-90), 0, 0)
+	await get_tree().create_timer(0.3).timeout
+	_shot("preview_factory_topdown.png")
+
 	get_tree().quit()
 
 func _shot(filename: String) -> void:

@@ -78,6 +78,27 @@ static func concrete_texture(size: int = 128) -> ImageTexture:
 			img.set_pixel(x, y, Color(c.r * ao, c.g * ao, c.b * ao))
 	return ImageTexture.create_from_image(img)
 
+## Fine aggregate speckle plus a few tire-wear streaks down the middle of
+## each lane - reads as worn asphalt rather than a flat gray slab once
+## tiled down the street's length.
+static func asphalt_texture(size: int = 128) -> ImageTexture:
+	var noise := FastNoiseLite.new()
+	noise.seed = 4
+	noise.frequency = 0.35
+	var img := Image.create(size, size, false, Image.FORMAT_RGB8)
+	var low := Color(0.16, 0.16, 0.17)
+	var high := Color(0.24, 0.24, 0.26)
+	var wear := Color(0.12, 0.12, 0.13)
+	for y in range(size):
+		for x in range(size):
+			var n: float = (noise.get_noise_2d(x, y) + 1.0) * 0.5
+			var c: Color = low.lerp(high, n)
+			var dist_from_lane_center: float = absf((x % (size / 2)) - size / 4.0) / (size / 4.0)
+			if dist_from_lane_center < 0.15:
+				c = c.lerp(wear, 0.5)
+			img.set_pixel(x, y, c)
+	return ImageTexture.create_from_image(img)
+
 static func siding_texture(size: int = 128) -> ImageTexture:
 	var plank_color := Color(0.72, 0.55, 0.4)
 	var line_color := Color(0.5, 0.37, 0.26)

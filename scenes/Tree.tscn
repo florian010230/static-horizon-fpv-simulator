@@ -1,0 +1,31 @@
+[gd_scene load_steps=5 format=3]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_trunk"]
+top_radius = 0.35
+bottom_radius = 0.45
+height = 4.0
+radial_segments = 7
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_trunk"]
+albedo_color = Color(0.35, 0.24, 0.15, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_foliage"]
+top_radius = 0.0
+bottom_radius = 3.0
+height = 6.0
+radial_segments = 8
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_foliage"]
+albedo_color = Color(0.2, 0.38, 0.18, 1)
+
+[node name="Tree" type="Node3D"]
+
+[node name="Trunk" type="MeshInstance3D" parent="."]
+position = Vector3(0, 2.0, 0)
+mesh = SubResource("CylinderMesh_trunk")
+surface_material_override/0 = SubResource("StandardMaterial3D_trunk")
+
+[node name="Foliage" type="MeshInstance3D" parent="."]
+position = Vector3(0, 7.0, 0)
+mesh = SubResource("CylinderMesh_foliage")
+surface_material_override/0 = SubResource("StandardMaterial3D_foliage")

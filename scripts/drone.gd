@@ -82,6 +82,16 @@ extends RigidBody3D
 const ROLL_MIX: Array[float] = [1.0, -1.0, 1.0, -1.0]
 const PITCH_MIX: Array[float] = [1.0, 1.0, -1.0, -1.0]
 
+## Pure safety ceilings, well above anything normal flight ever produces
+## (top speed is ~41.7 m/s, acro's max_rate_deg tops out around 11.7
+## rad/s) - they only ever engage right after a hard collision. Measured
+## empirically (headless tumbling-impact test) that a corner hit could
+## momentarily spike angular velocity to ~39 rad/s (2234 deg/s), which
+## reads as the drone "going haywire" after a crash even though nothing
+## was actually clipping through geometry.
+const MAX_LINEAR_SPEED: float = 60.0
+const MAX_ANGULAR_SPEED: float = 20.0
+
 var motor_positions: Array[Vector3] = []
 
 var _roll_pid := PIDController.new()
@@ -94,6 +104,8 @@ var _spawn_transform: Transform3D
 @onready var _camera: Camera3D = $CameraMount/Camera3D
 
 func _ready() -> void:
+	center_sensitivity_deg = Settings.rate_center_sensitivity_deg
+	max_rate_deg = Settings.rate_max_deg
 	_spawn_transform = global_transform
 	motor_positions = [
 		Vector3(arm_length, 0.0, -arm_length),  # front right
@@ -104,6 +116,11 @@ func _ready() -> void:
 	_apply_camera_settings()
 
 func _physics_process(delta: float) -> void:
+	if linear_velocity.length() > MAX_LINEAR_SPEED:
+		linear_velocity = linear_velocity.normalized() * MAX_LINEAR_SPEED
+	if angular_velocity.length() > MAX_ANGULAR_SPEED:
+		angular_velocity = angular_velocity.normalized() * MAX_ANGULAR_SPEED
+
 	_roll_pid.kp = roll_p
 	_roll_pid.ki = roll_i
 	_roll_pid.kd = roll_d

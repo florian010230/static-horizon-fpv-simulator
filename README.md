@@ -5,18 +5,23 @@ A free, open-source FPV drone flight simulator built in [Godot 4](https://godote
 hardware (4GB RAM, integrated graphics) and to fly with real FPV radios —
 starting with the RadioMaster Pocket — over USB.
 
-This is a first playable slice: a proper main menu outside gameplay, and
-a small flying park - a little Wohngebiet (a tower and two houses, with
-roofs/windows/doors, a street and sidewalks connecting them, the street
-running on toward a tree line), an FPV field (a tunnel, three
-fly-through gates, a slalom row of poles, a ring "loop" gate, and a
-fly-through pipe), a couple of in-map hills you can fly around, ~80
-trees, a sky, more distant backdrop hills, and an invisible border wall
-around the flight zone - with both Angle (self-level) and Acro flight
-modes (Acro by default), live-tunable PID/rates/camera/throttle
-response, a menu with real settings (fullscreen, crosshair, shadows,
-max FPS), and a procedurally synthesized motor sound (no audio or image
-assets needed anywhere in the project). Not a Betaflight-accurate
+This is a first playable slice: a main menu (with a small live 3D
+preview of the drone hanging off a wall hook, and a procedurally-drawn
+"Static Horizon" wordmark - no image assets) that lets you pick between
+**two maps** - a small flying park (a little Wohngebiet with a tower and
+two houses you can actually fly *into*, each with a real punched-open
+door and window and a wall splitting the inside into two rooms; a
+street with curbs and a dashed centerline; an FPV field with a tunnel,
+three fly-through gates, a slalom row of poles, a ring "loop" gate, and
+a fly-through pipe; two in-map hills; 80 individually-placed,
+individually-movable trees; distant backdrop hills; an invisible border
+wall) and a factory yard (big fly-through halls, tall lattice masts with
+warning lights, and large pipes strung between them, under a hazier
+industrial sky) - with both Angle (self-level) and Acro flight modes
+(Acro by default), live-tunable PID/rates/camera/throttle response, a
+menu with real settings (fullscreen, crosshair, shadows, max FPS, and
+persisted Acro rates), and a procedurally synthesized motor sound (no
+audio or image assets needed anywhere in the project). Not a Betaflight-accurate
 simulation — a simplified rigid-body model, sized/weighted/geared to
 match a real drone (the [DeepSpace Seeker3](https://oscarliang.com/deepspace-seeker3/),
 a ~245g 3" freestyle quad with a claimed 150 km/h top speed) and
@@ -38,11 +43,12 @@ godot --path . -- --dev-preview
 
 Needs a real display (it's genuinely playing the game for a few seconds,
 just moving the camera around and taking screenshots), and it isn't
-headless-compatible. Saves `previews/preview_menu.png`,
-`preview_gameplay.png`, and `preview_topdown.png` (the last from a frozen
-debug camera high above the map). That folder has a `.gdignore` so Godot
-doesn't treat the screenshots as game assets, and it's gitignored too,
-since they go stale the moment the map changes - regenerate anytime.
+headless-compatible. Saves several `previews/preview_*.png` shots -
+menu, settings, village gameplay/topdown, inside/outside a house, and
+factory overview/hall/topdown - each from a frozen debug camera dropped
+at a fixed spot. That folder has a `.gdignore` so Godot doesn't treat
+the screenshots as game assets, and it's gitignored too, since they go
+stale the moment the map changes - regenerate anytime.
 
 ## Requirements
 
@@ -70,26 +76,37 @@ that way deliberately as the project grew:
   more expensive things a weak GPU does; everything still reads fine
   under the ambient + direct lighting alone).
 - Physics runs at 60Hz, not higher.
-- Trees are instanced with `MultiMeshInstance3D` - ~80 trees (160 mesh
-  instances across trunk + foliage) cost exactly 2 draw calls total, not
-  160.
-- All textures (grass/brick/siding/concrete) are generated once at
-  startup (a few tens of ms) rather than loaded from image files.
+- Trees are 80 small, low-poly (`radial_segments` cut to 7-8) individual
+  scene instances rather than procedurally spawned at runtime - a
+  village-scale map with a handful of buildings and 160 simple tree
+  meshes is still comfortably cheap on integrated graphics, and being
+  real nodes means they show up in the editor and can be dragged/moved
+  like anything else, which a `MultiMeshInstance3D` (the previous
+  approach - 2 draw calls total, but opaque, un-editable blobs) couldn't
+  offer.
+- All textures (grass/brick/siding/concrete/asphalt) are generated once
+  at startup (a few tens of ms) rather than loaded from image files.
 - Motor sound is a one-time ~40ms pre-rendered loop, not synthesized
   every frame — see `scripts/motor_audio.gd` for why that distinction
   matters on weak hardware specifically.
 - `run/max_fps` capped at 60 in `project.godot` - rendering faster than
   that burns CPU/GPU for no visible benefit on most displays, [a general
   Godot low-end-hardware recommendation](https://dev.to/orlalalala_0d2542b48051ed/shipping-a-godot-4-game-to-cheap-android-phones-what-actually-fixed-my-performance-2ofd).
-- Draw call count for the static world geometry is roughly 45 (tunnel,
-  pipe, gates, poles, hills, border walls, buildings, street/sidewalks)
-  plus 2 for all ~80 trees combined - comfortably under the ~200 mark
-  where budget hardware starts struggling.
-- `Drone`'s `continuous_cd` (continuous collision detection) is on -
-  without it, a small fast-moving body can visibly penetrate thin
-  colliders (gate bars, tunnel/pipe walls) for a frame or two at 60Hz
-  physics before the engine corrects it, which reads as a stutter/pop on
-  impact. With CCD the correction happens a step earlier, cleanly.
+- Draw call count for the village's static world geometry, trees
+  included, is a few hundred - comfortably under the range where budget
+  integrated graphics starts struggling, since every mesh involved is a
+  handful of low-poly boxes/cylinders, not anything dense.
+- `Drone`'s `continuous_cd` (continuous collision detection) is on, and
+  its collision shape is a small sphere rather than a thin box - a flat
+  shape can present a near-zero cross-section to a wall at certain tumble
+  angles, which is exactly the kind of edge case that lets a fast body
+  tunnel through thin geometry for a frame; a sphere has no thin axis to
+  exploit. `drone.gd` also hard-clamps linear/angular velocity to a
+  generous safety ceiling (well above anything normal flight produces) -
+  measured empirically that a hard corner hit could otherwise spike
+  angular velocity to ~2234 deg/s for a single physics step, which read
+  as the drone "going haywire" after a crash even with no actual
+  clipping happening.
 
 ## Controls
 
@@ -102,8 +119,12 @@ that way deliberately as the project grew:
 - `O` show/hide the tuning panel
 - `Esc` return to the main menu
 
-The menu has a **Settings** button: fullscreen, crosshair, shadows, and
-a max FPS slider (50 up to "Unlimited" — drag it all the way right).
+The menu has a **Settings** button: fullscreen, crosshair, shadows, a
+max FPS slider (50 up to "Unlimited" — drag it all the way right), and
+Acro Rates (Center Sensitivity / Max Rate) - set your preferred feel
+once and it's what a freshly spawned drone starts from every flight,
+rather than re-tuning it every time via the in-flight `O` panel.
+**Play** leads to a map choice: **Village** or **Factory**.
 
 **RadioMaster Pocket (or any radio in USB Joystick mode):**
 1. Plug in via USB-C. On the Pocket, make sure USB mode is set to
@@ -197,18 +218,40 @@ gains stable.
 ## Project layout
 
 - `scenes/MainMenu.tscn` — the real entry point (`project.godot`'s
-  `run/main_scene`). Play / Settings (fullscreen, crosshair, shadows,
-  max FPS) / Quit, built at runtime (`scripts/main_menu.gd`) - flat 2D UI only, no
-  3D scene behind it, so it's essentially free to render.
-- `scenes/Main.tscn` — the flying park: ground, sky, a Wohngebiet
-  (roofed/windowed/doored tower + two houses, street, sidewalks), an
-  FPV field (tunnel, pipe, three gates, a ring loop, six slalom poles),
-  two in-map hills, ~80 trees, 8 distant backdrop hills, an invisible
-  border wall, the drone, the UI.
+  `run/main_scene`). A small live `SubViewport` preview (the drone model
+  hanging off a wall hook, slowly turning) and a procedurally-drawn logo
+  sit above Play (-> map choice: Village/Factory) / Settings (fullscreen,
+  crosshair, shadows, max FPS, Acro rates) / Quit, all built at runtime
+  (`scripts/main_menu.gd`) - the menu itself stays flat 2D UI, so the
+  tiny 3D preview is the only real rendering cost added.
+- `scenes/Main.tscn` — the village: ground, sky, a Wohngebiet (roofed
+  tower + two fly-into houses with rooms, street with curbs and a
+  dashed centerline, sidewalks), an FPV field (tunnel, pipe, three
+  gates, a ring loop, six slalom poles), two in-map hills, 80 trees, 8
+  distant backdrop hills, an invisible border wall, the drone, the UI.
+  `scripts/main.gd` applies its procedural textures.
+- `scenes/Main2.tscn` — the factory yard: a concrete ground, three big
+  `HollowBuilding` halls with floor-to-ceiling openings on opposite
+  walls (straight fly-throughs), three tall lattice masts
+  (`scenes/Mast.tscn`) with a warning light on top, two large pipes
+  strung between them, the same border-wall pattern as the village, a
+  hazier/grayer sky. `scripts/main2.gd` applies its textures.
+- `scripts/hollow_building.gd` (`HollowBuilding`, a `StaticBody3D`) —
+  the reusable primitive behind both fly-into buildings: a floor,
+  ceiling, and four walls, each independently punchable with a single
+  rectangular opening (door/window - width 0 leaves that wall solid),
+  plus an optional full-height interior partition. `scenes/SmallHouse.tscn`
+  configures it as a house (one door, one window, a partition splitting
+  it into two rooms, a peaked roof); `Main2.tscn`'s halls configure it
+  as a big hangar (openings on opposite walls, no partition).
+- `scenes/Tree.tscn` — a single low-poly tree (trunk + foliage, no
+  collision); `Main.tscn` instances it 80 times at fixed, hand-tweakable
+  positions/scales.
 - `scripts/dev_preview_capture.gd` — dev-only screenshot tool, see
   "Previewing it" above.
-- `scenes/Drone.tscn` — the quadcopter: collision shape, visuals, camera
-  mount, motor sound, `scripts/drone.gd` (the flight physics).
+- `scenes/Drone.tscn` — the quadcopter: collision shape (a small sphere,
+  not a thin box - see Performance above), visuals, camera mount, motor
+  sound, `scripts/drone.gd` (the flight physics).
 - `scenes/Gate.tscn` / `scenes/Pole.tscn` — reusable fly-through
   obstacles; instance either one multiple times in `Main.tscn` (with a
   different position/rotation/scale) to add more.
@@ -216,7 +259,7 @@ gains stable.
   input and calibration (`scripts/input_manager.gd`).
 - `scripts/settings.gd` — autoloaded singleton holding options that
   need to survive the menu <-> gameplay scene change (crosshair,
-  shadows, fullscreen).
+  shadows, fullscreen, max FPS, Acro rates).
 - `scenes/UI.tscn` — HUD, crosshair, and tuning panel, built at runtime
   (`scripts/ui.gd`).
 - `scripts/pid.gd` — small reusable, D-term-filtered PID controller
@@ -228,8 +271,8 @@ gains stable.
   earlier versions synthesized sample-by-sample every frame in GDScript,
   which is a real, measurable CPU cost on weak hardware; this doesn't.
 - `scripts/procedural_textures.gd` — generates the grass/brick+window/
-  siding+window/concrete textures at runtime, so no image assets are
-  needed either. Doors are separate small quads (`main.gd`), since a
+  siding+window/concrete/asphalt textures at runtime, so no image assets
+  are needed either. Doors are separate small quads (`main.gd`), since a
   door is one-off, not something that should tile.
 
 ## How the flight model works
@@ -317,14 +360,18 @@ meant to be flown around/over.
 ## Layout
 
 - **Wohngebiet** around (-15..55, 82): the tower and two houses, facing
-  a street that runs east-west at z=70 with sidewalks bridging each
-  door to it. The street continues out past the houses toward the
-  denser tree line - "a road out of the neighborhood into the forest."
+  a street that runs east-west at z=70 with curbs, a dashed centerline,
+  and sidewalks bridging each door to it. Each house's front wall has a
+  real door-shaped opening and a side wall has a real window opening -
+  both fly-through, not decorative - with a partition wall splitting the
+  inside into two rooms. The street continues out past the houses
+  toward the denser tree line - "a road out of the neighborhood into the
+  forest."
 - **FPV field** around (5..35, 45..70): the slalom poles, plus a ring
   loop gate and a small square-ish "pipe" tunnel, near the three square
   gates further out.
-- Both areas are kept explicitly clear of the random tree scatter (see
-  `_spawn_trees()` in `main.gd`) so nothing spawns on top of them.
+- The 80 trees are hand-positioned (`Main.tscn`) to stay clear of both
+  areas above.
 
 ## Two bugs only real screenshots caught
 

@@ -1,0 +1,38 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/hollow_building.gd" id="1"]
+
+[sub_resource type="PrismMesh" id="PrismMesh_roof"]
+size = Vector3(9, 3, 9)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_roof"]
+albedo_color = Color(0.55, 0.28, 0.22, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_roof"]
+size = Vector3(9, 3, 9)
+
+[node name="SmallHouse" type="StaticBody3D"]
+script = ExtResource("1")
+size = Vector3(9, 7, 9)
+wall_thickness = 0.4
+front_width = 2.2
+front_bottom = 0.0
+front_top = 5.0
+right_width = 2.5
+right_bottom = 3.0
+right_top = 5.5
+has_partition = true
+partition_local_z = 1.5
+partition_gap_width = 2.2
+wall_color = Color(0.7, 0.52, 0.38, 1)
+floor_color = Color(0.55, 0.5, 0.42, 1)
+
+[node name="Roof" type="StaticBody3D" parent="."]
+position = Vector3(0, 8.9, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Roof"]
+mesh = SubResource("PrismMesh_roof")
+surface_material_override/0 = SubResource("StandardMaterial3D_roof")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Roof"]
+shape = SubResource("BoxShape3D_roof")
