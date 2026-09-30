@@ -30,6 +30,10 @@ func _ready() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
+	Settings.units = 1
+	var imp: bool = Settings.speed_text(10.0) == "22mph" and Settings.height_text(10.0) == "33ft" and Settings.spec_tag("150 km/h") == "93 mph"
+	Settings.units = 0
+	_check(imp and Settings.speed_text(10.0) == "36km/h", "units: metric and imperial conversions")
 	# Betaflight Actual Rates: ends exact, and default expo ~ the old cubic.
 	var full: float = Drone.actual_rate_deg(1.0, 70.0, 670.0, 0.54)
 	var half: float = Drone.actual_rate_deg(0.5, 70.0, 670.0, 0.54)
@@ -52,7 +56,7 @@ func _run() -> void:
 		["res://scenes/maps/RaceArena.tscn", "seeker3"],
 		["res://scenes/maps/Office.tscn", "seeker3"], # forced to the whoop
 		["res://scenes/maps/ParkingGarage.tscn", "five"],
-		["res://scenes/maps/Quarry.tscn", "five"],
+		["res://scenes/maps/ConstructionSite.tscn", "five"],
 		["res://scenes/maps/Harbour.tscn", "seeker3"],
 		["res://scenes/maps/MountainLake.tscn", "five"],
 	]
@@ -201,7 +205,7 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		_check(climbed > 1.0, tag + ": takes off (keyboard)", "climbed %.2f m, throttle %.2f" % [climbed, InputManager.get_throttle()])
 		_check(d.battery.used_mah > 0.1 and d.battery.cell_v < 4.2 and d.flight_time > 1.0, tag + ": battery drains and flight timer runs", "%.1f mAh, %.2f V/cell, %.1f s" % [d.battery.used_mah, d.battery.cell_v, d.flight_time])
 		var osd: Dictionary = get_tree().current_scene.get_node("UI")._osd_labels
-		_check(osd.has("time") and osd.time.text.begins_with("00:0") and osd.thr.visible and osd.bat.visible == Settings.battery_enabled, tag + ": OSD shows the flight (battery group only when enabled)", osd.time.text if osd.has("time") else "no OSD")
+		_check(osd.has("time") and osd.time.text.begins_with("00:0") and osd.time.visible and osd.spd.text.ends_with("km/h") and osd.thr.visible and osd.bat.visible == Settings.battery_enabled, tag + ": OSD shows the flight (battery group only when enabled)", osd.time.text if osd.has("time") else "no OSD")
 		# Steering, Angle mode: W forward, D right (relative to heading).
 		var fwd: Vector3 = -d.global_transform.basis.z
 		fwd.y = 0.0

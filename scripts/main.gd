@@ -8,6 +8,8 @@ func _ready() -> void:
 		_ui.set_drone(_drone)
 	_apply_textures()
 	BuildingStyles.add_far_ground(self, 0.5)
+	BuildingStyles.extend_edge_roads(self)
+	BuiltMap.apply_depth_fog($WorldEnvironment.environment)
 	# The engine sun lights nothing on some GPUs - bake it (see LightBaker).
 	LightBaker.bake(self, $Sun, 0.5)
 	Settings.apply_graphics_settings()

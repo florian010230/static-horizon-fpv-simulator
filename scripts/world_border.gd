@@ -11,11 +11,11 @@ extends RefCounted
 ## drone/UI/radii - horizontal distance is measured from world (0,0),
 ## which every map's play area is centered on.
 
-static func check(drone: Node3D, ui: Node, warning_radius: float, reset_radius: float, warning_height: float, reset_height: float, tree: SceneTree) -> void:
+static func check(drone: Node3D, ui: Node, warning_radius: float, reset_radius: float, warning_height: float, reset_height: float, tree: SceneTree, centre: Vector2 = Vector2.ZERO) -> void:
 	if drone == null:
 		return
 	var origin: Vector3 = drone.global_transform.origin
-	var horiz_dist: float = Vector2(origin.x, origin.z).length()
+	var horiz_dist: float = (Vector2(origin.x, origin.z) - centre).length()
 	var beyond: bool = horiz_dist > reset_radius or origin.y > reset_height
 	if beyond:
 		SceneLoader.reload("Out of range - restarting")

@@ -184,7 +184,7 @@ const PROFILES: Dictionary = {
 		"inertia": Vector3(5.5e-4, 9.5e-4, 5.5e-4),
 		"yaw_torque_per_newton": 0.015,
 		"collision_radius": 0.08,
-		"camera_near": 0.05, "camera_far": 1500.0,
+		"camera_near": 0.05, "camera_far": 2000.0,
 		"display": {"name": "Static Three", "tags": ["3 inch", "150 km/h", "245 g"],
 			"text": "3-inch freestyle quad - fast, seven times more thrust than weight."},
 		"visual": {
@@ -213,7 +213,7 @@ const PROFILES: Dictionary = {
 		"inertia": Vector3(1.3e-3, 2.3e-3, 1.3e-3),
 		"yaw_torque_per_newton": 0.012,
 		"collision_radius": 0.1,
-		"camera_near": 0.05, "camera_far": 1500.0,
+		"camera_near": 0.05, "camera_far": 2000.0,
 		"display": {"name": "Static Five", "tags": ["5 inch", "210 km/h", "650 g"],
 			"text": "5-inch freestyle quad - big props, big speed, nine times more thrust than weight."},
 		"visual": {
@@ -423,6 +423,7 @@ func _build_collision(p: Dictionary) -> void:
 	if _camera:
 		_camera.near = near
 		_camera.far = p.camera_far
+		_camera.set_meta("profile_far", p.camera_far) # Settings caps it per quality
 
 ## The visual frame is fully rebuilt from primitives (DroneFrameBuilder)
 ## rather than kept as hand-authored nodes in Drone.tscn, so the same

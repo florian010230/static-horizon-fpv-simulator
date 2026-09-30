@@ -33,7 +33,7 @@ const QUALITY_RENDER_SCALE: Array[float] = [0.55, 0.75, 1.0]
 ## MEDIUM_OBJECT_SIZE aren't drawn (0 = no limit).
 const QUALITY_SMALL_RANGE: Array[float] = [80.0, 150.0, 300.0]
 const QUALITY_MEDIUM_RANGE: Array[float] = [200.0, 400.0, 0.0]
-const QUALITY_VIEW_DISTANCE: Array[float] = [700.0, 1500.0, 1500.0]
+const QUALITY_VIEW_DISTANCE: Array[float] = [650.0, 1300.0, 1800.0]
 const SMALL_OBJECT_SIZE: float = 3.0
 const MEDIUM_OBJECT_SIZE: float = 12.0
 var max_fps: int = 60 ## 0 means uncapped ("Unlimited" in the menu slider).
@@ -61,6 +61,32 @@ var osd_enabled: bool = true
 ## a drained pack loses punch; the OSD shows voltage, mAh and flight
 ## time. Off (default): unlimited flight, no battery readout.
 var battery_enabled: bool = false
+## Units shown in the OSD and the drone specs: 0 metric (km/h, m, g),
+## 1 imperial (mph, ft, oz).
+var units: int = 0
+
+func speed_text(mps: float) -> String:
+	return ("%dmph" % int(round(mps * 2.23694))) if units == 1 else ("%dkm/h" % int(round(mps * 3.6)))
+
+func height_text(m: float) -> String:
+	return ("%dft" % int(round(m * 3.28084))) if units == 1 else ("%dm" % int(round(m)))
+
+## A drone spec tag ("150 km/h", "245 g") in the chosen units.
+func spec_tag(tag: String) -> String:
+	if units != 1:
+		return tag
+	if tag.ends_with(" km/h"):
+		return "%d mph" % int(round(float(tag.trim_suffix(" km/h")) * 0.621371))
+	if tag.ends_with(" g"):
+		return "%.1f oz" % (float(tag.trim_suffix(" g")) * 0.035274)
+	return tag
+
+func spec_tags(tags: Array) -> String:
+	var out: Array[String] = []
+	for t in tags:
+		out.append(spec_tag(t))
+	return "  ·  ".join(out)
+
 ## Analog video look over the FPV feed: 0 off, 1 light, 2 strong.
 var video_effect: int = 0
 const VIDEO_EFFECT_STRENGTH: Array[float] = [0.0, 0.45, 0.9]
@@ -80,7 +106,7 @@ var selected_drone: String = "seeker3"
 const SETTINGS_PATH: String = "user://settings.cfg"
 const SAVED_FIELDS: Array[String] = ["crosshair_enabled", "shadows_enabled", "graphics_quality", "performance_mode",
 	"max_fps", "camera_angle_deg", "camera_fov_deg", "rate_center_sensitivity_deg", "rate_max_deg", "rate_expo",
-	"selected_drone", "osd_enabled", "battery_enabled", "video_effect", "wind_level"]
+	"selected_drone", "osd_enabled", "battery_enabled", "video_effect", "wind_level", "units"]
 var _persist: bool = true
 var _last_saved: String = ""
 var _save_timer: float = 0.0
@@ -154,13 +180,32 @@ func apply_graphics_settings() -> void:
 	if drone is RigidBody3D:
 		(drone as RigidBody3D).contact_monitor = performance_mode
 	var cam: Camera3D = vp.get_camera_3d()
-	if cam and cam.far > QUALITY_VIEW_DISTANCE[q]:
-		cam.far = QUALITY_VIEW_DISTANCE[q]
+	if cam:
+		cam.far = minf(cam.get_meta("profile_far", cam.far), QUALITY_VIEW_DISTANCE[q])
+		_fit_fog(scene, cam.far)
+
+## Generated maps use depth fog that turns fully into the horizon
+## colour just before the camera's far plane - so the end of the drawn
+## world is never a visible edge, whatever the view distance.
+func _fit_fog(scene: Node, far: float) -> void:
+	var we := scene.get_node_or_null("WorldEnvironment") as WorldEnvironment
+	if we == null or we.environment == null or not we.environment.has_meta("depth_fog"):
+		return
+	var env: Environment = we.environment
+	var start: float = env.get_meta("depth_fog")
+	env.fog_depth_end = far * 0.96
+	env.fog_depth_begin = minf(start, far * 0.4)
 
 func _apply_draw_distances(node: Node, small_range: float, medium_range: float) -> void:
-	if node is GeometryInstance3D and not (node.get_parent() is Drone):
+	if node is GeometryInstance3D and not (node.get_parent() is Drone) and not node.has_meta("geo_detail"):
 		var gi := node as GeometryInstance3D
 		var size: float = gi.get_aabb().size.length() * _max_scale(gi)
+		if node.has_meta("geo_batch"):
+			# A generated map's batch is a whole 64 m cell of one material,
+			# already culled by the frustum - a distance cut there made
+			# whole rows of objects pop in and out. Only the Low setting
+			# drops the far detail.
+			size = SMALL_OBJECT_SIZE if (small_range < 100.0 and size < MEDIUM_OBJECT_SIZE) else MEDIUM_OBJECT_SIZE
 		if size < SMALL_OBJECT_SIZE:
 			gi.visibility_range_end = small_range
 		elif size < MEDIUM_OBJECT_SIZE:

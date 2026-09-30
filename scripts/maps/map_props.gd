@@ -12,10 +12,10 @@ static func ensure_materials(geo: Geo) -> void:
 	geo.add_material("prop_plaster", Geo.flat_mat(Color(0.86, 0.8, 0.7)))
 	geo.add_material("prop_plaster2", Geo.flat_mat(Color(0.78, 0.74, 0.66)))
 	geo.add_material("prop_brick", Geo.tex_mat(MapTextures.get_tex("dark_brick"), Color(1.1, 1.05, 1.0), 3.0))
-	geo.add_material("prop_roof", Geo.flat_mat(Color(0.52, 0.22, 0.16)))
-	geo.add_material("prop_roof_dark", Geo.flat_mat(Color(0.28, 0.27, 0.28)))
+	geo.add_material("prop_roof", Geo.tex_mat(MapTextures.get_tex("roof_tiles"), Color(0.95, 0.9, 0.9), 2.0))
+	geo.add_material("prop_roof_dark", Geo.tex_mat(MapTextures.get_tex("roof_tiles"), Color(0.5, 0.52, 0.58), 2.0))
 	geo.add_material("prop_window", Geo.flat_mat(Color(0.14, 0.17, 0.2)))
-	geo.add_material("prop_road", Geo.tex_mat(MapTextures.get_tex("cracked_asphalt"), Color.WHITE, 8.0))
+	geo.add_material("prop_road", Geo.ground_mat(MapTextures.get_tex("cracked_asphalt"), Color.WHITE, 8.0, 2))
 
 ## A two-storey gabled house standing at p (ground), turned by yaw.
 static func house(geo: Geo, p: Vector3, yaw: float, w: float, d: float, wall: String, roof: String) -> void:
@@ -40,10 +40,24 @@ static func town(geo: Geo, area: Rect2, ground: Callable, rng: RandomNumberGener
 	while z < area.end.y - 10.0:
 		street_z.append(z)
 		z += 34.0
+	# Streets: the rows, and a cross street at each end joining them
+	# (no street stops in the middle of nowhere).
+	if street_z.size() > 1:
+		for ex in [area.position.x + 3.5, area.end.x - 3.5]:
+			geo.slab(Rect2(ex - 3.5, street_z[0] + 3.5, 7, street_z[-1] - street_z[0] - 7.0), ground.call(ex, c.y) + 0.08, 0.3, "prop_road", false)
 	for sz in street_z:
 		geo.slab(Rect2(area.position.x, sz - 3.5, area.size.x, 7), ground.call(c.x, sz) + 0.08, 0.3, "prop_road", false)
-		var x: float = area.position.x + 8.0
-		while x < area.end.x - 8.0:
+		# Cars parked along the street, both sides.
+		var cx: float = area.position.x + 6.0
+		while cx < area.end.x - 6.0:
+			if rng.randf() < 0.35:
+				var side: float = -1.0 if rng.randf() < 0.5 else 1.0
+				var cp := Vector3(cx, 0, sz + side * 2.6)
+				cp.y = ground.call(cx, sz) + 0.1
+				Vehicles.car(geo, cp, PI * 0.5 * side, Vehicles.random_paint(rng), ["sedan", "hatch", "suv", "van"][rng.randi() % 4])
+			cx += 6.5
+		var x: float = area.position.x + 14.0
+		while x < area.end.x - 14.0:
 			for side in [-1.0, 1.0]:
 				if rng.randf() < 0.85 and Vector2(x, sz + side * 11.0).distance_to(c) > 20.0:
 					var hp := Vector3(x, 0, sz + side * 11.0)

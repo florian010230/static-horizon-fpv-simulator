@@ -79,8 +79,25 @@ static func _dark_brick() -> Image:
 static func _forest_floor() -> Image:
 	return _ramp(256, Color(0.2, 0.26, 0.12), Color(0.3, 0.24, 0.14), 0.02, 0.4, 16)
 
+## Meadow: two greens in patches, darker clumps, fine blade grain and a
+## sprinkle of dry stalks and small flowers.
 static func _meadow() -> Image:
-	return _ramp(256, Color(0.26, 0.4, 0.16), Color(0.36, 0.46, 0.2), 0.015, 0.3, 17)
+	var img := _ramp(256, Color(0.25, 0.39, 0.15), Color(0.35, 0.45, 0.19), 0.015, 0.35, 17)
+	var clumps := _noise(256, 0.06, 171, 3)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 172
+	for y in range(256):
+		for x in range(256):
+			var c: float = clumps.get_pixel(x, y).r
+			if c > 0.62:
+				img.set_pixel(x, y, img.get_pixel(x, y) * (1.0 - (c - 0.62) * 0.9))
+	for i in range(900):
+		var x: int = rng.randi() % 256
+		var y: int = rng.randi() % 256
+		var k: float = rng.randf()
+		var col: Color = Color(0.55, 0.52, 0.3) if k < 0.6 else (Color(0.9, 0.88, 0.8) if k < 0.85 else Color(0.85, 0.75, 0.2))
+		img.set_pixel(x, y, img.get_pixel(x, y).lerp(col, 0.6))
+	return img
 
 static func _slag() -> Image:
 	return _ramp(256, Color(0.2, 0.19, 0.18), Color(0.34, 0.3, 0.26), 0.04, 0.5, 18)
@@ -184,6 +201,160 @@ static func _facade() -> Image:
 	img.fill_rect(Rect2i(30, 34, 68, 64), Color(0.22, 0.26, 0.3))
 	img.fill_rect(Rect2i(30, 64, 68, 3), Color(0.6, 0.6, 0.6))
 	return img
+
+## Office-tower curtain wall: blue-grey glass, mullions every 1.5 m,
+## spandrel bands at each 3.5 m floor (one tile = 3 m x 3.5 m).
+static func _curtain_wall() -> Image:
+	var img := _ramp(128, Color(0.28, 0.36, 0.46), Color(0.36, 0.45, 0.55), 0.03, 0.12, 30)
+	img.fill_rect(Rect2i(0, 100, 128, 28), Color(0.2, 0.22, 0.25))
+	for x in [0, 63]:
+		img.fill_rect(Rect2i(x, 0, 3, 128), Color(0.62, 0.64, 0.66))
+	return img
+
+## Fresh asphalt: dark, fine aggregate speckle, faint patching.
+static func _asphalt() -> Image:
+	var img := _ramp(256, Color(0.2, 0.2, 0.21), Color(0.25, 0.25, 0.25), 0.02, 0.55, 40)
+	var speck := _noise(256, 0.9, 41, 1)
+	for y in range(256):
+		for x in range(256):
+			var v: float = speck.get_pixel(x, y).r
+			if v > 0.72:
+				img.set_pixel(x, y, img.get_pixel(x, y).lerp(Color(0.42, 0.41, 0.4), (v - 0.72) * 2.5))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 42
+	for i in range(3):
+		var r := Rect2i(rng.randi() % 200, rng.randi() % 200, rng.randi_range(20, 56), rng.randi_range(14, 40))
+		for y in range(r.position.y, r.end.y):
+			for x in range(r.position.x, r.end.x):
+				img.set_pixel(x, y, img.get_pixel(x, y) * 0.88)
+	return img
+
+## Railway ballast: crushed grey stone (cellular noise = stones with
+## dark gaps between them), a little rust-brown from brake dust.
+static func _ballast() -> Image:
+	var n := FastNoiseLite.new()
+	n.noise_type = FastNoiseLite.TYPE_CELLULAR
+	n.frequency = 0.09
+	n.seed = 43
+	n.cellular_return_type = FastNoiseLite.RETURN_DISTANCE2_SUB
+	var gaps: Image = n.get_seamless_image(256, 256)
+	n.cellular_return_type = FastNoiseLite.RETURN_CELL_VALUE
+	var cells: Image = n.get_seamless_image(256, 256)
+	var tint := _noise(256, 0.01, 44, 2)
+	var img := Image.create(256, 256, false, Image.FORMAT_RGB8)
+	for y in range(256):
+		for x in range(256):
+			var g: float = clampf(gaps.get_pixel(x, y).r * 2.2, 0.0, 1.0)
+			var v: float = 0.4 + cells.get_pixel(x, y).r * 0.28
+			var c := Color(v, v * 0.97, v * 0.93).lerp(Color(0.42, 0.3, 0.22), smoothstep(0.55, 0.8, tint.get_pixel(x, y).r) * 0.5)
+			img.set_pixel(x, y, c * lerpf(0.35, 1.0, g))
+	return img
+
+## Track bed for UV-mapped tracks (Rails): across = image x (the 2.8 m
+## bed), along = image y (1.2 m = two concrete sleepers on ballast),
+## rail pads where the rails sit.
+static func _sleepers() -> Image:
+	var bal := _ballast()
+	bal.resize(128, 128)
+	var img := Image.create(128, 128, false, Image.FORMAT_RGB8)
+	img.blit_rect(bal, Rect2i(0, 0, 128, 128), Vector2i.ZERO)
+	var grain := _noise(128, 0.3, 45, 2)
+	for k in range(2):
+		var y0: int = 18 + k * 64
+		for y in range(y0, y0 + 26):
+			for x in range(3, 125):
+				var v: float = 0.6 + (grain.get_pixel(x, y).r - 0.5) * 0.12
+				var edge: bool = y == y0 or y == y0 + 25 or x == 3 or x == 124
+				img.set_pixel(x, y, Color(v, v * 0.99, v * 0.96) * (0.75 if edge else 1.0))
+			for rx in [30, 98]:
+				for x in range(rx - 5, rx + 6):
+					img.set_pixel(x, y, Color(0.16, 0.16, 0.17))
+	return img
+
+## Concrete paving slabs (pavements): 8 x 8 slabs per tile, each a
+## slightly different grey, dark joints.
+static func _paving_slabs() -> Image:
+	var img := _ramp(256, Color(0.62, 0.61, 0.58), Color(0.54, 0.53, 0.5), 0.03, 0.2, 46)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 47
+	for j in range(8):
+		for i in range(8):
+			var f: float = rng.randf_range(0.9, 1.08)
+			for y in range(j * 32, j * 32 + 32):
+				for x in range(i * 32, i * 32 + 32):
+					var joint: bool = (x % 32) < 1 or (y % 32) < 1
+					img.set_pixel(x, y, img.get_pixel(x, y) * (0.62 if joint else f))
+	return img
+
+## Gravel verge / site ground: brownish grey stones and dust.
+static func _gravel_verge() -> Image:
+	var img := _ballast()
+	var dust := _ramp(256, Color(0.55, 0.5, 0.42), Color(0.48, 0.44, 0.37), 0.02, 0.3, 48)
+	for y in range(256):
+		for x in range(256):
+			img.set_pixel(x, y, img.get_pixel(x, y).lerp(dust.get_pixel(x, y), 0.55))
+	return img
+
+## Clay roof tiles: rows of overlapping tiles, weathered.
+static func _roof_tiles() -> Image:
+	var img := _ramp(128, Color(0.62, 0.3, 0.2), Color(0.5, 0.27, 0.2), 0.05, 0.25, 49)
+	for row in range(8):
+		var y0: int = row * 16
+		var off: int = 0 if row % 2 == 0 else 8
+		for y in range(y0, y0 + 16):
+			var shade: float = 0.72 + 0.28 * float(y - y0) / 15.0
+			for x in range(128):
+				var c: Color = img.get_pixel(x, y) * shade
+				if (x + off) % 16 == 0:
+					c *= 0.7
+				img.set_pixel(x, y, c)
+	return img
+
+## Formwork concrete (fresh site concrete): light grey, panel joints
+## every 2.5 x 1.25 m, tie holes (one tile = 2.5 m).
+static func _formwork() -> Image:
+	var img := _ramp(256, Color(0.7, 0.7, 0.68), Color(0.62, 0.62, 0.6), 0.02, 0.15, 50)
+	for y in range(256):
+		for x in range(256):
+			if x % 256 < 2 or y % 128 < 2:
+				img.set_pixel(x, y, img.get_pixel(x, y) * 0.7)
+	for hx in [40, 128, 216]:
+		for hy in [32, 96, 160, 224]:
+			img.fill_rect(Rect2i(hx - 2, hy - 2, 5, 5), Color(0.3, 0.3, 0.3))
+	return img
+
+## Two bays x two storeys of a plastered city building (one tile = 7 m):
+## framed windows with sills and a cross bar, some with curtains, some
+## lit from inside, a cornice line at each floor.
+static func _facade_b() -> Image:
+	var img := _ramp(256, Color(0.8, 0.76, 0.69), Color(0.72, 0.68, 0.62), 0.04, 0.12, 51)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 52
+	for fy in range(2):
+		img.fill_rect(Rect2i(0, fy * 128 + 122, 256, 6), Color(0.66, 0.62, 0.56))
+		for fx in range(2):
+			var x0: int = fx * 128 + 36
+			var y0: int = fy * 128 + 30
+			img.fill_rect(Rect2i(x0 - 5, y0 - 5, 66, 82), Color(0.9, 0.88, 0.84))
+			var k: float = rng.randf()
+			var glass: Color = Color(0.2, 0.24, 0.28) if k < 0.6 else (Color(0.62, 0.52, 0.38) if k < 0.8 else Color(0.85, 0.75, 0.5))
+			img.fill_rect(Rect2i(x0, y0, 56, 72), glass)
+			img.fill_rect(Rect2i(x0 + 26, y0, 4, 72), Color(0.9, 0.9, 0.88))
+			img.fill_rect(Rect2i(x0, y0 + 24, 56, 3), Color(0.9, 0.9, 0.88))
+			img.fill_rect(Rect2i(x0 - 8, y0 + 76, 72, 6), Color(0.6, 0.58, 0.54))
+	return img
+
+## Shop fronts for ground floors (one tile = 7 m wide x 3.5 m): big
+## windows, a door, an awning band.
+static func _shopfront() -> Image:
+	var img := _ramp(256, Color(0.34, 0.33, 0.32), Color(0.28, 0.28, 0.28), 0.05, 0.1, 53)
+	var tmp := Image.create(256, 128, false, Image.FORMAT_RGB8)
+	tmp.blit_rect(img, Rect2i(0, 0, 256, 128), Vector2i.ZERO)
+	tmp.fill_rect(Rect2i(0, 0, 256, 22), Color(0.72, 0.2, 0.15))
+	tmp.fill_rect(Rect2i(12, 34, 150, 84), Color(0.55, 0.6, 0.62))
+	tmp.fill_rect(Rect2i(14, 36, 146, 80), Color(0.25, 0.3, 0.33))
+	tmp.fill_rect(Rect2i(184, 40, 50, 88), Color(0.18, 0.2, 0.22))
+	return tmp
 
 static func _streaks(img: Image, count: int, color: Color, seed_value: int) -> void:
 	var rng := RandomNumberGenerator.new()

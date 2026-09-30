@@ -9,10 +9,12 @@ extends Node3D
 ## Subclasses override:
 ##   build()      - make the map
 ##   map_env()    - sky/sun/fog/ambient values (see _make_environment)
-##   border()     - [warn radius, reset radius, warn height, reset height]
+##   border()     - [warn radius, reset radius, warn height, reset height,
+##                   optional centre: Vector2 (x, z) of the circle]
 ##   check_border() - for box-shaped (indoor) maps instead
 
 var geo := Geo.new()
+var fleet: Fleet ## parked/moving cars as MultiMesh (see Fleet), committed after build()
 var sun: DirectionalLight3D
 @onready var drone: Drone = $Drone
 @onready var ui: CanvasLayer = $UI
@@ -32,8 +34,10 @@ func border() -> Array:
 
 func _ready() -> void:
 	_make_environment(map_env())
+	fleet = Fleet.new(geo)
 	build()
 	geo.commit(self)
+	fleet.commit(self)
 	if ui.has_method("set_drone"):
 		ui.set_drone(drone)
 	after_build()
@@ -41,15 +45,37 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	check_border()
+	# Dev aid: SH_PERF=1 in the environment prints draw calls and FPS.
+	if OS.has_environment("SH_PERF") and Engine.get_process_frames() % 200 == 0:
+		print("PERF draws=", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME), " prims=", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME), " fps=", Engine.get_frames_per_second())
 
 func check_border() -> void:
 	var b: Array = border()
-	WorldBorder.check(drone, ui, b[0], b[1], b[2], b[3], get_tree())
+	WorldBorder.check(drone, ui, b[0], b[1], b[2], b[3], get_tree(), b[4] if b.size() > 4 else Vector2.ZERO)
 
 ## Sky, sun, ambient, fog and glow. (The High maps keep fog very light
 ## on purpose - the user wants to see far; Terrain.far_ring hides the
 ## map edge instead.) Graphics quality decides the extras:
 ## glow and height fog only on High (they're full-screen passes).
+## Depth fog for the hand-made maps too (village, factory): the same
+## horizon fade as the generated ones (see _make_environment).
+static func apply_depth_fog(env: Environment, begin: float = 280.0) -> void:
+	var horizon := Color(0.75, 0.82, 0.9)
+	if env.sky and env.sky.sky_material is ProceduralSkyMaterial:
+		var sm := env.sky.sky_material as ProceduralSkyMaterial
+		horizon = sm.sky_horizon_color
+		sm.ground_horizon_color = horizon
+		sm.ground_bottom_color = horizon.darkened(0.15)
+		sm.ground_curve = 0.3
+	env.fog_enabled = true
+	env.fog_mode = Environment.FOG_MODE_DEPTH
+	env.fog_light_color = horizon
+	env.fog_depth_curve = 2.2
+	env.fog_depth_begin = begin
+	env.fog_depth_end = 1500.0
+	env.fog_sky_affect = 0.0
+	env.set_meta("depth_fog", begin)
+
 func _make_environment(e: Dictionary) -> void:
 	var sky_mat := ProceduralSkyMaterial.new()
 	sky_mat.sky_top_color = e.get("sky_top", Color(0.32, 0.52, 0.78))
@@ -70,13 +96,29 @@ func _make_environment(e: Dictionary) -> void:
 	var high: bool = Settings.graphics_quality >= 2
 	if e.get("fog", true):
 		env.fog_enabled = true
-		env.fog_light_color = e.get("fog_color", Color(0.7, 0.76, 0.82))
-		env.fog_density = e.get("fog_density", 0.0008)
+		if e.get("indoor", false):
+			env.fog_light_color = e.get("fog_color", Color(0.7, 0.76, 0.82))
+			env.fog_density = e.get("fog_density", 0.0008)
+			env.fog_sky_affect = 0.2
+		else:
+			# Depth fog: clear air near the drone, thickening into the
+			# sky's horizon colour and fully opaque just before the far
+			# plane (Settings._fit_fog sets the distances from the
+			# camera) - the world fades into the horizon instead of
+			# ending at a visible edge. The sky itself stays untouched.
+			env.fog_mode = Environment.FOG_MODE_DEPTH
+			env.fog_light_color = e.get("fog_color", sky_mat.sky_horizon_color)
+			env.fog_depth_curve = e.get("fog_curve", 2.2)
+			env.fog_depth_begin = e.get("fog_begin", 350.0)
+			env.fog_depth_end = 1500.0
+			env.fog_sky_affect = 0.0
+			env.set_meta("depth_fog", env.fog_depth_begin)
+			# Below the horizon the sky is only seen past the far plane:
+			# make it the fog colour, or a dark band shows there.
+			sky_mat.ground_horizon_color = env.fog_light_color
+			sky_mat.ground_bottom_color = env.fog_light_color.darkened(0.15)
+			sky_mat.ground_curve = 0.3
 		env.fog_aerial_perspective = e.get("aerial", 0.15)
-		env.fog_sky_affect = 0.2
-		if high and e.has("height_fog"):
-			env.fog_height = e.height_fog[0]
-			env.fog_height_density = e.height_fog[1]
 	if high and e.get("glow", true):
 		env.glow_enabled = true
 		env.glow_intensity = 0.6

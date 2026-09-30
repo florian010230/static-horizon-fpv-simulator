@@ -14,11 +14,13 @@ multi-part session, same style as the existing entries.
 
 ## Current state (as of 2026-09-30)
 
-All work up to DEVLOG Act XI is committed (15b668e, on top of bcc96e2).
-Still: only commit when the user asks. TODO.md is the roadmap: Phases 1
-and 3 are done (12 maps), Phase 2 mostly (open: classic/KISS rate
-presets, replay, bindings), then Phase 4 (release polish).
-`--selftest`: 412 checks, all passing.
+Committed up to 14fd2cb. DEVLOG Acts XI-addendum and XII (OSD/units,
+vehicles, then the "world that connects" round: depth fog, ground
+layers, Route/Rails/Roads/City/Fleet, the rebuilt harbour, Construction
+Site replacing the quarry) are uncommitted until the user asks.
+TODO.md is the roadmap: Phases 1 and 3 are done (12 maps), Phase 2
+mostly (open: classic/KISS rate presets, replay, bindings), then Phase 4.
+`--selftest`: 413 checks, all passing.
 
 InputManager is a *scene* autoload: the editor can't see its return
 types, so never write `var x := InputManager.foo()` - type it
@@ -51,6 +53,26 @@ and `RaceCourse` for race maps (gates + lap timing + records). The
 .tscn holds only Drone (= spawn, movable in the editor) and UI. Every
 map is listed once in `MapCatalog` (tier, forced drone). Add a
 self-test case per map. The roadmap is TODO.md - keep it current.
+
+The user's standing requirements for maps (2026-09-30), all built in:
+- **No visible world edge**: outdoor maps use depth fog ending at the
+  far plane in the sky's horizon colour (`BuiltMap`, `Settings._fit_fog`;
+  `BuiltMap.apply_depth_fog` for the hand-made maps). Ground must reach
+  the horizon (slabs to +-3000 m, `Terrain.far_ring`).
+- **Nothing flickers**: never stack ground surfaces a few cm apart with
+  plain materials - use `Geo.ground_mat`/`ground_flat` with a layer
+  (0 terrain, 1 paving/ballast, 2 roads, 3 markings, 4-6 sleeper beds).
+- **Things connect**: rails, roads and pipes are `Route`s (straights +
+  arcs, no kinks) drawn with `Rails`/`Roads`/`Geo.pipe_path`. Rails
+  never cross at angles: tracks divide through `Rails.turnout`/
+  `crossover`; no 90 degree turns (R >= 120 m). Every track and road
+  either leaves the map (runs on 2-3 km into the fog) or ends at a
+  buffer stop / junction / gate / car park. On hilly maps, carve the
+  terrain to the line's grade (see steel_mill.gd `_corridors`).
+- **Cars go through `Fleet`** (BuiltMap.fleet), not Vehicles.car, when
+  there are more than a handful - and keep materials shared, or every
+  car becomes its own draw call. Check `SH_PERF=1` draw calls after
+  big additions (aim < ~600 at spawn).
 
 ## Hard rules (from direct user feedback)
 

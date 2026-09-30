@@ -32,7 +32,7 @@ func map_env() -> Dictionary:
 		"sky_top": Color(0.36, 0.5, 0.68), "sky_horizon": Color(0.8, 0.78, 0.72),
 		"ground_horizon": Color(0.45, 0.47, 0.38), "ground_bottom": Color(0.2, 0.24, 0.16),
 		"ambient": Color(0.62, 0.64, 0.66), "ambient_energy": 0.8,
-		"fog_color": Color(0.74, 0.74, 0.7), "fog_density": 0.00028, "aerial": 0.08,
+		"fog_begin": 250.0, "aerial": 0.08,
 		"shadow_ground_y": 0.0, "shadow_region": Rect2(-400, -400, 800, 800)}
 
 func border() -> Array:
@@ -47,6 +47,8 @@ func preview_views() -> Array:
 		["rolling_mill", Vector3(256, 9, -15), Vector3(350, 6, -15)],
 		["stockyard", Vector3(-200, 25, 130), Vector3(-280, 5, 80)],
 		["coke", Vector3(-150, 20, -95), Vector3(-260, 8, -140)],
+		["carpark", Vector3(240, 8, 175), Vector3(290, 0, 135)],
+		["town", Vector3(470, 30, 110), Vector3(600, 7, -50)],
 	]
 
 func build() -> void:
@@ -66,6 +68,7 @@ func build() -> void:
 	_power_plant()
 	_extras()
 	_town_and_heap()
+	_decay()
 	_forest()
 
 # --- materials ----------------------------------------------------------------
@@ -79,9 +82,10 @@ func _materials() -> void:
 	geo.add_material("concrete", Geo.tex_mat(MapTextures.get_tex("old_concrete"), Color.WHITE, 8.0))
 	geo.add_material("brick", Geo.tex_mat(MapTextures.get_tex("dark_brick"), Color.WHITE, 3.0))
 	geo.add_material("glass", Geo.flat_mat(Color(0.12, 0.14, 0.15), 0.15, 0.4))
-	geo.add_material("asphalt", Geo.tex_mat(MapTextures.get_tex("cracked_asphalt"), Color.WHITE, 8.0))
+	geo.add_material("asphalt", Geo.ground_mat(MapTextures.get_tex("cracked_asphalt"), Color.WHITE, 8.0, 2))
+	geo.add_material("slag_ground", Geo.ground_mat(MapTextures.get_tex("slag"), Color.WHITE, 10.0, 1, 0.5))
 	geo.add_material("slag", Geo.tex_mat(MapTextures.get_tex("slag"), Color.WHITE, 10.0))
-	geo.add_material("weeds", Geo.tex_mat(MapTextures.get_tex("meadow"), Color(0.9, 0.9, 0.8), 10.0))
+	geo.add_material("weeds", Geo.ground_mat(MapTextures.get_tex("meadow"), Color(0.9, 0.9, 0.8), 10.0, 3, 0.4))
 	geo.add_material("ore", Geo.tex_mat(MapTextures.get_tex("slag"), Color(1.6, 0.75, 0.5), 6.0))
 	geo.add_material("coal", Geo.tex_mat(MapTextures.get_tex("slag"), Color(0.45, 0.45, 0.47), 6.0))
 	geo.add_material("lime", Geo.tex_mat(MapTextures.get_tex("slag"), Color(2.4, 2.35, 2.2), 6.0))
@@ -103,7 +107,34 @@ const TOWN_Y: float = 7.0
 func _height(x: float, z: float) -> float:
 	var raw: float = _raw_height(x, z)
 	var dt: float = _rect_dist(TOWN, x, z)
-	return lerpf(TOWN_Y, raw, smoothstep(0.0, 60.0, dt))
+	var h: float = lerpf(TOWN_Y, raw, smoothstep(0.0, 60.0, dt))
+	# Valleys for the railway (west) and the roads (south, east, the
+	# access road up to the town): a flat floor at the line's own grade,
+	# the hillsides easing back over 150 m - so the lines run on out of
+	# the map to the horizon instead of into a hill.
+	for c in _corridors():
+		var pts: Array = c[0]
+		var half: float = c[1]
+		var bx: Rect2 = c[2]
+		if not bx.has_point(Vector2(x, z)):
+			continue
+		var best: float = INF
+		var floor_y: float = 0.0
+		for i in range(pts.size() - 1):
+			var a: Vector3 = pts[i]
+			var b: Vector3 = pts[i + 1]
+			var ab := Vector2(b.x - a.x, b.z - a.z)
+			var t: float = clampf((Vector2(x - a.x, z - a.z)).dot(ab) / maxf(ab.length_squared(), 0.001), 0.0, 1.0)
+			var d: float = Vector2(x - a.x - ab.x * t, z - a.z - ab.y * t).length()
+			if d < best:
+				best = d
+				floor_y = lerpf(a.y, b.y, t)
+		h = lerpf(floor_y - 0.05, h, smoothstep(half, half + 150.0, best))
+	return h
+
+## Rail formation height: level through the works, climbing 1.2 % west.
+static func _rail_grade(x: float, _z: float = 0.0) -> float:
+	return maxf(-380.0 - x, 0.0) * 0.012
 
 static func _rect_dist(r: Rect2, x: float, z: float) -> float:
 	var ddx: float = maxf(maxf(r.position.x - x, x - r.end.x), 0.0)
@@ -120,6 +151,54 @@ func _raw_height(x: float, z: float) -> float:
 	var n: float = _noise.get_noise_2d(x, z) * 0.5 + 0.5
 	return -0.4 + ramp * (8.0 + n * 38.0) + maxf(d - 250.0, 0.0) * 0.12
 
+var _corr: Array = []
+var _road_routes: Dictionary = {}
+
+## The roads leaving the works, as routes whose points carry the road's
+## own grade (the valley floor is cut to it): the old gate road south,
+## the access road up to the town, the town road out east.
+func _routes() -> Dictionary:
+	if _road_routes.is_empty():
+		var south := Route.from(Vector3(220, 0, 109.5), 90.0).straight(221.0, 8.0).arc(600.0, 9.0, 8.0).straight(290.0, 12.0).arc(600.0, -9.0, 8.0).straight(2400.0, 16.0)
+		_grade(south, 0.0, 250.0, 0.011)
+		var acc := Route.new()
+		acc.pts = Route.rounded(ACCESS_PTS, 25.0, 8)
+		var east := Route.from(Vector3(TOWN.end.x, TOWN_Y, -56), 0.0).straight(260.0, 12.0).arc(1500.0, -3.0, 16.0).straight(2200.0, 20.0)
+		_grade(east, TOWN_Y, 150.0, 0.012)
+		_road_routes = {"south": south, "access": acc, "east": east}
+	return _road_routes
+
+## Heights along a route: y0 for the first `flat` metres, then rising.
+static func _grade(r: Route, y0: float, flat: float, rate: float) -> void:
+	var d: float = 0.0
+	for i in range(r.pts.size()):
+		if i > 0:
+			d += Vector2(r.pts[i].x - r.pts[i - 1].x, r.pts[i].z - r.pts[i - 1].z).length()
+		r.pts[i].y = y0 + maxf(d - flat, 0.0) * rate
+
+func _corridors() -> Array:
+	if _corr.is_empty():
+		var rail: Array = [Vector3(-3200, _rail_grade(-3200), TRACK_Z + 11.0), Vector3(-360, 0.0, TRACK_Z + 11.0)]
+		var rr: Dictionary = _routes()
+		for c in [[rail, 30.0], [_thin(rr.south.pts), 10.0], [_thin(rr.east.pts), 10.0], [rr.access.pts, 9.0]]:
+			var bx := Rect2(Vector2(c[0][0].x, c[0][0].z), Vector2.ZERO)
+			for q: Vector3 in c[0]:
+				bx = bx.expand(Vector2(q.x, q.z))
+			_corr.append([c[0], c[1], bx.grow(c[1] + 160.0)])
+	return _corr
+
+## Every 4th point of a long route (the terrain only needs its shape).
+static func _thin(p: Array[Vector3]) -> Array:
+	var out: Array = []
+	for i in range(0, p.size(), 4):
+		out.append(p[i])
+	if out[-1] != p[-1]:
+		out.append(p[-1])
+	return out
+
+## The access road from the works road up to the town's through street.
+const ACCESS_PTS: Array = [Vector3(369.5, 0.0, 105), Vector3(410, 1.0, 100), Vector3(440, 3.0, 70), Vector3(446, 5.0, 20), Vector3(452, 6.5, -40), Vector3(470, TOWN_Y, -56)]
+
 var _noise := FastNoiseLite.new()
 
 func _ground() -> void:
@@ -130,16 +209,15 @@ func _ground() -> void:
 	Terrain.build(self, Rect2(-1100, -1000, 2200, 2000), 8.0, _height, geo._mats["terrain"], tshade)
 	Terrain.far_ring(self, Rect2(-1100, -1000, 2200, 2000), Rect2(-4000, -4000, 8000, 8000), 64.0, _height, geo._mats["terrain"], tshade)
 	# Site surface: slag/gravel fill, with concrete pads, roads, weeds.
-	geo.slab(SITE, 0.0, 0.5, "slag")
-	for r in [Rect2(-150, 100, 510, 10), Rect2(215, 110, 10, 80), Rect2(-200, -60, 10, 160)]:
-		geo.slab(r, 0.06, 0.1, "asphalt")
+	geo.slab(SITE, 0.0, 0.5, "slag_ground")
 	for i in range(40):
 		var c := Vector2(rng.randf_range(SITE.position.x, SITE.end.x), rng.randf_range(SITE.position.y, SITE.end.y))
 		geo.slab(Rect2(c, Vector2(rng.randf_range(8, 30), rng.randf_range(8, 30))), 0.12, 0.1, "weeds", false)
 
 # --- rail -----------------------------------------------------------------------
 
-## Standard gauge (1.435 m) track on a ballast bed.
+## Crane runway track (the ore bridge's rails - they end at stops,
+## like real crane runways).
 func _track(a: Vector3, b: Vector3) -> void:
 	var d: Vector3 = (b - a)
 	var along: Vector3 = d.normalized()
@@ -147,29 +225,57 @@ func _track(a: Vector3, b: Vector3) -> void:
 	geo.beam(a + Vector3(0, 0.15, 0), b + Vector3(0, 0.15, 0), Vector2(3.2, 0.3), "ballast", true, false)
 	for s in [-0.72, 0.72]:
 		geo.beam(a + side * s + Vector3(0, 0.45, 0), b + side * s + Vector3(0, 0.45, 0), Vector2(0.08, 0.15), "rail", false, false)
-	var n: int = int(d.length() / 0.9)
-	for i in range(n):
-		var p: Vector3 = a.lerp(b, (i + 0.5) / n)
-		geo.beam(p - side * 1.25 + Vector3(0, 0.33, 0), p + side * 1.25 + Vector3(0, 0.33, 0), Vector2(0.25, 0.1), "sleeper", false, false)
+	for e in [a, b]:
+		geo.box(e + Vector3(0, 0.9, 0), Vector3(1.2, 1.2, 3.4) if absf(d.x) > absf(d.z) else Vector3(3.4, 1.2, 1.2), "yellow")
+
+## The works railway: the single-track branch comes in from the west
+## along its valley (and runs on to the horizon), ends at a buffer stop
+## by the rolling mill. Off it through real turnouts: the stockyard
+## siding, the torpedo line through both cast houses into the steel
+## shop, and the finished-goods siding along the mill.
+var rails: Rails
+
+## A siding that leaves `main` at x through a turnout to `side` and runs
+## parallel `off` metres away (reverse curves of radius r), to x_end.
+func _siding(main: Route, x: float, side: float, off: float, r: float, x_end: float, layer: int = 1) -> Route:
+	var t: Route = rails.turnout(main, main.dist_at_x(x), side)
+	var a0: float = deg_to_rad(Rails.TURNOUT_ANGLE)
+	var gained: float = Rails.TURNOUT_R * (1.0 - cos(a0))
+	var cos_a: float = clampf((gained + r * cos(a0) + r - off) / (2.0 * r), -1.0, 1.0)
+	var a: float = rad_to_deg(acos(cos_a))
+	t.arc(r, side * (a - Rails.TURNOUT_ANGLE), 3.0)
+	t.arc(r, -side * a, 3.0)
+	t.straight(absf(x_end - t.end().x), 12.0)
+	rails.track(t, layer)
+	rails.buffer_stop(t)
+	return t
 
 func _rail() -> void:
-	_track(Vector3(-760, 0, TRACK_Z), Vector3(330, 0, TRACK_Z))          # main line in from the west
-	_track(Vector3(-330, 0, TRACK_Z + 22), Vector3(-150, 0, TRACK_Z + 22)) # stockyard siding
-	_track(Vector3(-100, 0, TORPEDO_Z), Vector3(170, 0, TORPEDO_Z))         # torpedo line: cast houses -> BOF
-	_track(Vector3(-100, 0, TORPEDO_Z), Vector3(-100, 0, TRACK_Z))
-	_track(Vector3(185, 0, 30), Vector3(345, 0, 30))                        # finished goods, by the mill
-	geo.box(Vector3(330, 0.9, TRACK_Z), Vector3(3, 1.4, 1.2), "yellow")    # buffer stop
-	# Wagons where they were left: hoppers at the stockyard, torpedo cars
-	# under the cast houses and at the BOF, flats with slabs by the mill.
-	for i in range(7):
-		_hopper(Vector3(-310 + i * 14.5, 0, TRACK_Z + 22), i % 3 == 0)
-	_locomotive(Vector3(-205, 0, TRACK_Z + 22))
-	for x in [BF[0].x, BF[1].x + 2, 130.0]:
-		_torpedo(Vector3(x, 0, TORPEDO_Z))
-	for i in range(5):
-		_flat_wagon(Vector3(200 + i * 15, 0, 30), i != 2)
-	for i in range(4):
-		_hopper(Vector3(-40 + i * 14.5, 0, TRACK_Z), true)
+	rails = Rails.new(geo)
+	var main := Route.from(Vector3(-3200, 0, TRACK_Z), 0.0, _rail_grade).straight(3200.0 + 330.0, 12.0)
+	rails.track(main, 0)
+	rails.buffer_stop(main)
+	var stock: Route = _siding(main, -560.0, 1.0, 22.0, 190.0, -150.0)
+	var torp: Route = _siding(main, -250.0, -1.0, TRACK_Z - TORPEDO_Z, 120.0, 170.0)
+	var goods: Route = _siding(main, 40.0, -1.0, 25.0, 150.0, 345.0)
+	for x in [-900.0, -420.0]:
+		rails.signal_at(main, main.dist_at_x(x), false)
+	# Wagons where they were left: hoppers at the stockyard with a
+	# shunter, torpedo cars under the cast houses and in the steel shop,
+	# flats by the mill, a rake of hoppers on the branch.
+	var hoppers: Array = []
+	for i in range(8):
+		hoppers.append("hopper")
+	rails.train(stock, stock.dist_at_x(-300.0), hoppers + ["shunter"], rng)
+	for x in [BF[0].x - 13.0, BF[1].x - 13.0, 125.0]:
+		rails.train(torp, torp.dist_at_x(x), ["torpedo"], rng)
+	rails.train(goods, goods.dist_at_x(190.0), ["flat_empty", "flat_empty", "flat_empty", "flat_empty", "flat_empty", "flat_empty"], rng)
+	rails.train(main, main.dist_at_x(-120.0), ["hopper", "hopper", "hopper", "hopper"], rng)
+	# Slabs on the flats (the last load that never left).
+	for k in range(6):
+		var q: Array = goods.sample(goods.dist_at_x(190.0) + 10.0 + k * 20.5)
+		for j in range(3):
+			geo.box(q[0] + Vector3(-6.0 + j * 6.0, Rails.RAIL_TOP + 1.6 + (j % 2) * 0.12, 0), Vector3(5.2, 0.25 + (j % 2) * 0.25, 2.0), "rust")
 
 func _hopper(o: Vector3, coal: bool) -> void:
 	_bogies(o, 12.0)
@@ -389,20 +495,24 @@ func _stair_tower(o: Vector3, h: float) -> void:
 ## joints are open, so you can get in and out along the way).
 func _gas_main() -> void:
 	var y: float = 14.5
-	var pts: Array[Vector3] = [Vector3(BF[0].x - 24, y, -35), Vector3(BF[0].x - 24, y, -110), Vector3(250, y, -110), Vector3(250, y, -128)]
-	geo.cylinder(Vector3(BF[0].x - 24, 31, -35), Vector3(BF[0].x - 24, y, -35), 1.2, "rust", 12)
-	geo.cylinder(Vector3(BF[1].x + 24, 31, -35), Vector3(BF[1].x + 24, y, -35), 1.2, "rust", 12)
-	geo.pipe(Vector3(BF[1].x + 24, y, -35), Vector3(BF[1].x + 24, y, -108.5), 1.5, 0.15, "rust", 18)
-	for i in range(pts.size() - 1):
-		var a: Vector3 = pts[i]
-		var b: Vector3 = pts[i + 1]
-		var n: int = int(a.distance_to(b) / 24.0) + 1
-		for k in range(n):
-			var p0: Vector3 = a.lerp(b, float(k) / n)
-			var p1: Vector3 = a.lerp(b, (k + 0.92) / n) # a small open gap at every joint
-			geo.pipe(p0, p1, 1.5, 0.15, "rust", 18)
-			geo.box(Vector3(p0.x, (y - 1.6) * 0.5, p0.z), Vector3(0.8, y - 1.6, 0.8), "paint")
-			geo.box(Vector3(p0.x, y - 1.7, p0.z), Vector3(4.0, 0.3, 1.0) if absf(b.x - a.x) < 1.0 else Vector3(1.0, 0.3, 4.0), "paint")
+	var main: Array[Vector3] = Route.rounded([Vector3(BF[0].x - 24, 31, -35), Vector3(BF[0].x - 24, y, -35), Vector3(BF[0].x - 24, y, -110), Vector3(250, y, -110), Vector3(250, y, -128)], 6.0, 8)
+	var branch: Array[Vector3] = Route.rounded([Vector3(BF[1].x + 24, 31, -35), Vector3(BF[1].x + 24, y, -35), Vector3(BF[1].x + 24, y, -108.4)], 6.0, 8)
+	for path in [main, branch]:
+		var r := Route.new()
+		r.pts = path
+		var L: float = r.length()
+		# 24 m sections with a short open gap at each joint - the way in.
+		var d: float = 0.0
+		while d < L - 0.5:
+			var e: float = minf(d + 22.0, L)
+			geo.pipe_path(r.slice(d, e), 1.5, "rust", 0.15, 18)
+			var q: Array = r.sample(d + 1.0)
+			var p0: Vector3 = q[0]
+			if p0.y < y + 1.0:
+				var t: Vector3 = q[1]
+				geo.box(Vector3(p0.x, (y - 1.6) * 0.5, p0.z), Vector3(0.8, y - 1.6, 0.8), "paint")
+				geo.box(Vector3(p0.x, y - 1.7, p0.z), Vector3(4.0, 0.3, 1.0) if absf(t.z) > absf(t.x) else Vector3(1.0, 0.3, 4.0), "paint", 0.0, true, false)
+			d = e + 1.6
 	# Gas holder: a 45 m drum with its external guide frame.
 	var gh := Vector3(250, 0, -150)
 	geo.lathe(gh, [Vector2(22, 0), Vector2(22, 44), Vector2(18, 48), Vector2(0.2, 50)], "paint", 32)
@@ -556,7 +666,8 @@ func _extras() -> void:
 
 func _clear_of_buildings(p: Vector3) -> bool:
 	var keep_out: Array[Rect2] = [Rect2(-110, -95, 220, 130), Rect2(80, -70, 300, 110), Rect2(-340, -190, 180, 120),
-		Rect2(-340, 60, 200, 130), Rect2(-170, 110, 250, 90), Rect2(-790, 60, 1150, 22), Rect2(-100, -125, 380, 30), Rect2(220, -180, 60, 60)]
+		Rect2(-340, 60, 200, 130), Rect2(-170, 110, 250, 90), Rect2(-790, 60, 1150, 22), Rect2(-100, -125, 380, 30), Rect2(220, -180, 60, 60),
+		Rect2(250, 115, 80, 50), Rect2(365, -160, 20, 290), Rect2(50, 110, 330, 20)]
 	for r in keep_out:
 		if r.has_point(Vector2(p.x, p.z)):
 			return false
@@ -565,12 +676,62 @@ func _clear_of_buildings(p: Vector3) -> bool:
 ## Workers' town (brick terraces, church) on the levelled ground east
 ## of the works, a road to the gate, and the slag heap: decades of
 ## furnace slag tipped into a terraced hill south-east of the site.
+## Life after the works closed: wrecks in the old staff car park by
+## the gate, abandoned lorries, rubble heaps and oil drums; and the gas
+## pipe that fed blast-furnace gas from the holder to the power plant's
+## boilers (the plant burned the works' own gas), routed round the
+## rolling mill on its own trestles.
+func _decay() -> void:
+	Vehicles.ensure_materials(geo)
+	geo.slab(Rect2(255, 120, 70, 40), 0.08, 0.1, "asphalt")
+	for i in range(18):
+		if rng.randf() < 0.75:
+			Vehicles.car(geo, Vector3(260 + (i % 9) * 7.2, 0.1, 128 + (i / 9) * 22), PI * 0.5 * (1 if i < 9 else -1) + rng.randf_range(-0.2, 0.2), "veh_rust", ["sedan", "hatch", "van"][rng.randi() % 3], true)
+	for p2 in [Vector3(-120, 0.1, 60), Vector3(150, 0.1, 80), Vector3(-280, 0.1, -40)]:
+		Vehicles.semi(geo, p2, rng.randf() * TAU, "veh_rust", "rust")
+	for i in range(30):
+		var q := Vector3(rng.randf_range(-340, 340), 0.1, rng.randf_range(-190, 180))
+		if _clear_of_buildings(q):
+			var sc: float = rng.randf_range(2, 6)
+			geo.lathe(q, [Vector2(sc, 0), Vector2(sc * 0.5, sc * 0.4), Vector2(0.1, sc * 0.55)], ["slag", "rust_dark", "concrete"][rng.randi() % 3], 7)
+			for k in range(rng.randi_range(0, 4)):
+				geo.cylinder(q + Vector3(sc + k * 0.7, 0, 1.0), q + Vector3(sc + k * 0.7, 0.9, 1.0), 0.3, "rust", 8)
+	var y: float = 12.0
+	var gp := Route.new()
+	gp.pts = Route.rounded([Vector3(272, y, -150), Vector3(375, y, -150), Vector3(375, y, 120), Vector3(60, y, 120), Vector3(60, y, 128), Vector3(60, 8.0, 132)], 4.0, 6)
+	geo.pipe_path(gp.pts, 0.9, "rust", 0.1, 12)
+	var dd: float = 10.0
+	while dd < gp.length() - 10.0:
+		var q: Vector3 = gp.sample(dd)[0]
+		geo.box(Vector3(q.x, (y - 1.0) * 0.5, q.z), Vector3(0.6, y - 1.0, 0.6), "paint")
+		dd += 20.0
+
 func _town_and_heap() -> void:
 	MapProps.town(geo, TOWN, _height, rng, true)
-	geo.beam(Vector3(360, 0.1, 105), Vector3(470, TOWN_Y + 0.1, 30), Vector2(8, 0.3), "asphalt", true, false)
+	_roads()
 	var heap := Vector3(470, 0, 330)
 	var hy: float = _height(heap.x, heap.z)
 	geo.lathe(heap + Vector3(0, hy - 2.0, 0), [Vector2(110, 0), Vector2(95, 12), Vector2(80, 14), Vector2(62, 28), Vector2(48, 30), Vector2(26, 44), Vector2(4, 46)], "slag", 28)
+
+## The works road network: the main road through the site (z 105), the
+## old gate road south (out of the map along its valley), the west
+## service road, the access road up to the town, through the town and
+## out east. Every road ends at a junction, a gate or the map's edge.
+func _roads() -> void:
+	var roads := Roads.new(geo, rng, fleet)
+	for j in [Vector3(-195, 0, 105), Vector3(220, 0, 105), Vector3(365, 0, 105)]:
+		roads.junction(j, Vector2(9, 9), [], 0.0, true)
+	var old := {"old": true, "centre": "none"}
+	roads.road(Route.from(Vector3(-190.5, 0, 105), 0.0).straight(215.5 + 190.5, 12.0), 9.0, old)
+	roads.road(Route.from(Vector3(224.5, 0, 105), 0.0).straight(360.5 - 224.5, 12.0), 9.0, old)
+	roads.road(Route.from(Vector3(-195, 0, 100.5), -90.0).straight(160.0, 12.0), 8.0, old) # to the by-product plant
+	var rr: Dictionary = _routes()
+	roads.road(rr.south, 8.0, {"old": true, "detail": 400.0})
+	roads.road(rr.access, 8.0, {"old": true})
+	roads.road(rr.east, 8.0, {"old": true, "detail": 400.0})
+	for d in [300.0, 520.0]:
+		var q: Array = rr.east.sample(d)
+		fleet.car(q[0] + Vector3(0, 0.05, 2.2), PI * 0.5, Fleet.random_paint(rng), "hatch")
 
 func _forest() -> void:
 	var trees: Array = []
@@ -583,8 +744,9 @@ func _forest() -> void:
 		var z: float = frng.randf_range(-980, 980)
 		if SITE.grow(6.0).has_point(Vector2(x, z)) or TOWN.grow(15.0).has_point(Vector2(x, z)) or Vector2(x - 470, z - 330).length() < 115.0:
 			continue
-		if absf(z - TRACK_Z) < 8.0 and x < SITE.position.x:
-			continue # the railway cutting into the woods
+		var y0: float = _height(x, z)
+		if absf(y0 - _raw_height(x, z)) > 1.5 and _rect_dist(TOWN, x, z) > 60.0:
+			continue # valley floors: the railway and the roads
 		var y: float = _height(x, z)
 		trees.append([Vector3(x, y - 0.2, z), 0 if frng.randf() < 0.65 else 1, frng.randf_range(0.9, 1.6)])
 	Forest.plant(self, trees)

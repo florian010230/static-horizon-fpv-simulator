@@ -69,7 +69,9 @@ func _ready() -> void:
 	# menu); from here, closing it returns to the home screen.
 	_settings = SettingsScreens.new()
 	root.add_child(_settings)
-	_settings.closed.connect(func(): _show("main"))
+	_settings.closed.connect(func():
+		_refresh_preview_labels() # units may have changed
+		_show("main"))
 	_show("main")
 
 func _exit_tree() -> void:
@@ -344,7 +346,7 @@ func _drone_info(id: String) -> Dictionary:
 func _refresh_preview_labels() -> void:
 	var d: Dictionary = _drone_info(Settings.selected_drone)
 	_preview_name.text = d.name
-	_preview_tags.text = "  ·  ".join(d.tags)
+	_preview_tags.text = Settings.spec_tags(d.tags)
 	_preview_text.text = d.text
 
 func _arrow_button(glyph: String, step: int) -> Button:

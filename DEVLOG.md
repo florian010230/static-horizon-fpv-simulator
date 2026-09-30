@@ -849,6 +849,122 @@ sleepers became a texture on the ballast. Thin fog exposed the map
 edges, so every High map got a coarse terrain ring to the horizon, and
 a shared town builder added villages to three of them. 412 checks.
 
+Then "every object should look more real, like cars and trains", and
+the High maps fuller still. A `Vehicles` library replaced the plain
+boxes (one new Geo primitive made it possible: an 8-corner solid, for
+sloped bonnets, raked windscreens and intercity noses). The harbour
+grew into a port city - a proper street grid of courtyard blocks,
+towers by the station, a tram boulevard, an elevated port highway fed
+by the truck gate, silos at the bulk berth, a tank farm, a marina, a
+wind farm - each piece placed where a real port city would put it. The
+quarry got its haul ramp, screening plant and a levelled works pad (the
+first try had the crusher half-buried in the rising rim), the steel
+mill a wrecks car park and the gas line that fed its power plant, the
+lake boats, a campground and a hotel. OSD gained speed and time, and a
+metric/imperial switch. 413 checks.
+
+### Act XII — A world that connects (2026-09-30)
+
+The user flew the new maps and came back with a list that was really
+one complaint: nothing *connected*. Huge maps were cut off at the view
+distance with a visible edge; rails and pipes met at points instead of
+joining; streets stopped in the middle of fields; tracks crossed at
+right angles without a switch in sight; there was flicker where grass
+lay "inside" another ground; the harbour was huge and empty. Plus: hide
+the mouse cursor, replace the quarry with a construction site, better
+textures, more realistic trucks and cars, and fill every map.
+
+**The edge of the world.** Generated maps switched to *depth* fog:
+clear air near the drone, thickening into exactly the sky's horizon
+colour and fully opaque just before the camera's far plane.
+`Settings._fit_fog` re-fits the distances whenever the view distance
+changes (which it now also can go back up - a Low-then-High quality
+switch used to leave the camera stuck at 650 m). The first screenshot
+showed a dark band at the horizon anyway: past the far plane you see the
+sky's *below-horizon* colour, which was a dark sea blue. Making that
+the fog colour too closed the seam. The hand-made village and factory
+got the same fog.
+
+**The flicker.** Two causes, both depth precision (near plane 5 cm, so
+at 300 m the depth buffer can't separate surfaces ~10 cm apart). The
+village and factory had a 6 km "far ground" plane 3 cm under their
+500 m ground plate - flickering at every distance, and exactly "grass
+in another ground". It became a ring round the plate at the same
+height. For the generated maps, stacked ground surfaces (terrain,
+paving, roads, markings, sleeper beds) are now *ground layers*: a small
+shader (`geo_layer.gdshader`) draws each layer a fraction of its
+distance toward the camera, so the upper one always wins, at any range,
+while moving it only millimetres up close. It also got FakeShadows'
+mask (the old shadow shader would have replaced it) and a large-scale
+brightness variation so tiled grass stops reading as a grid.
+
+**Things that connect.** Three new builders on one idea - a `Route` is
+laid out like a surveyor would: straights and circular curves, each
+piece starting where the last ended, in its direction. `Geo.sweep`
+extrudes any cross-section along it, so a rail, a road with kerbs, a
+ballast bed or a pipe is one unbroken piece through every bend.
+`Rails` adds real turnouts: the diverging track leaves tangentially
+through a 1:9 switch (R 190 m, the common station turnout), with the
+point machine at the toe, a frog where the inner rails cross and check
+rails opposite; crossovers, buffer stops, signals, overhead line, and
+trains that stand on curved track (each vehicle on the chord between
+its bogies). `Roads` has junctions (roads end at them, never in a
+field), pavements, markings, lamps, parked cars and traffic, viaducts,
+and a whole street grid whose edge streets run on out of the map; past
+a few hundred metres they keep only their surface. Pipes get rounded
+elbows (`Route.rounded`).
+
+**The harbour, smaller and full.** Rebuilt at about a quarter of the
+area: a container terminal, a rail branch that curves round at R 250 m
+into four loading tracks reached through a ladder of turnouts, a
+double-track main line through a *through* station (both throats real
+turnouts, a 280 m glass barrel vault over four platform tracks), freight
+sidings with a loco shed, two steel truss road bridges over the tracks,
+the old harbour basin with brick warehouses, the city grid with towers
+by the station and a tram boulevard, and cheap filler blocks on the
+continued street pattern so the city fades into the haze instead of
+ending. Every rail and road leaves the map or ends at a buffer stop, a
+junction, a gate or a car park.
+
+**Construction Site** replaced the quarry: an 18-storey concrete frame
+with open floors to fly through, the core three storeys ahead, the
+climbing-formwork screen on top, two lattice tower cranes, a 12 m pit
+behind sheet piles with struts and a ramp, a steel frame, a pump truck
+reaching the deck, the site yard, and an S-Bahn on brick arches.
+
+The steel mill's branch line had simply ended in a hill 400 m west; now
+a valley is carved along it (and along the roads south and east, and
+the access road up to the town) so they run on to the horizon. Its
+torpedo line used to meet the main line at a right angle; now it
+leaves through a turnout and two reverse curves. The mountain lake got
+a valley road cut into the hillside, from the south past the dam,
+through the village to the cabin. The small maps got ground to the
+horizon and streets that go somewhere.
+
+**Vehicles** are now real silhouettes (`Geo.prism` extrudes a side
+outline across the width - bonnet, windscreen, roof, boot and wheel
+arches in one polygon) with a glass greenhouse, pillars, mirrors,
+bumpers, plates and lights; cab-over lorries with fuel tanks and side
+skirts; coaches with window rows; site machines.
+
+**Performance, measured.** The first harbour took 52 s to build: every
+car was ~10 ms of GDScript geometry, and there were thousands. Cars now
+go through `Fleet`: each kind built once per heading (the baked light
+depends on it) and tinted once per paint colour, then copied into
+merged chunk meshes with `SurfaceTool.append_from` - C++, fast. The
+construction site then ran at 15 FPS; `SH_PERF=1` printed 1769 draw
+calls. The biggest single cause was a one-liner: each car model had
+been built with its *own copies* of the vehicle materials, so no two
+cars could share a mesh - 1930 separate draws. Sharing the materials,
+batching long surfaces and small details in 256 m cells (and not
+drawing details past 450 m), and one tinted plaster material for all
+house colours (`Geo.tint`) took it to 482 draws and 41 FPS. Harbour
+~10 s to load, 47 FPS at spawn; every map 40+.
+
+413 checks, all passing (the construction map's reset check failed
+once - the spawn was 30 cm up and the drone settled more than the
+test's 20 cm; the spawn now sits at rest height).
+
 ## Recurring engineering themes
 
 A few patterns repeat often enough across all 13 commits to be the

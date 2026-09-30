@@ -48,6 +48,7 @@ func is_open() -> bool:
 
 func open() -> void:
 	get_tree().paused = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	visible = true
 	_card.visible = true
 	_refresh_drone_label()
@@ -138,7 +139,7 @@ func _build_card() -> Control:
 func _refresh_drone_label() -> void:
 	var d: Dictionary = Drone.PROFILES.get(Settings.selected_drone, Drone.PROFILES["seeker3"]).display
 	_drone_name.text = d.name
-	_drone_tags.text = "The school is Tiny Whoop only" if _drone_locked else "  ·  ".join(d.tags)
+	_drone_tags.text = "The school is Tiny Whoop only" if _drone_locked else Settings.spec_tags(d.tags)
 
 ## Swaps the frame in place (mass, thrust, drag, collision, model - see
 ## Drone.apply_profile) and puts it back on the spawn point, disarmed.

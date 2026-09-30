@@ -136,16 +136,33 @@ func _kitchen() -> void:
 	geo.box(Vector3(-14, 0.52, 7), Vector3(0.1, 1.04, 0.1), "metal")
 	geo.box(Vector3(-12, 0.5, -9), Vector3(4, 1.0, 1.2), "accent")            # reception desk
 
-## The city 20 m below the windows.
+## The city 20 m below the windows: the street grid round this block
+## (out into the haze), traffic, blocks and towers.
 func _city() -> void:
-	geo.slab(Rect2(-300, -300, 600, 600), -20.0, 0.5, "street", false)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 12
-	for i in range(70):
-		var p := Vector2(rng.randf_range(-220, 220), rng.randf_range(-220, 220))
-		if absf(p.x) < 40 and absf(p.y) < 35:
-			continue
-		var h: float = rng.randf_range(10, 70)
-		geo.box(Vector3(p.x, -20 + h * 0.5, p.y), Vector3(rng.randf_range(14, 30), h, rng.randf_range(14, 30)), "city", 0.0, false, false)
+	var roads := Roads.new(geo, rng, fleet)
+	var city := City.new(geo, rng, fleet)
+	var y: float = -20.0
+	geo.add_material("ground_far", Geo.ground_mat(MapTextures.get_tex("asphalt"), Color.WHITE, 7.0, 0, 0.3))
+	geo.slab(Rect2(-3000, -3000, 6000, 6000), y, 0.5, "ground_far", false)
+	var xs: Array = [-150.0, -50.0, 50.0, 150.0]
+	var zs: Array = [-130.0, -40.0, 40.0, 130.0]
+	var blocks: Array[Rect2] = roads.grid(xs, zs, [12.0, 14.0, 14.0, 12.0], [12.0, 14.0, 14.0, 12.0], 3.0, y, {"n": 1500.0, "s": 1500.0, "w": 1500.0, "e": 1500.0}, {"traffic": 18.0, "lamps": 32.0, "detail": 300.0})
+	for r: Rect2 in blocks:
+		if r.has_point(Vector2(0, 0)):
+			continue # this building's block
+		if r.get_center().length() > 130.0:
+			city.filler_block(r, y, 4, 10)
+		elif rng.randf() < 0.3:
+			city.tower(r, y, rng.randf_range(35.0, 80.0))
+		else:
+			city.perimeter_block(r, y, 5, 9)
+	for i in range(-6, 6):
+		for j in range(-6, 6):
+			var c := Vector2(i * 100.0 + 50.0, j * 90.0 + 45.0)
+			if absf(c.x) < 170.0 and absf(c.y) < 150.0:
+				continue
+			city.filler_block(Rect2(c.x - 38.0, c.y - 33.0, 76.0, 66.0), y, 4, 12)
 	# This building's own shell below the office floor.
 	geo.box(Vector3(0, -10.2, 0), Vector3(36.4, 20, 22.4), "wall", 0.0, false, false)

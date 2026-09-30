@@ -34,7 +34,11 @@ Research notes behind the choices are at the bottom.
       see CLAUDE.md). Old maps look far more 3D now.
 - [x] 7. Race Arena (indoor LED gates).
 
-All 12 maps exist. Self-test: 412 checks. Phase 2 remaining: classic/KISS rate presets, replay, key/button bindings.
+All 12 maps exist. Self-test: 413 checks.
+- [x] 2026-09-30: no visible world edge (depth fog), no ground flicker
+      (ground layers), connected rails/roads/pipes with real turnouts,
+      streets and tracks run out of every map, realistic vehicles,
+      cursor hidden in flight, 40+ FPS at spawn on every map. Phase 2 remaining: classic/KISS rate presets, replay, key/button bindings.
 
 ## Phase 2 - Sim features pilots expect (Liftoff / Velocidrone baseline)
 
@@ -84,8 +88,8 @@ New:
        in a dark hall, multi-level course.
 8. [x] Whoop race - Office (Low). Small gates (~40 cm).
 9. [x] Parking garage bando - Medium.
-10. [x] Quarry - High.
-11. [x] Harbour & Central Station - High (port, rail terminal, yard, station).
+10. [x] Construction Site - High (replaced the quarry, 2026-09-30).
+11. [x] Harbour & Central Station - High (rebuilt compact and dense 2026-09-30: through station with real turnouts, terminal branch, city grid).
 12. [x] Mountain lake & forest - High.
 
 Map building approach (implemented - scripts/maps/): `BuiltMap` base

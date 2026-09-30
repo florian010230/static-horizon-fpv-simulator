@@ -1,14 +1,14 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://scripts/maps/quarry.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/maps/construction_site.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/Drone.tscn" id="2"]
 [ext_resource type="PackedScene" path="res://scenes/UI.tscn" id="3"]
 
-[node name="Quarry" type="Node3D"]
+[node name="ConstructionSite" type="Node3D"]
 script = ExtResource("1")
 
 [node name="Drone" parent="." instance=ExtResource("2")]
-position = Vector3(190, 0.5, 51)
-rotation = Vector3(0, 1.5708, 0)
+position = Vector3(120, 0.15, 88)
+rotation = Vector3(0, 0.45, 0)
 
 [node name="UI" parent="." instance=ExtResource("3")]

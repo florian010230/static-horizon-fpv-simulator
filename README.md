@@ -57,10 +57,10 @@ performance and can filter by it:
 | Map | Tier | What it is |
 |---|---|---|
 | Abandoned Steel Mill | High | A whole derelict integrated steelworks in a forested valley, laid out along the real process: rail yard, ore/coal stockyard with an ore bridge, coke ovens and quench tower, two blast furnaces with hot stoves, skip bridges and dust catchers, torpedo cars to the BOF shop, rolling mill hall, power plant with cooling tower. Hollow gas main and conveyor galleries to fly through, holes in every hall. |
-| Quarry | High | A 60 m open pit cut in six benches with a flooded bottom, an older flooded pit, crusher, conveyor, haul trucks, a village, forest to the horizon. |
+| Construction Site | High | A city block under construction: an 18-storey concrete frame with open floors, two lattice tower cranes, a 12 m excavation pit with sheet piles and struts, a steel frame, site machines, the city grid round it and an S-Bahn on brick arches. |
 | Mountain Lake | High | An alpine lake under rocky peaks: pine forest to the treeline, a lakeside village, cabin and pier, chapel, dam, waterfall, cable car, mountains to the horizon. |
 | Parking Garage | Medium | An abandoned multi-storey car park: 2.7 m decks, two-lane ramps, collapsed slabs, broken parapets, stair towers. |
-| Harbour & Central Station | High | A port city's rail system laid out the way goods move: ships and ship-to-shore cranes, container stacks, an intermodal rail terminal with gantry cranes and container trains, a marshalling yard with a hump and hundreds of wagons, a locomotive depot, a four-track electrified main line under road bridges, and a central station with a 250 m three-bay arched train shed full of intercity trains. |
+| Harbour & Central Station | High | A compact port city where everything connects: container terminal with ship-to-shore and gantry cranes, a rail branch curving into the terminal's loading tracks, a double-track main line through a through-station (real 1:9 turnouts, a 280 m glass train shed), freight sidings, road bridges over the railway, the old harbour basin with a marina and brick warehouses, grain silos, an oil terminal, and a city grid with towers, a tram boulevard and traffic. Rails and roads run out of the map into the haze. |
 | Race Arena | Medium | Indoor league race with glowing LED gates, a tunnel, a scaffold tower gate. |
 | Race Field | Low | A MultiGP-style club race: standard 5 ft gates, ladder, tower, dive gate, hurdle, flags, pits. |
 | Office Whoop Race | Low, whoop | 60 cm gates between desks on a 5th floor, glass meeting room, city below. |
@@ -68,7 +68,8 @@ performance and can filter by it:
 
 In flight the top left shows one status line (armed state, mode,
 throttle, FPS; the key list is in the pause menu). A Betaflight-style
-**OSD** shows throttle and altitude at the right; with "Battery
+**OSD** shows throttle, altitude, speed and flight time at the right
+(metric or imperial - Settings -> Display -> Units); with "Battery
 simulation" on, the pack voltage (total and per cell), mAh used and
 flight time appear top left, with a LOW BATTERY warning. The High maps
 have only light haze now, a coarse terrain ring out to the horizon so
@@ -858,9 +859,28 @@ shadow outline per piece for the ground shadows, and baked light.
 `Terrain` builds chunked heightfields with HeightMapShape3D collision,
 `Forest` plants thousands of trees as MultiMeshes with trunk/crown
 colliders, `MapTextures` makes rust, concrete, brick, rock and more from
-seamless noise, `RaceCourse` adds gates and lap timing. The .tscn holds
+seamless noise, `RaceCourse` adds gates and lap timing, `Vehicles` shapes cars, lorries,
+buses, trams, boats, locomotives, intercity trains and freight wagons
+like the real thing (sloped bonnets and noses, glass cabins, wheels with
+rims, bogies, pantographs), `MapProps` builds houses and small towns. The .tscn holds
 only the Drone (its spawn - movable in the editor) and the UI; the map
 is registered once in `MapCatalog`.
+
+Things that have to connect are laid out as a `Route` - straights and
+circular curves, each piece continuing the last, so nothing kinks - and
+extruded with `Geo.sweep`: `Rails` (ballast, sleepers, rails, 1:9
+turnouts with frog and check rails, crossovers, buffer stops, signals,
+overhead line, trains standing on curved track), `Roads` (junctions,
+kerbs and pavements, markings, lamps, parked cars and traffic,
+viaducts, whole street grids whose edge streets run out of the map),
+pipes with rounded elbows. `City` builds perimeter blocks, towers,
+parks, car parks and cheap filler blocks for the far distance; `Fleet`
+turns thousands of cars into a few merged meshes per 128 m chunk.
+Stacked ground surfaces are ground layers (`shaders/geo_layer.gdshader`)
+so they never flicker, and every outdoor map uses depth fog that fades
+into the horizon colour just before the view distance - the world has
+no visible edge. `SH_PERF=1` prints draw calls and FPS while a
+generated map runs.
 
 ## Known gaps (before this is really ready for the FPV world)
 

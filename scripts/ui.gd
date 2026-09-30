@@ -111,9 +111,10 @@ func _build_osd() -> void:
 	# simulation on); throttle and altitude at the right, mid-height.
 	_osd_label("bat", Control.PRESET_TOP_LEFT, Vector2(16, 52), HORIZONTAL_ALIGNMENT_LEFT, 24)
 	_osd_label("mah", Control.PRESET_TOP_LEFT, Vector2(16, 84), HORIZONTAL_ALIGNMENT_LEFT, 20)
-	_osd_label("time", Control.PRESET_TOP_LEFT, Vector2(16, 112), HORIZONTAL_ALIGNMENT_LEFT, 20)
-	_osd_label("thr", Control.PRESET_CENTER_RIGHT, Vector2(-48, -20), HORIZONTAL_ALIGNMENT_RIGHT, 24)
-	_osd_label("alt", Control.PRESET_CENTER_RIGHT, Vector2(-48, 14), HORIZONTAL_ALIGNMENT_RIGHT, 24)
+	_osd_label("thr", Control.PRESET_CENTER_RIGHT, Vector2(-48, -70), HORIZONTAL_ALIGNMENT_RIGHT, 24)
+	_osd_label("alt", Control.PRESET_CENTER_RIGHT, Vector2(-48, -36), HORIZONTAL_ALIGNMENT_RIGHT, 24)
+	_osd_label("spd", Control.PRESET_CENTER_RIGHT, Vector2(-48, -2), HORIZONTAL_ALIGNMENT_RIGHT, 24)
+	_osd_label("time", Control.PRESET_CENTER_RIGHT, Vector2(-48, 32), HORIZONTAL_ALIGNMENT_RIGHT, 24)
 	_osd_label("warn", Control.PRESET_CENTER, Vector2(0, 70), HORIZONTAL_ALIGNMENT_CENTER, 30)
 
 func _update_osd(delta: float) -> void:
@@ -132,17 +133,21 @@ func _update_osd(delta: float) -> void:
 	_osd_labels.bat.text = "%.1fV  %.2fV" % [b.pack_v(), b.cell_v]
 	_osd_labels.mah.text = "%dmAh" % int(b.used_mah)
 	_osd_labels.time.text = "%02d:%02d" % [t / 60, t % 60]
-	for k in ["bat", "mah", "time"]:
+	for k in ["bat", "mah"]:
 		_osd_labels[k].visible = bat_on
 	_osd_labels.thr.text = "THR %d%%" % int(round(InputManager.get_throttle() * 100.0))
-	_osd_labels.alt.text = "ALT %dm" % maxi(0, int(round(_drone.global_position.y - _drone._spawn_transform.origin.y)))
-	_osd_labels.thr.visible = osd_on
-	_osd_labels.alt.visible = osd_on
+	_osd_labels.alt.text = "ALT " + Settings.height_text(maxf(0.0, _drone.global_position.y - _drone._spawn_transform.origin.y))
+	_osd_labels.spd.text = "SPD " + Settings.speed_text(_drone.linear_velocity.length())
+	for k in ["thr", "alt", "spd", "time"]:
+		_osd_labels[k].visible = osd_on
 	var warn: String = "LOW BATTERY" if bat_on and InputManager.armed and b.is_low() else ""
 	_osd_warn_t += delta
 	_osd_labels.warn.text = warn
 	_osd_labels.warn.modulate.a = 0.35 + 0.65 * absf(sin(_osd_warn_t * 5.0))
 	_osd_labels.bat.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3) if b.is_low() else Color.WHITE)
+
+func _exit_tree() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func set_drone(drone: Drone) -> void:
 	_drone = drone
@@ -154,6 +159,11 @@ func set_drone(drone: Drone) -> void:
 
 func _process(delta: float) -> void:
 	_handle_toggle()
+	# No mouse cursor over the FPV view; it comes back in the pause menu
+	# (which pauses this node) and with the tuning panel open.
+	var want: Input.MouseMode = Input.MOUSE_MODE_VISIBLE if _panel_visible else Input.MOUSE_MODE_HIDDEN
+	if Input.mouse_mode != want:
+		Input.mouse_mode = want
 	_update_hud()
 	_update_osd(delta)
 	if _tuning_panel:

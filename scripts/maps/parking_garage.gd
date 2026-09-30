@@ -38,8 +38,8 @@ func build() -> void:
 	geo.ao_height = 1.2
 	geo.add_material("concrete", Geo.tex_mat(MapTextures.get_tex("old_concrete"), Color.WHITE, 5.0))
 	geo.add_material("deck", Geo.tex_mat(MapTextures.get_tex("old_concrete"), Color(0.85, 0.85, 0.84), 6.0))
-	geo.add_material("asphalt", Geo.tex_mat(MapTextures.get_tex("cracked_asphalt"), Color.WHITE, 8.0))
-	geo.add_material("grass", Geo.tex_mat(MapTextures.get_tex("meadow"), Color.WHITE, 8.0))
+	geo.add_material("asphalt", Geo.ground_mat(MapTextures.get_tex("cracked_asphalt"), Color.WHITE, 8.0, 1))
+	geo.add_material("grass", Geo.ground_mat(MapTextures.get_tex("meadow"), Color.WHITE, 8.0, 0, 0.45))
 	geo.add_material("paint_line", Geo.flat_mat(Color(0.85, 0.82, 0.6)))
 	geo.add_material("rust", Geo.tex_mat(MapTextures.get_tex("rust"), Color.WHITE, 4.0))
 	geo.add_material("lamp", Geo.glow_mat(Color(0.9, 0.95, 1.0), 0.8))
@@ -50,9 +50,8 @@ func build() -> void:
 	for c in [["tag_pink", Color(0.9, 0.25, 0.6)], ["tag_green", Color(0.3, 0.8, 0.3)], ["tag_yellow", Color(0.95, 0.8, 0.15)], ["tag_blue", Color(0.2, 0.5, 0.95)]]:
 		geo.add_material(c[0], Geo.flat_mat(c[1], 0.6))
 
-	geo.slab(Rect2(-200, -200, 400, 400), 0.0, 0.5, "grass")
-	geo.slab(Rect2(-45, -24, 90, 48), 0.06, 0.1, "asphalt") # ground level + apron
-	geo.slab(Rect2(-200, 26, 400, 10), 0.06, 0.1, "asphalt")  # street
+	geo.slab(Rect2(-3000, -3000, 6000, 6000), 0.0, 0.5, "grass")
+	geo.slab(Rect2(-45, -24, 90, 50), 0.06, 0.1, "asphalt") # ground level + apron
 	for lvl in range(1, LEVELS):
 		_deck(lvl)
 	for lvl in range(LEVELS):
@@ -150,22 +149,36 @@ func _stair_tower(o: Vector3) -> void:
 		geo.slab(Rect2(o.x - 2, o.z - 2, 4, 1.6), y + 1.5, 0.15, "concrete")      # landing
 	geo.box(o + Vector3(0, h + 0.1, 0), Vector3(4.4, 0.2, 4.4), "concrete")
 
+## The street in front (out of the map both ways, with a side street
+## north past the garage's east side), town houses and blocks along
+## both, a row of shops opposite, the grid carrying on into the haze.
 func _surroundings() -> void:
-	for i in range(18):
-		var x: float = -170 + i * 20
-		if absf(x) < 50:
-			continue
-		var hgt: float = rng.randf_range(8, 25)
-		geo.box(Vector3(x, hgt * 0.5, 48), Vector3(16, hgt, 14), "city")
-	for i in range(10):
-		var z: float = -150 + i * 22
-		var hgt: float = rng.randf_range(10, 30)
-		geo.box(Vector3(90, hgt * 0.5, z), Vector3(18, hgt, 16), "city")
-	var trees: Array = []
-	for i in range(80):
-		var p := Vector3(rng.randf_range(-180, 60), 0, rng.randf_range(-180, -40))
-		trees.append([p, rng.randi_range(0, 1), rng.randf_range(0.8, 1.3)])
-	Forest.plant(self, trees, self)
+	var roads := Roads.new(geo, rng, fleet)
+	var city := City.new(geo, rng, fleet)
+	roads.junction(Vector3(60, 0, 31), Vector2(10, 10), ["w", "e", "n"], 2.5)
+	var w := Route.from(Vector3(55, 0, 31), 180.0).straight(3055.0, 20.0)
+	var e := Route.from(Vector3(65, 0, 31), 0.0).straight(3000.0, 20.0)
+	var n := Route.from(Vector3(60, 0, 26), -90.0).straight(3000.0, 20.0)
+	for r in [w, e, n]:
+		roads.road(r, 10.0, {"walk": 2.5, "lamps": 28.0, "detail": 450.0})
+		roads.parked(Route.from_pts(r.slice(8.0, 400.0)), 3.8, 0.5)
+		roads.traffic(Route.from_pts(r.slice(0.0, 600.0)), 5.0, 1, 12.0, 0.1)
+	# Opposite the garage: perimeter blocks along the street.
+	var x: float = -560.0
+	while x < 560.0:
+		var bw: float = rng.randf_range(60.0, 90.0)
+		if absf(x + bw * 0.5 - 60.0) > bw * 0.5 + 8.0:
+			city.perimeter_block(Rect2(x, 38.5, bw, 50.0), 0.0, 3, 6)
+		x += bw + 12.0
+	# Behind and beside the garage: blocks and the east side street's houses.
+	for k in range(12):
+		var z: float = -40.0 - k * 60.0
+		city.perimeter_block(Rect2(68.5, z - 50.0, 60.0, 50.0), 0.0, 3, 5)
+		if k > 0:
+			city.perimeter_block(Rect2(-80.0, z - 50.0, 128.0, 50.0), 0.0, 3, 5)
+	for k in range(8):
+		city.perimeter_block(Rect2(-160.0 - k * 80.0, -40.0, 70.0, 60.0), 0.0, 3, 5)
+	Forest.plant(self, city.trees, self)
 
 func _in_hole(lvl: int, p: Vector2, margin: float) -> bool:
 	for h: Rect2 in HOLES.get(lvl, []):

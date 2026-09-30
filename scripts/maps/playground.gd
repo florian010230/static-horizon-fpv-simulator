@@ -31,11 +31,10 @@ func preview_views() -> Array:
 
 func build() -> void:
 	geo.ao_height = 1.2
-	geo.add_material("grass", Geo.tex_mat(MapTextures.get_tex("meadow"), Color.WHITE, 6.0))
-	geo.add_material("rubber", Geo.tex_mat(MapTextures.get_tex("rubber"), Color.WHITE, 2.0))
+	geo.add_material("grass", Geo.ground_mat(MapTextures.get_tex("meadow"), Color.WHITE, 6.0, 0, 0.45))
+	geo.add_material("rubber", Geo.ground_mat(MapTextures.get_tex("rubber"), Color.WHITE, 2.0, 2, 0.2))
 	geo.add_material("sand", Geo.tex_mat(MapTextures.get_tex("sand"), Color.WHITE, 2.0))
-	geo.add_material("paving", Geo.tex_mat(ProceduralTextures.paving_texture(), Color(0.78, 0.76, 0.72), 2.0))
-	geo.add_material("asphalt", Geo.tex_mat(ProceduralTextures.asphalt_plain_texture(), Color(0.32, 0.32, 0.34), 6.0))
+	geo.add_material("paving", Geo.ground_mat(ProceduralTextures.paving_texture(), Color(0.78, 0.76, 0.72), 2.0, 1, 0.2))
 	geo.add_material("wood", Geo.tex_mat(MapTextures.get_tex("wood"), Color.WHITE, 1.5))
 	geo.add_material("red", Geo.flat_mat(Color(0.78, 0.16, 0.12), 0.5))
 	geo.add_material("blue", Geo.flat_mat(Color(0.14, 0.36, 0.72), 0.5))
@@ -50,14 +49,13 @@ func build() -> void:
 	geo.add_material("hedge", Geo.flat_mat(Color(0.18, 0.34, 0.14), 0.95))
 
 	# Ground layers, 5-6 cm apart (flush layers z-fight at distance).
-	geo.slab(Rect2(-90, -90, 180, 180), 0.0, 0.4, "grass")
+	geo.slab(Rect2(-3000, -3000, 6000, 6000), 0.0, 0.4, "grass")
 	geo.slab(Rect2(-1.2, 1.0, 2.4, 22.0), 0.05, 0.1, "paving")      # path from the gate
 	geo.slab(Rect2(-5, -3, 10, 6), 0.05, 0.1, "paving")              # plaza
 	geo.slab(Rect2(-20.5, -14.5, 17, 15), 0.06, 0.1, "rubber")        # tower
 	geo.slab(Rect2(6.5, -14.5, 12, 9), 0.06, 0.1, "rubber")           # swings
 	geo.slab(Rect2(-19, 3.5, 13, 9), 0.06, 0.1, "rubber")             # tubes/see-saw
-	geo.slab(Rect2(-60, -27, 120, 7), 0.05, 0.1, "asphalt")           # street north
-	geo.slab(Rect2(-60, -20, 120, 1.8), 0.12, 0.2, "paving")          # its sidewalk
+	_street()
 
 	_fence()
 	_play_tower(Vector3(-15, 0, -9))
@@ -194,6 +192,34 @@ func _shelter(o: Vector3) -> void:
 			geo.box(o + Vector3(dx, 1.2, dz), Vector3(0.15, 2.4, 0.15), "wood")
 	geo.box(o + Vector3(0, 2.5, 0), Vector3(4.2, 0.12, 3.2), "roof")
 	geo.box(o + Vector3(0, 0.75, 0), Vector3(3.0, 0.06, 1.0), "wood")
+
+## The street north of the playground: through the neighbourhood and on
+## out of the map both ways, a side street south along the park's east
+## side, parked cars, a few driving, houses along both.
+var rng := RandomNumberGenerator.new()
+
+func _street() -> void:
+	rng.seed = 77
+	var roads := Roads.new(geo, rng, fleet)
+	var city := City.new(geo, rng, fleet)
+	roads.junction(Vector3(34, 0, -23.5), Vector2(7, 7), ["w", "e"], 1.8)
+	var w := Route.from(Vector3(30.5, 0, -23.5), 180.0).straight(3000.0, 20.0)
+	var e := Route.from(Vector3(37.5, 0, -23.5), 0.0).straight(3000.0, 20.0)
+	var side := Route.from(Vector3(34, 0, -20.0), 90.0).straight(3000.0, 20.0)
+	for r in [w, e, side]:
+		roads.road(r, 7.0, {"walk": 1.8, "lamps": 25.0, "detail": 350.0})
+		roads.parked(Route.from_pts(r.slice(0.0, 300.0)), 2.3, 0.4)
+		roads.traffic(Route.from_pts(r.slice(0.0, 500.0)), 4.0, 1, 8.0, 0.0)
+	# Houses along the street (the six opposite the playground are below).
+	for k in range(30):
+		for sgn in [-1.0, 1.0]:
+			var x: float = sgn * (62.0 + k * 16.0)
+			city.house(Vector3(x, 0, -36), 0.0, rng.randf_range(9, 12), 9.0)
+			if absf(x) > 50.0:
+				city.house(Vector3(x, 0, -9), 0.0, rng.randf_range(9, 12), 9.0)
+	for k in range(25):
+		city.house(Vector3(48, 0, 5 + k * 16.0), PI * 0.5, rng.randf_range(9, 12), 9.0)
+	Forest.plant(self, city.trees, self)
 
 ## A row of simple houses across the street, so the playground sits in
 ## a neighbourhood instead of in a void.

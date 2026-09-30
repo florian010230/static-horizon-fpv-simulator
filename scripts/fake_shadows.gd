@@ -156,7 +156,17 @@ static func _convert_ground(node: Node, ground_y: float, mask: Texture2D, region
 			var src: Material = mi.get_surface_override_material(0) if mi.get_surface_override_material_count() > 0 else null
 			if src == null:
 				src = mi.mesh.surface_get_material(0)
-			if src is StandardMaterial3D:
+			if src is ShaderMaterial and (src as ShaderMaterial).shader != null and (src as ShaderMaterial).shader.resource_path.ends_with("geo_layer.gdshader"):
+				# Geo's ground layers take the mask themselves (keeping
+				# their depth layering and texture variation).
+				if not mats.has(src):
+					var gm := src as ShaderMaterial
+					gm.set_shader_parameter("shadow_mask", mask)
+					gm.set_shader_parameter("mask_origin", region.position)
+					gm.set_shader_parameter("mask_size", region.size)
+					gm.set_shader_parameter("shadow_strength", STRENGTH)
+					mats.append(gm)
+			elif src is StandardMaterial3D:
 				var sm := _shader_from(src as StandardMaterial3D, mask, region)
 				mi.set_surface_override_material(0, sm)
 				mats.append(sm)

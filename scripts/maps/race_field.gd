@@ -28,9 +28,9 @@ func preview_views() -> Array:
 func build() -> void:
 	geo.ao_height = 1.5
 	RaceCourse.add_materials(geo)
-	geo.add_material("field", Geo.tex_mat(MapTextures.get_tex("mown_grass"), Color.WHITE, 12.0))
-	geo.add_material("meadow", Geo.tex_mat(MapTextures.get_tex("meadow"), Color(0.95, 0.95, 0.9), 8.0))
-	geo.add_material("gravel", Geo.tex_mat(ProceduralTextures.gravel_texture(), Color(0.7, 0.68, 0.64), 3.0))
+	geo.add_material("field", Geo.ground_mat(MapTextures.get_tex("mown_grass"), Color.WHITE, 12.0, 1, 0.2))
+	geo.add_material("meadow", Geo.ground_mat(MapTextures.get_tex("meadow"), Color(0.95, 0.95, 0.9), 8.0, 0, 0.45))
+	geo.add_material("gravel", Geo.ground_mat(ProceduralTextures.gravel_texture(), Color(0.7, 0.68, 0.64), 3.0, 2, 0.3))
 	geo.add_material("net", Geo.flat_mat(Color(0.08, 0.08, 0.08), 0.9))
 	geo.add_material("post", Geo.flat_mat(Color(0.75, 0.75, 0.75), 0.4, 0.4))
 	geo.add_material("canopy_blue", Geo.flat_mat(Color(0.14, 0.38, 0.85), 0.7))
@@ -42,7 +42,7 @@ func build() -> void:
 	geo.add_material("car_white", Geo.flat_mat(Color(0.85, 0.86, 0.86), 0.3, 0.4))
 	geo.add_material("glass", Geo.flat_mat(Color(0.1, 0.13, 0.16), 0.1, 0.5))
 
-	geo.slab(Rect2(-200, -200, 400, 400), 0.0, 0.4, "meadow")
+	geo.slab(Rect2(-3000, -3000, 6000, 6000), 0.0, 0.4, "meadow")
 	geo.slab(Rect2(-80, -70, 140, 125), 0.05, 0.1, "field")
 	geo.slab(Rect2(-40, 58, 90, 22), 0.05, 0.1, "gravel") # pits + car park
 
@@ -65,9 +65,30 @@ func build() -> void:
 	_pilot_stand(Vector3(12, 0.05, 56))
 	for i in range(4):
 		_tent(Vector3(-30 + i * 9, 0.05, 64), "canopy_blue" if i % 2 == 0 else "canopy_orange")
-	for i in range(7):
-		_car(Vector3(-28 + i * 5.5, 0.05, 75), ["car_red", "car_grey", "car_white"][i % 3])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 21
+	for i in range(14):
+		if rng.randf() < 0.8:
+			fleet.car(Vector3(-36 + i * 3.0, 0.05, 76), PI if i % 2 else 0.0, Fleet.random_paint(rng), ["estate", "suv", "van", "hatch", "pickup"][rng.randi() % 5])
+	_country_road(rng)
 	_trees()
+
+## The lane from the car park to the country road, which runs past the
+## field and on out of the map both ways; a farm and a clubhouse.
+func _country_road(rng: RandomNumberGenerator) -> void:
+	var roads := Roads.new(geo, rng, fleet)
+	roads.junction(Vector3(5, 0, 100), Vector2(7, 7), [], 0.0)
+	roads.road(Route.from(Vector3(5, 0, 80), 90.0).straight(16.5, 4.0), 4.5, {"centre": "none", "old": true})
+	for r in [Route.from(Vector3(1.5, 0, 100), 180.0).straight(900.0, 16.0).arc(1200.0, 8.0, 16.0).straight(2200.0, 20.0),
+			Route.from(Vector3(8.5, 0, 100), 0.0).straight(700.0, 16.0).arc(1500.0, -6.0, 16.0).straight(2400.0, 20.0)]:
+		roads.road(r, 7.0, {"verge": 1.2, "detail": 500.0, "edge_lines": true})
+		roads.traffic(Route.from_pts(r.slice(0.0, 700.0)), 7.0, 1, 6.0, 0.15)
+	var city := City.new(geo, rng, fleet)
+	# Clubhouse by the car park, a farm across the road.
+	city.building(Vector3(40, 0.05, 70), Vector2(14, 8), 0.0, 1, "cty_plaster_warm", "gable", false)
+	city.house(Vector3(-60, 0, 125), 0.0, 14, 10, 2)
+	for k in range(3):
+		city.building(Vector3(-30 + k * 22, 0, 135), Vector2(18, 12), 0.0, 2, "cty_brick", "gable", false)
 
 func after_build() -> void:
 	course.setup("race_field", drone, ui)

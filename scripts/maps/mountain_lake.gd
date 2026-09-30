@@ -17,7 +17,7 @@ var _noise := FastNoiseLite.new()
 var _ridge := FastNoiseLite.new()
 
 func map_env() -> Dictionary:
-	return {"sun_rot": Vector3(-32, 140, 0), "sun_color": Color(1.0, 0.92, 0.8), "fog_density": 0.00028, "aerial": 0.08,
+	return {"sun_rot": Vector3(-32, 140, 0), "sun_color": Color(1.0, 0.92, 0.8), "fog_begin": 450.0, "aerial": 0.08,
 		"sky_top": Color(0.25, 0.45, 0.8), "sky_horizon": Color(0.75, 0.82, 0.9)}
 
 func border() -> Array:
@@ -29,12 +29,72 @@ func preview_views() -> Array:
 		["cabin", Vector3(-25, 6, -110), Vector3(0, 3, -140)],
 		["dam", Vector3(40, 12, 190), Vector3(0, 0, 150)],
 		["ridge", Vector3(-300, 170, -80), Vector3(-100, 40, 0)],
+		["village", Vector3(-120, 25, 60), Vector3(-250, 4, 60)],
+		["road_valley", Vector3(20, 25, 330), Vector3(-80, 5, 180)],
+		["road_north", Vector3(-230, 20, -20), Vector3(-120, 5, -150)],
 	]
 
 ## The lakeside village on the west shore, on levelled ground.
 const VILLAGE := Rect2(-330, -20, 150, 150)
 
+## The valley road: up the outlet valley from the south (out of the
+## map), past the dam, along the shore into the village, then north
+## past the chapel and the cable car station to the cabin's car park.
+## Corner points; the road's own grade comes from the land, smoothed.
+const ROAD_S: Array = [Vector2(0, 2600), Vector2(0, 420), Vector2(-8, 260), Vector2(-60, 200), Vector2(-140, 168), Vector2(-178, 118), Vector2(-183.5, 94)]
+const ROAD_N: Array = [Vector2(-183.5, -8), Vector2(-200, -40), Vector2(-202, -90), Vector2(-150, -135), Vector2(-100, -152), Vector2(-40, -182), Vector2(-12, -184)]
+var _roads: Array = []
+
+func _road_paths() -> Array:
+	if _roads.is_empty():
+		for corners in [ROAD_S, ROAD_N]:
+			var c3: Array = []
+			for q: Vector2 in corners:
+				c3.append(Vector3(q.x, 0, q.y))
+			var pts: Array[Vector3] = Route.rounded(c3, 30.0, 8)
+			var dense := Route.new()
+			dense.pts.append(pts[0])
+			for i in range(1, pts.size()):
+				dense.to(pts[i], 8.0)
+			var ys: Array[float] = []
+			for p in dense.pts:
+				ys.append(maxf(_base_height(p.x, p.z), WATER_Y + 1.6))
+			for i in range(dense.pts.size()):
+				var acc: float = 0.0
+				var n: int = 0
+				for k in range(maxi(i - 6, 0), mini(i + 7, ys.size())):
+					acc += ys[k]
+					n += 1
+				dense.pts[i].y = acc / n
+			var bx := Rect2(Vector2(dense.pts[0].x, dense.pts[0].z), Vector2.ZERO)
+			for p in dense.pts:
+				bx = bx.expand(Vector2(p.x, p.z))
+			_roads.append([dense, bx.grow(40.0)])
+	return _roads
+
+## Terrain with the road cut in: a flat bed at the road's grade, easing
+## back into the hillside over 25 m.
 func _height(x: float, z: float) -> float:
+	var h: float = _base_height(x, z)
+	for r in _road_paths():
+		if not r[1].has_point(Vector2(x, z)):
+			continue
+		var pts: Array[Vector3] = r[0].pts
+		var best: float = INF
+		var fy: float = 0.0
+		for i in range(pts.size() - 1):
+			var a: Vector3 = pts[i]
+			var b: Vector3 = pts[i + 1]
+			var ab := Vector2(b.x - a.x, b.z - a.z)
+			var t: float = clampf(Vector2(x - a.x, z - a.z).dot(ab) / maxf(ab.length_squared(), 0.001), 0.0, 1.0)
+			var d: float = Vector2(x - a.x - ab.x * t, z - a.z - ab.y * t).length()
+			if d < best:
+				best = d
+				fy = lerpf(a.y, b.y, t)
+		h = lerpf(fy - 0.05, h, smoothstep(6.0, 31.0, best))
+	return h
+
+func _base_height(x: float, z: float) -> float:
 	var raw: float = _raw_height(x, z)
 	var ddx: float = maxf(maxf(VILLAGE.position.x - x, x - VILLAGE.end.x), 0.0)
 	var ddz: float = maxf(maxf(VILLAGE.position.y - z, z - VILLAGE.end.y), 0.0)
@@ -88,14 +148,30 @@ func build() -> void:
 	Terrain.build(self, Rect2(-1100, -1100, 2200, 2200), 8.0, _height, geo._mats["terrain"], _tint)
 	Terrain.far_ring(self, Rect2(-1100, -1100, 2200, 2200), Rect2(-6000, -6000, 12000, 12000), 80.0, _height, geo._mats["terrain"], _tint)
 	MapProps.town(geo, VILLAGE, _height, rng)
-	geo.beam(Vector3(-180, 4.1, 55), Vector3(-40, 3.0, -150), Vector2(6, 0.3), "prop_road", true, false)
+	_valley_road()
 	geo.slab(Rect2(-LAKE_R - 20, -LAKE_R - 20, 2 * LAKE_R + 40, 2 * LAKE_R + 80), WATER_Y, 0.2, "water")
 	_cabin(Vector3(0, 0, -150))
 	_chapel(Vector3(-170, 0, -60))
 	_dam(Vector3(0, 0, 165))
 	_waterfall(Vector3(185, 0, -30))
 	_cable_car(Vector3(-100, 0, -130), Vector3(-400, 0, -310))
+	_lake_life()
 	_forest()
+
+func _valley_road() -> void:
+	var roads := Roads.new(geo, rng, fleet)
+	for r in _road_paths():
+		var route: Route = r[0]
+		roads.road(route, 6.5, {"verge": 1.5, "lamps": 0.0, "detail": 900.0, "edge_lines": true})
+		roads.traffic(Route.from_pts(route.slice(0.0, minf(route.length(), 900.0))), 6.5, 1, 10.0, 0.1)
+	# Car park at the cabin end, a bus at the cable car station.
+	var cp := Vector3(-12, 0, -184)
+	cp.y = _height(cp.x, cp.z)
+	geo.slab(Rect2(cp.x - 4, cp.z - 9, 22, 12), cp.y + 0.04, 0.3, "prop_road", false)
+	for k in range(4):
+		fleet.car(Vector3(cp.x + k * 3.0, cp.y + 0.05, cp.z - 6), 0.0, Fleet.random_paint(rng), ["suv", "estate", "hatch"][k % 3])
+	var bs := Vector3(-100, 0, -148)
+	Vehicles.bus(geo, Vector3(bs.x, _height(bs.x, bs.z) + 0.05, bs.z), PI * 0.4, "veh_paint7")
 
 func _ground(x: float, z: float) -> float:
 	return maxf(_height(x, z), WATER_Y)
@@ -168,6 +244,39 @@ func _cable_car(a: Vector3, b: Vector3) -> void:
 	geo.box(mid, Vector3(2.4, 2.6, 2.2), "red")
 	geo.box(mid + Vector3(0, 2.2, 0), Vector3(0.2, 2.0, 0.2), "steel")
 
+## People at the lake: boats (moored at the pier and out on the water),
+## a campground on the east shore with tents and caravans, a lakeside
+## hotel by the village, the cable car's two stations.
+func _lake_life() -> void:
+	Vehicles.ensure_materials(geo)
+	for i in range(4):
+		Vehicles.boat(geo, Vector3(-4 + (i % 2) * 8, -0.2, -120 + i * 6), PI * 0.5, i == 3)
+	for i in range(6):
+		var a: float = rng.randf() * TAU
+		var r: float = rng.randf_range(30, 110)
+		Vehicles.boat(geo, Vector3(cos(a) * r, -0.2, sin(a) * r), rng.randf() * TAU, rng.randf() < 0.6)
+	var camp := Vector3(150, 0, 60)
+	for i in range(14):
+		var q := camp + Vector3(rng.randf_range(-25, 25), 0, rng.randf_range(-25, 25))
+		q.y = _ground(q.x, q.z)
+		if i % 3 == 0:
+			geo.box(q + Vector3(0, 1.4, 0), Vector3(2.3, 2.4, 6.5), "white", rng.randf() * TAU)
+		else:
+			geo.cone(q, q + Vector3(0, 1.6, 0), 1.8, 0.05, ["red", "steel", "wood"][rng.randi() % 3], 4)
+	var hotel := Vector3(-200, 0, 150)
+	hotel.y = _ground(hotel.x, hotel.z)
+	geo.box(hotel + Vector3(0, 7, 0), Vector3(40, 14, 16), "white")
+	geo.box(hotel + Vector3(0, 8, 8.1), Vector3(38, 10, 0.1), "wood", 0.0, false, false)
+	for s in [-1.0, 1.0]:
+		geo.box_xf(Transform3D(Basis(Vector3.RIGHT, s * 0.5), hotel + Vector3(0, 16, s * 4.5)), Vector3(42, 0.3, 10), "roof")
+	for i in range(8):
+		fleet.car(Vector3(hotel.x - 18 + i * 5, hotel.y + 0.1, hotel.z + 16), 0.0, Fleet.random_paint(rng), "suv" if i % 3 == 0 else "hatch")
+	# Cable car stations at both ends of the line.
+	for end in [Vector3(-100, 0, -130), Vector3(-400, 0, -310)]:
+		var g: float = _ground(end.x, end.z)
+		geo.box(Vector3(end.x, g + 4, end.z), Vector3(10, 8, 14), "concrete")
+		geo.box(Vector3(end.x, g + 8.4, end.z), Vector3(11, 0.8, 15), "red")
+
 func _forest() -> void:
 	var trees: Array = []
 	var attempts: int = 0
@@ -177,6 +286,8 @@ func _forest() -> void:
 		var z: float = rng.randf_range(-1090, 1090)
 		if VILLAGE.grow(10.0).has_point(Vector2(x, z)):
 			continue
+		if absf(_height(x, z) - _base_height(x, z)) > 0.8:
+			continue # the road's cutting
 		var y: float = _height(x, z)
 		if y < 1.5 or y > 110.0 + rng.randf() * 20.0:
 			continue # water / above the treeline
