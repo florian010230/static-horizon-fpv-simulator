@@ -1,31 +1,46 @@
 [gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/hollow_building.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/house_interior.gd" id="2"]
 
 [sub_resource type="PrismMesh" id="PrismMesh_roof"]
-size = Vector3(9, 3, 9)
+size = Vector3(10, 3.4, 10)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_roof"]
 albedo_color = Color(0.55, 0.28, 0.22, 1)
 
-[sub_resource type="BoxShape3D" id="BoxShape3D_roof"]
-size = Vector3(9, 3, 9)
+[sub_resource type="ConvexPolygonShape3D" id="ConvexShape3D_roof"]
+points = PackedVector3Array(-5, -1.7, -5, 5, -1.7, -5, 5, -1.7, 5, -5, -1.7, 5, 0, 1.7, -5, 0, 1.7, 5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_chimney"]
+size = Vector3(0.7, 2.2, 0.7)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_chimney"]
+albedo_color = Color(0.55, 0.32, 0.26, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_chimney"]
+size = Vector3(0.7, 2.2, 0.7)
 
 [node name="SmallHouse" type="StaticBody3D"]
 script = ExtResource("1")
 size = Vector3(9, 7, 9)
 wall_thickness = 0.4
-front_width = 2.2
-front_bottom = 0.0
-front_top = 5.0
-right_width = 2.5
-right_bottom = 3.0
-right_top = 5.5
+storeys = 2
+stair_hole = Vector4(-2.6, -2.2, 2.4, 3.4)
+front_doors = PackedVector4Array(2.0, 1.6, 0, 2.4)
+front_windows = PackedVector4Array(-2.2, 1.4, 0.9, 2.3, -2.2, 1.2, 4.4, 5.7, 2.0, 1.2, 4.4, 5.7)
+back_doors = PackedVector4Array(2.0, 1.4, 4.3, 5.7)
+back_windows = PackedVector4Array(-2.0, 1.4, 0.9, 2.3, 2.0, 1.4, 0.9, 2.3, -2.0, 1.2, 4.4, 5.7)
+left_windows = PackedVector4Array(0, 1.4, 0.9, 2.3, 0, 1.2, 4.4, 5.7)
+right_doors = PackedVector4Array(-1.5, 1.8, 0.9, 2.4)
+right_windows = PackedVector4Array(1.5, 1.2, 4.4, 5.7)
 has_partition = true
 partition_local_z = 1.5
-partition_gap_width = 2.2
-wall_color = Color(0.7, 0.52, 0.38, 1)
-floor_color = Color(0.55, 0.5, 0.42, 1)
+partition_gap_width = 1.4
+partition_gap_top = 2.3
+partition_gap_offset = 2.0
+interior_style = "house"
+exterior_style = "plaster"
 
 [node name="Roof" type="StaticBody3D" parent="."]
 position = Vector3(0, 8.9, 0)
@@ -35,4 +50,17 @@ mesh = SubResource("PrismMesh_roof")
 surface_material_override/0 = SubResource("StandardMaterial3D_roof")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Roof"]
-shape = SubResource("BoxShape3D_roof")
+shape = SubResource("ConvexShape3D_roof")
+
+[node name="Chimney" type="StaticBody3D" parent="."]
+position = Vector3(-2.5, 9.6, 1.8)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Chimney"]
+mesh = SubResource("BoxMesh_chimney")
+surface_material_override/0 = SubResource("StandardMaterial3D_chimney")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Chimney"]
+shape = SubResource("BoxShape3D_chimney")
+
+[node name="Interior" type="StaticBody3D" parent="."]
+script = ExtResource("2")

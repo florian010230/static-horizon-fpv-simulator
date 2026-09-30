@@ -2,103 +2,284 @@ extends CanvasLayer
 
 ## The real entry point (see project.godot run/main_scene) - a proper
 ## menu outside gameplay, matching what every real FPV sim ships with,
-## rather than dropping straight into flying. Built in code, same
-## approach as ui.gd, deliberately just flat 2D UI (no 3D background)
-## so it's essentially free to render.
+## rather than dropping straight into flying. Built entirely in code (no
+## hand-laid-out UI in the .tscn), deliberately flat 2D apart from the
+## small drone-preview viewport, so it's essentially free to render.
+##
+## Look: the companion website's dark theme (css/style.css,
+## [data-theme="dark"]) - the same background, card, border, text and
+## link colors, 16 px rounded cards with a soft shadow, pill-shaped
+## "eyebrow" labels, the Oswald wordmark and the artificial-horizon
+## logo in its sky-blue/ground-orange brand colors.
+##
+## Layout rule learned the hard way: every sub-screen is a fixed-size
+## card whose header row (with Back) is always visible, and whose content
+## scrolls if it ever outgrows the card. The old Settings screen was a
+## plain column taller than the window - its Back button sat below the
+## bottom edge, so there was no visible way out.
 
-const FPS_MIN: int = 50
-const FPS_MAX: int = 250 ## top of the slider means uncapped, not literally 250
+const MENU_FPS: int = 30
 
-var _main_panel: VBoxContainer
-var _settings_panel: VBoxContainer
-var _map_panel: VBoxContainer
-var _fps_value_label: Label
+## The maps themselves live in MapCatalog (scripts/map_catalog.gd).
+
+## Where Back / Esc goes from each screen.
+const BACK_TARGET := {"map": "main", "about": "main"}
+const WEBSITE := "https://statichorizonfpv.com/"
+
+var _settings: SettingsScreens
+
+var _screens: Dictionary = {}
+var _current: String = "main"
+
+var _preview_drone_root: Node3D
+var _preview_name: Label
+var _preview_tags: Label
+var _preview_text: Label
 
 func _ready() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color(0.09, 0.1, 0.12)
+	# The menu doesn't need 60+ FPS for one slowly turning preview - and
+	# a menu left open should not spin up a laptop's fans (it did: GPU at
+	# ~50% just sitting here, measured). Settings.max_fps comes back the
+	# moment a map loads.
+	Engine.max_fps = MENU_FPS
+
+	var bg := TextureRect.new()
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_SCALE
+	bg.texture = _background_texture()
 	add_child(bg)
+	var horizon := Control.new()
+	horizon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	horizon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	horizon.draw.connect(func(): _draw_horizon(horizon))
+	horizon.resized.connect(func(): horizon.queue_redraw())
+	add_child(horizon)
 
 	var root := Control.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.theme = UIKit.theme()
 	add_child(root)
 
-	_build_main_panel(root)
-	_build_settings_panel(root)
-	_build_map_panel(root)
-	_settings_panel.visible = false
-	_map_panel.visible = false
+	_screens["main"] = _build_main_screen(root)
+	_screens["map"] = _build_map_screen(root)
+	_screens["about"] = _build_about_screen(root)
+	# Settings is a shared component (also opened from the in-game pause
+	# menu); from here, closing it returns to the home screen.
+	_settings = SettingsScreens.new()
+	root.add_child(_settings)
+	_settings.closed.connect(func(): _show("main"))
+	_show("main")
 
-func _build_main_panel(root: Control) -> void:
-	_main_panel = VBoxContainer.new()
-	_main_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_main_panel.position = Vector2(-150, -220)
-	_main_panel.custom_minimum_size = Vector2(300, 0)
-	_main_panel.alignment = BoxContainer.ALIGNMENT_CENTER
-	_main_panel.add_theme_constant_override("separation", 10)
-	root.add_child(_main_panel)
+func _exit_tree() -> void:
+	Engine.max_fps = Settings.max_fps
 
-	_build_drone_preview(_main_panel)
-	_build_logo(_main_panel)
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel") and BACK_TARGET.has(_current):
+		_show(BACK_TARGET[_current])
+		get_viewport().set_input_as_handled()
 
-	var title := Label.new()
-	title.text = "Static Horizon FPV Sim"
-	title.add_theme_font_size_override("font_size", 26)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_main_panel.add_child(title)
+func _show(screen: String) -> void:
+	for key in _screens:
+		_screens[key].visible = key == screen
+	_current = screen
+	if screen == "settings":
+		_settings.open()
+
+## Backdrop: the site's near-black, a soft sky-blue glow up top and a
+## ground-orange glow at the bottom - the logo's own two halves.
+## Computed ONCE into a small image and stretched (linear filtering
+## makes it a smooth gradient): the first version drew 36 huge
+## translucent circles instead, which the GPU re-blended over the whole
+## 2880x1800 screen every single frame - measured at ~50% GPU load with
+## nothing but the menu open.
+func _background_texture() -> ImageTexture:
+	var w := 160
+	var h := 90
+	var img := Image.create(w, h, false, Image.FORMAT_RGB8)
+	var sky_c := Vector2(w * 0.22, -h * 0.25)
+	var ground_c := Vector2(w * 0.85, h * 1.35)
+	for y in range(h):
+		for x in range(w):
+			var p := Vector2(x, y)
+			var sky: float = clampf(1.0 - p.distance_to(sky_c) / (w * 0.6), 0.0, 1.0)
+			var ground: float = clampf(1.0 - p.distance_to(ground_c) / (w * 0.55), 0.0, 1.0)
+			var c: Color = UIKit.BG.lerp(UIKit.LOGO_SKY, sky * sky * 0.22).lerp(UIKit.LOGO_GROUND, ground * ground * 0.16)
+			img.set_pixel(x, y, c)
+	return ImageTexture.create_from_image(img)
+
+## A faint artificial-horizon line with pitch-ladder ticks - a handful
+## of thin lines, drawn once (redrawn only on resize).
+func _draw_horizon(c: Control) -> void:
+	var s: Vector2 = c.size
+	var hy: float = s.y * 0.62
+	c.draw_line(Vector2(0, hy), Vector2(s.x, hy), Color(1, 1, 1, 0.05), 1.5)
+	for k in range(-3, 4):
+		if k == 0:
+			continue
+		var y: float = hy + k * 46.0
+		var half: float = 70.0 if k % 2 == 0 else 38.0
+		c.draw_line(Vector2(s.x * 0.5 - half, y), Vector2(s.x * 0.5 + half, y), Color(1, 1, 1, 0.025), 1.0)
+
+# --- Main screen -------------------------------------------------------------
+
+func _build_main_screen(root: Control) -> Control:
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(center)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 80)
+	center.add_child(row)
+
+	var left := VBoxContainer.new()
+	left.custom_minimum_size = Vector2(600, 0)
+	left.alignment = BoxContainer.ALIGNMENT_CENTER
+	left.add_theme_constant_override("separation", 14)
+	row.add_child(left)
+
+	left.add_child(UIKit.eyebrow("FREE  ·  OPEN SOURCE  ·  FPV SIMULATOR"))
+
+	var brand := HBoxContainer.new()
+	brand.add_theme_constant_override("separation", 18)
+	left.add_child(brand)
+	var logo := Control.new()
+	logo.custom_minimum_size = Vector2(96, 96)
+	logo.draw.connect(func(): _draw_logo(logo))
+	brand.add_child(logo)
+	var heading := Control.new()
+	heading.custom_minimum_size = Vector2(480, 96)
+	heading.draw.connect(func(): _draw_heading(heading))
+	brand.add_child(heading)
 
 	var subtitle := Label.new()
-	subtitle.text = "Free, open-source FPV flight sim"
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_main_panel.add_child(subtitle)
+	subtitle.text = "Fly real-world quads with your own radio - over a village, through a factory, or down a school corridor."
+	subtitle.theme_type_variation = "Muted"
+	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	subtitle.custom_minimum_size = Vector2(560, 0)
+	left.add_child(subtitle)
 
-	_spacer(_main_panel, 20)
+	UIKit.gap(left, 18)
+	var play := UIKit.button("Play", "PrimaryButton", 68)
+	play.pressed.connect(func(): _show("map"))
+	left.add_child(play)
+	var settings := UIKit.button("Settings", "", 60)
+	settings.pressed.connect(func(): _show("settings"))
+	left.add_child(settings)
+	var about := UIKit.button("About", "", 52)
+	about.pressed.connect(func(): _show("about"))
+	left.add_child(about)
+	var quit := UIKit.button("Quit", "GhostButton", 52)
+	quit.pressed.connect(func(): get_tree().quit())
+	left.add_child(quit)
 
-	var play_btn := Button.new()
-	play_btn.text = "Play"
-	play_btn.custom_minimum_size = Vector2(0, 40)
-	play_btn.pressed.connect(func():
-		_main_panel.visible = false
-		_map_panel.visible = true
-	)
-	_main_panel.add_child(play_btn)
+	UIKit.gap(left, 10)
+	var hint := Label.new()
+	hint.text = "Radio in USB joystick mode, or keyboard: W/A/S/D, Q/E, Shift/Ctrl"
+	hint.theme_type_variation = "Small"
+	left.add_child(hint)
 
-	_spacer(_main_panel, 10)
+	var card := PanelContainer.new()
+	card.theme_type_variation = "Card"
+	# Fixed width: switching drones must not resize the card (and shift
+	# the whole screen) just because one description is longer.
+	card.custom_minimum_size = Vector2(620, 0)
+	row.add_child(card)
+	var card_box := VBoxContainer.new()
+	card_box.add_theme_constant_override("separation", 8)
+	card.add_child(card_box)
+	var preview_label := Label.new()
+	preview_label.text = "YOUR DRONE"
+	preview_label.theme_type_variation = "Small"
+	card_box.add_child(preview_label)
+	# The drone is chosen right here with the arrows either side of the
+	# preview (no separate "Choose Your Drone" screen anymore).
+	var picker := HBoxContainer.new()
+	picker.add_theme_constant_override("separation", 4)
+	picker.alignment = BoxContainer.ALIGNMENT_CENTER
+	card_box.add_child(picker)
+	var prev_btn := _arrow_button("‹", -1)
+	prev_btn.set_meta("find_text", "prev_drone")
+	picker.add_child(prev_btn)
+	_build_drone_preview(picker)
+	var next_btn := _arrow_button("›", 1)
+	next_btn.set_meta("find_text", "next_drone")
+	picker.add_child(next_btn)
+	_preview_name = Label.new()
+	_preview_name.theme_type_variation = "Heading"
+	_preview_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	card_box.add_child(_preview_name)
+	_preview_tags = Label.new()
+	_preview_tags.add_theme_color_override("font_color", UIKit.LINK)
+	_preview_tags.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	card_box.add_child(_preview_tags)
+	_preview_text = Label.new()
+	_preview_text.theme_type_variation = "Small"
+	_preview_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_preview_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_preview_text.custom_minimum_size = Vector2(0, 44)
+	card_box.add_child(_preview_text)
+	_refresh_preview_labels()
+	return center
 
-	var settings_btn := Button.new()
-	settings_btn.text = "Settings"
-	settings_btn.custom_minimum_size = Vector2(0, 40)
-	settings_btn.pressed.connect(func():
-		_main_panel.visible = false
-		_settings_panel.visible = true
-	)
-	_main_panel.add_child(settings_btn)
+## The site's real brand wordmark treatment (css/style.css, ".brand
+## span"): Oswald at weight 600, uppercase, letter-spaced, skewed -10
+## degrees. Control has no built-in skew, so this is drawn by hand with a
+## sheared transform matrix, two lines stacked.
+func _draw_heading(c: Control) -> void:
+	var font_var := FontVariation.new()
+	font_var.base_font = UIKit.oswald_font()
+	font_var.set_spacing(TextServer.SPACING_GLYPH, 3)
+	var shear := -0.18 # ~ -10 degrees, matches the site's transform: skewX(-10deg)
+	var xform := Transform2D(Vector2(1, 0), Vector2(shear, 1), Vector2.ZERO)
+	c.draw_set_transform_matrix(xform)
+	c.draw_string(font_var, xform.affine_inverse() * Vector2(8, 46), "STATIC HORIZON", HORIZONTAL_ALIGNMENT_LEFT, -1, 44, UIKit.TEXT)
+	c.draw_string(font_var, xform.affine_inverse() * Vector2(8, 90), "FPV", HORIZONTAL_ALIGNMENT_LEFT, -1, 40, UIKit.LINK)
+	var fpv_w: float = font_var.get_string_size("FPV", HORIZONTAL_ALIGNMENT_LEFT, -1, 40).x
+	c.draw_string(font_var, xform.affine_inverse() * Vector2(8 + fpv_w + 14, 90), "SIMULATOR", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, UIKit.MUTED)
+	c.draw_set_transform_matrix(Transform2D.IDENTITY)
 
-	_spacer(_main_panel, 10)
+## The real logo mark from the companion website project (images/favicon.svg
+## and index.html's .hz-instrument-icon): an artificial horizon - the
+## instrument that tells a pilot which way is up when everything else is
+## spinning. A circle split sky/ground by a horizon line, an outer ring,
+## a center dot, and two flanking "wing" dashes, same as a real attitude
+## indicator, drawn with primitives in the dark-mode brand colors.
+func _draw_logo(c: Control) -> void:
+	var center: Vector2 = c.size * 0.5
+	var r: float = min(c.size.x, c.size.y) * 0.5 - 3.0
+	c.draw_circle(center, r, UIKit.LOGO_SKY)
+	var ground_points := PackedVector2Array()
+	var steps := 24
+	for i in range(steps + 1):
+		var a: float = PI * float(i) / float(steps) # 0..PI sweeps the lower half in screen space
+		ground_points.append(center + Vector2(cos(a), sin(a)) * r)
+	c.draw_colored_polygon(ground_points, UIKit.LOGO_GROUND)
+	c.draw_arc(center, r, 0.0, TAU, 48, UIKit.LOGO_INK, 2.0, true)
+	c.draw_line(center - Vector2(r - 2.0, 0), center + Vector2(r - 2.0, 0), UIKit.LOGO_INK, 1.8)
+	c.draw_circle(center, 3.2, UIKit.LOGO_INK)
+	var wing_len: float = r * 0.42
+	var wing_gap: float = r * 0.3
+	c.draw_line(center - Vector2(wing_gap + wing_len, 0), center - Vector2(wing_gap, 0), UIKit.LOGO_INK, 4.5)
+	c.draw_line(center + Vector2(wing_gap, 0), center + Vector2(wing_gap + wing_len, 0), UIKit.LOGO_INK, 4.5)
 
-	var quit_btn := Button.new()
-	quit_btn.text = "Quit"
-	quit_btn.custom_minimum_size = Vector2(0, 40)
-	quit_btn.pressed.connect(func(): get_tree().quit())
-	_main_panel.add_child(quit_btn)
-
-## A tiny display-piece 3D scene rendered into a small viewport - the
-## current drone model, hanging off a wall hook, slowly turning. Kept
-## deliberately small and simple (one light, a dozen boxes, no shadows)
-## so it costs next to nothing next to the rest of this deliberately-flat
-## 2D menu.
-func _build_drone_preview(parent: VBoxContainer) -> void:
+## A tiny display-piece 3D scene rendered into a small viewport - whichever
+## drone is currently selected (Settings.selected_drone), slowly
+## turning. Only rendered while the main screen (its card) is visible. Kept deliberately small and simple (one
+## light, a WorldEnvironment, a dozen primitives, no shadows) so it costs
+## next to nothing next to the rest of this deliberately-flat 2D menu.
+func _build_drone_preview(parent: Control) -> void:
 	var container := SubViewportContainer.new()
 	container.stretch = true
-	container.custom_minimum_size = Vector2(180, 180)
+	container.custom_minimum_size = Vector2(360, 340)
 	container.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	parent.add_child(container)
 
 	var viewport := SubViewport.new()
-	viewport.size = Vector2i(180, 180)
+	viewport.size = Vector2i(360, 340)
 	viewport.transparent_bg = true
-	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 	container.add_child(viewport)
 
 	var scene_root := Node3D.new()
@@ -123,214 +304,272 @@ func _build_drone_preview(parent: VBoxContainer) -> void:
 	light.shadow_enabled = false
 	scene_root.add_child(light)
 
+	# Looking slightly down at the drone, which turns in place in the
+	# middle of the card. (It used to hang from a little wall hook, but
+	# at this size the hook read as a gray thing floating above it.)
 	var cam := Camera3D.new()
-	cam.position = Vector3(0, -0.02, 0.42)
-	cam.fov = 45.0
+	cam.position = Vector3(0, 0.13, 0.38)
+	cam.fov = 40.0
 	cam.current = true
 	scene_root.add_child(cam)
+	cam.look_at(Vector3(0, 0.005, 0))
 
-	# Hook: a short wall mount plus an upward-curling tip, approximated
-	# with two angled boxes - just enough to read as "a hook".
-	var hook := Node3D.new()
-	hook.position = Vector3(0, 0.16, 0)
-	scene_root.add_child(hook)
-	_preview_box(hook, Vector3(0, 0.05, 0), Vector3(0.018, 0.1, 0.018), Color(0.55, 0.56, 0.6))
-	var tip := _preview_box(hook, Vector3(0.02, -0.005, 0), Vector3(0.07, 0.018, 0.018), Color(0.55, 0.56, 0.6))
-	tip.rotation_degrees = Vector3(0, 0, -35)
-
-	# The drone itself, dangling below the hook tip at a slight tilt.
-	var drone_visual := Node3D.new()
-	drone_visual.position = Vector3(0.01, -0.09, 0)
-	drone_visual.rotation_degrees = Vector3(0, 25, 14)
-	scene_root.add_child(drone_visual)
-	_preview_box(drone_visual, Vector3.ZERO, Vector3(0.12, 0.035, 0.12), Color(0.85, 0.12, 0.12))
-	for corner in [Vector3(0.06, 0.012, -0.06), Vector3(-0.06, 0.012, -0.06), Vector3(0.06, 0.012, 0.06), Vector3(-0.06, 0.012, 0.06)]:
-		_preview_box(drone_visual, corner, Vector3(0.02, 0.03, 0.02), Color(0.08, 0.08, 0.08))
+	_preview_drone_root = Node3D.new()
+	scene_root.add_child(_preview_drone_root)
+	_build_preview_drone(_preview_drone_root)
 
 	var tween := create_tween().set_loops()
-	tween.tween_property(drone_visual, "rotation:y", drone_visual.rotation.y + TAU, 9.0).as_relative()
+	tween.tween_property(_preview_drone_root, "rotation:y", _preview_drone_root.rotation.y + TAU, 9.0).as_relative()
 
-func _preview_box(parent: Node3D, pos: Vector3, box_size: Vector3, color: Color) -> MeshInstance3D:
-	var mesh := BoxMesh.new()
-	mesh.size = box_size
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	mi.position = pos
-	mi.set_surface_override_material(0, mat)
-	parent.add_child(mi)
-	return mi
+## Reuses the exact same procedural frame the real flying drone uses (see
+## drone_frame_builder.gd), so the preview always matches whichever drone
+## is actually selected. Rebuilt whenever the drone choice changes.
+func _build_preview_drone(parent: Node3D) -> void:
+	for child in parent.get_children():
+		child.free()
+	var p: Dictionary = Drone.PROFILES.get(Settings.selected_drone, Drone.PROFILES["seeker3"])
+	var visual: Dictionary = p.visual.duplicate()
+	visual["arm_length"] = p.arm_length
+	DroneFrameBuilder.build(parent, visual)
+	# Both frames fill the card the same way: a 25 g whoop is under half
+	# the size of the Static Three and would otherwise be a speck.
+	var span: float = 2.0 * (p.arm_length * sqrt(2.0) + p.visual.prop_radius)
+	parent.scale = Vector3.ONE * (0.26 / span)
 
-## A small procedurally-drawn wordmark - a horizon line with a
-## quadcopter silhouette rising above it - instead of an external image
-## asset, matching the rest of the project staying dependency-free.
-func _build_logo(parent: VBoxContainer) -> void:
+## Names/tags/descriptions live with the flight data (Drone.PROFILES,
+## "display") so the menu, the pause menu and the drone can't disagree.
+func _drone_info(id: String) -> Dictionary:
+	return Drone.PROFILES.get(id, Drone.PROFILES["seeker3"]).display
+
+func _refresh_preview_labels() -> void:
+	var d: Dictionary = _drone_info(Settings.selected_drone)
+	_preview_name.text = d.name
+	_preview_tags.text = "  ·  ".join(d.tags)
+	_preview_text.text = d.text
+
+func _arrow_button(glyph: String, step: int) -> Button:
+	var b := UIKit.button(glyph, "GhostButton", 72)
+	b.custom_minimum_size = Vector2(56, 72)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b.add_theme_font_size_override("font_size", 48)
+	b.pressed.connect(func(): _cycle_drone(step))
+	return b
+
+func _cycle_drone(step: int) -> void:
+	var order: Array[String] = Drone.PROFILE_ORDER
+	var idx: int = maxi(order.find(Settings.selected_drone), 0)
+	Settings.selected_drone = order[posmod(idx + step, order.size())]
+	_build_preview_drone(_preview_drone_root)
+	_refresh_preview_labels()
+
+# --- Sub-screens: one fixed card each, header always visible ----------------
+
+## A big clickable card: optional colored top stripe, title, tag line,
+## description, call to action.
+func _option_card(title: String, tags: String, text: String, stripe: Color, action: String) -> Button:
+	var b := Button.new()
+	b.theme_type_variation = "CardButton"
+	b.custom_minimum_size = Vector2(0, 330)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	box.offset_left = 28
+	box.offset_top = 22
+	box.offset_right = -28
+	box.offset_bottom = -22
+	box.add_theme_constant_override("separation", 12)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(box)
+	var labels: Array[Control] = []
+	if stripe.a > 0.0:
+		var bar := ColorRect.new()
+		bar.color = stripe
+		bar.custom_minimum_size = Vector2(0, 6)
+		box.add_child(bar)
+		labels.append(bar)
+	var t := Label.new()
+	t.text = title
+	t.theme_type_variation = "Title"
+	t.add_theme_font_size_override("font_size", 34)
+	box.add_child(t)
+	var tg := Label.new()
+	tg.text = tags
+	tg.add_theme_color_override("font_color", UIKit.LINK)
+	tg.add_theme_font_size_override("font_size", 18)
+	box.add_child(tg)
+	var d := Label.new()
+	d.text = text
+	d.theme_type_variation = "Muted"
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(d)
+	var a := Label.new()
+	a.text = action + "  ›"
+	a.add_theme_font_override("font", UIKit.oswald())
+	a.add_theme_font_size_override("font_size", 22)
+	a.add_theme_color_override("font_color", UIKit.ACCENT)
+	box.add_child(a)
+	labels.append_array([t, tg, d, a])
+	for l in labels:
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return b
+
+func _build_about_screen(root: Control) -> Control:
+	var parts: Array = UIKit.screen_card(root, "About", "", 760, func(): _show("main"))
+	var content: VBoxContainer = parts[1]
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 18)
+	content.add_child(head)
 	var logo := Control.new()
-	logo.custom_minimum_size = Vector2(160, 40)
-	logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	logo.custom_minimum_size = Vector2(72, 72)
 	logo.draw.connect(func(): _draw_logo(logo))
-	parent.add_child(logo)
+	head.add_child(logo)
+	var name_box := VBoxContainer.new()
+	head.add_child(name_box)
+	var name_label := Label.new()
+	name_label.text = "Static Horizon FPV Simulator"
+	name_label.theme_type_variation = "Title"
+	name_box.add_child(name_label)
+	var version := Label.new()
+	version.text = "Version %s  ·  free and open source (MIT licence)" % ProjectSettings.get_setting("application/config/version", "dev")
+	version.theme_type_variation = "Muted"
+	name_box.add_child(version)
 
-func _draw_logo(c: Control) -> void:
-	var w: float = c.custom_minimum_size.x
-	var mid := Vector2(w * 0.5, 26)
-	var sky := Color(0.4, 0.65, 0.9)
-	var ground := Color(0.3, 0.24, 0.18)
-	c.draw_rect(Rect2(0, 14, w, 12), ground)
-	c.draw_line(Vector2(0, 26), Vector2(w, 26), sky, 2.0)
-	var arm := 16.0
-	for d in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-		var tip: Vector2 = mid + Vector2(d.x, d.y * 0.5) * arm
-		c.draw_line(mid, tip, Color(0.9, 0.9, 0.92), 2.0)
-		c.draw_circle(tip, 2.5, Color(0.85, 0.12, 0.12))
-	c.draw_circle(mid, 4.0, Color(0.9, 0.9, 0.92))
+	var intro := Label.new()
+	intro.text = "A free FPV drone simulator that runs on weak hardware and flies with a real radio over USB. Three real-world-sized maps, three drones, a flight controller modelled on Betaflight."
+	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	content.add_child(intro)
 
-func _build_settings_panel(root: Control) -> void:
-	_settings_panel = VBoxContainer.new()
-	_settings_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_settings_panel.position = Vector2(-160, -140)
-	_settings_panel.custom_minimum_size = Vector2(320, 0)
-	_settings_panel.add_theme_constant_override("separation", 10)
-	root.add_child(_settings_panel)
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 48)
+	content.add_child(cols)
+	var left := VBoxContainer.new()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(left)
+	var right := VBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(right)
+	_about_section(left, "How it's made", [
+		"No image or sound files: every texture, motor sound, drone model and shadow is generated in code.",
+		"Flight model grounded in real data: Betaflight's rate curve, airmode and I-term relax; rotor drag measured by Faessler, Franchi & Scaramuzza (2018); real drone masses, thrust and top speeds.",
+		"Tested end to end by an automated self-test that plays the game like a pilot does.",
+	])
+	_about_section(right, "Controls", [
+		"Radio: USB Joystick mode - calibrate once in Settings, arm with any switch you assign.",
+		"Keyboard: A/D roll, W/S pitch, Q/E yaw, Shift/Ctrl throttle.",
+		"Enter arm/disarm  ·  L acro/angle  ·  R reset  ·  Esc pause menu. Crashed on your back? It flips upright after 2 s.",
+	])
+	_about_section(right, "Credits", [
+		"Godot Engine 4 (MIT licence) - godotengine.org",
+		"Oswald typeface (SIL Open Font License)",
+	])
+	UIKit.gap(content, 6)
+	var site := UIKit.button("Visit statichorizonfpv.com", "PrimaryButton", 56)
+	site.pressed.connect(func(): OS.shell_open(WEBSITE))
+	content.add_child(site)
+	return parts[0]
 
-	var title := Label.new()
-	title.text = "Settings"
-	title.add_theme_font_size_override("font_size", 22)
-	_settings_panel.add_child(title)
+func _about_section(parent: Control, title: String, lines: Array) -> void:
+	UIKit.gap(parent, 8)
+	UIKit.section(parent, title)
+	for line in lines:
+		var l := Label.new()
+		l.text = "·  " + line
+		l.theme_type_variation = "Muted"
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		parent.add_child(l)
 
-	_spacer(_settings_panel, 8)
+func _build_map_screen(root: Control) -> Control:
+	var parts: Array = UIKit.screen_card(root, "Choose a Map", "", 800, func(): _show("main"))
+	var content: VBoxContainer = parts[1]
+	# Filter by performance tier - so a pilot on a weak laptop can see at
+	# a glance what will run well.
+	var filters := HBoxContainer.new()
+	filters.add_theme_constant_override("separation", 8)
+	content.add_child(filters)
+	var group := ButtonGroup.new()
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 16)
+	for f in ["All", "Low", "Medium", "High"]:
+		var b := UIKit.button(f if f == "All" else f + " performance", "", 44)
+		b.toggle_mode = true
+		b.button_group = group
+		b.button_pressed = f == "All"
+		b.add_theme_stylebox_override("pressed", UIKit.box(UIKit.LOGO_SKY, UIKit.LOGO_SKY, 12))
+		b.add_theme_color_override("font_pressed_color", Color.WHITE)
+		var tier: String = f
+		b.pressed.connect(func():
+			for card in grid.get_children():
+				card.visible = tier == "All" or card.get_meta("tier") == tier)
+		filters.add_child(b)
+	var hint := Label.new()
+	hint.theme_type_variation = "Small"
+	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	hint.text = "Your graphics setting suits %s maps" % MapCatalog.recommended_tier()
+	filters.add_child(hint)
+	UIKit.gap(content, 4)
+	content.add_child(grid)
+	for m in MapCatalog.available():
+		var card := _map_card(m)
+		grid.add_child(card)
+		var scene: String = m.scene
+		var map_name: String = m.name
+		card.pressed.connect(func(): SceneLoader.goto(scene, map_name))
+	return parts[0]
 
-	_add_check(_settings_panel, "Fullscreen", Settings.is_fullscreen(), func(v: bool): Settings.set_fullscreen(v))
-	_add_check(_settings_panel, "Crosshair", Settings.crosshair_enabled, func(v: bool): Settings.crosshair_enabled = v)
-	_add_check(_settings_panel, "Shadows (costs performance)", Settings.shadows_enabled, func(v: bool): Settings.shadows_enabled = v)
+## One map: colour stripe, name, tier badge + drone restriction, text.
+func _map_card(m: Dictionary) -> Button:
+	var b := Button.new()
+	b.theme_type_variation = "CardButton"
+	b.custom_minimum_size = Vector2(340, 205)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.set_meta("find_text", m.name)
+	b.set_meta("tier", m.tier)
+	var box := VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	box.offset_left = 22
+	box.offset_top = 18
+	box.offset_right = -22
+	box.offset_bottom = -18
+	box.add_theme_constant_override("separation", 8)
+	b.add_child(box)
+	var bar := ColorRect.new()
+	bar.color = m.color
+	bar.custom_minimum_size = Vector2(0, 5)
+	box.add_child(bar)
+	var t := Label.new()
+	t.text = m.name
+	t.theme_type_variation = "Title"
+	t.add_theme_font_size_override("font_size", 26)
+	box.add_child(t)
+	var tags := HBoxContainer.new()
+	tags.add_theme_constant_override("separation", 8)
+	box.add_child(tags)
+	var tier_color: Color = MapCatalog.TIER_COLORS[m.tier]
+	tags.add_child(_pill(m.tier + " performance", tier_color))
+	if m.drone != "any":
+		tags.add_child(_pill(Drone.PROFILES[m.drone].display.name + " only", UIKit.MUTED_LIGHT))
+	var d := Label.new()
+	d.text = m.text
+	d.theme_type_variation = "Small"
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(d)
+	for c in [box, bar, t, tags, d]:
+		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return b
 
-	_spacer(_settings_panel, 10)
-
-	var fps_row := HBoxContainer.new()
-	_settings_panel.add_child(fps_row)
-	var fps_label := Label.new()
-	fps_label.text = "Max FPS"
-	fps_label.custom_minimum_size = Vector2(80, 0)
-	fps_row.add_child(fps_label)
-
-	var fps_slider := HSlider.new()
-	fps_slider.min_value = FPS_MIN
-	fps_slider.max_value = FPS_MAX
-	fps_slider.step = 5
-	fps_slider.value = clamp(Settings.max_fps if Settings.max_fps > 0 else FPS_MAX, FPS_MIN, FPS_MAX)
-	fps_slider.custom_minimum_size = Vector2(150, 0)
-	fps_row.add_child(fps_slider)
-
-	_fps_value_label = Label.new()
-	_fps_value_label.custom_minimum_size = Vector2(70, 0)
-	_fps_value_label.text = _fps_label_text(int(fps_slider.value))
-	fps_row.add_child(_fps_value_label)
-
-	fps_slider.value_changed.connect(func(v: float):
-		var fps: int = 0 if int(v) >= FPS_MAX else int(v)
-		Settings.set_max_fps(fps)
-		_fps_value_label.text = _fps_label_text(int(v))
-	)
-
-	_spacer(_settings_panel, 16)
-
-	var rates_title := Label.new()
-	rates_title.text = "Acro Rates"
-	_settings_panel.add_child(rates_title)
-
-	_add_labeled_slider(_settings_panel, "Center Sensitivity", 10.0, 200.0, 5.0, Settings.rate_center_sensitivity_deg, func(v: float): Settings.rate_center_sensitivity_deg = v)
-	_add_labeled_slider(_settings_panel, "Max Rate", 100.0, 1200.0, 10.0, Settings.rate_max_deg, func(v: float): Settings.rate_max_deg = v)
-
-	_spacer(_settings_panel, 16)
-
-	var back_btn := Button.new()
-	back_btn.text = "Back"
-	back_btn.custom_minimum_size = Vector2(0, 40)
-	back_btn.pressed.connect(func():
-		_settings_panel.visible = false
-		_main_panel.visible = true
-	)
-	_settings_panel.add_child(back_btn)
-
-func _build_map_panel(root: Control) -> void:
-	_map_panel = VBoxContainer.new()
-	_map_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_map_panel.position = Vector2(-150, -100)
-	_map_panel.custom_minimum_size = Vector2(300, 0)
-	_map_panel.add_theme_constant_override("separation", 10)
-	root.add_child(_map_panel)
-
-	var title := Label.new()
-	title.text = "Choose a Map"
-	title.add_theme_font_size_override("font_size", 22)
-	_map_panel.add_child(title)
-
-	_spacer(_map_panel, 8)
-
-	var village_btn := Button.new()
-	village_btn.text = "Village"
-	village_btn.custom_minimum_size = Vector2(0, 40)
-	village_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/Main.tscn"))
-	_map_panel.add_child(village_btn)
-
-	_spacer(_map_panel, 10)
-
-	var factory_btn := Button.new()
-	factory_btn.text = "Factory"
-	factory_btn.custom_minimum_size = Vector2(0, 40)
-	factory_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/Main2.tscn"))
-	_map_panel.add_child(factory_btn)
-
-	_spacer(_map_panel, 16)
-
-	var back_btn := Button.new()
-	back_btn.text = "Back"
-	back_btn.custom_minimum_size = Vector2(0, 40)
-	back_btn.pressed.connect(func():
-		_map_panel.visible = false
-		_main_panel.visible = true
-	)
-	_map_panel.add_child(back_btn)
-
-func _add_labeled_slider(parent: VBoxContainer, label_text: String, min_v: float, max_v: float, step: float, initial: float, on_change: Callable) -> void:
-	var row := HBoxContainer.new()
-	parent.add_child(row)
-
-	var lbl := Label.new()
-	lbl.text = label_text
-	lbl.custom_minimum_size = Vector2(140, 0)
-	row.add_child(lbl)
-
-	var slider := HSlider.new()
-	slider.min_value = min_v
-	slider.max_value = max_v
-	slider.step = step
-	slider.value = initial
-	slider.custom_minimum_size = Vector2(100, 0)
-	row.add_child(slider)
-
-	var value_lbl := Label.new()
-	value_lbl.custom_minimum_size = Vector2(50, 0)
-	value_lbl.text = str(snapped(initial, step))
-	row.add_child(value_lbl)
-
-	slider.value_changed.connect(func(v: float):
-		on_change.call(v)
-		value_lbl.text = str(snapped(v, step))
-	)
-
-func _fps_label_text(v: int) -> String:
-	return "Unlimited" if v >= FPS_MAX else str(v)
-
-func _spacer(parent: VBoxContainer, h: float) -> void:
-	var s := Control.new()
-	s.custom_minimum_size = Vector2(0, h)
-	parent.add_child(s)
-
-func _add_check(parent: VBoxContainer, label_text: String, initial: bool, on_change: Callable) -> void:
-	var cb := CheckBox.new()
-	cb.text = label_text
-	cb.button_pressed = initial
-	cb.toggled.connect(func(v: bool): on_change.call(v))
-	parent.add_child(cb)
+func _pill(text: String, color: Color) -> Control:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", UIKit.box(Color(color, 0.16), color, 999, 1, Vector4(10, 2, 10, 2)))
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 14)
+	l.add_theme_color_override("font_color", color)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(l)
+	return p

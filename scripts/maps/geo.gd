@@ -1,0 +1,345 @@
+class_name Geo
+extends RefCounted
+
+## Batched geometry builder for the generated maps. Every primitive
+## (box, cylinder, hollow tube, lathe) is written straight into a shared
+## SurfaceTool per (material, 64 m cell) - so a map of thousands of
+## pieces is a few dozen draw calls, and the cells still frustum-cull.
+## Collidable triangles go into one ConcavePolygonShape3D per cell
+## (backface collision on, so hollow things - pipes, cooling towers,
+## halls - really are hollow). Each primitive also records its outline
+## for FakeShadows (the batched meshes themselves are skipped there -
+## one hull over a whole cell would be one giant blob).
+##
+## Lighting is baked into the vertex colors and every material is
+## unshaded: the engine's DirectionalLight3D has no effect at all on the
+## dev machine (Intel Iris 6100, macOS, Compatibility renderer - measured:
+## identical pixels at sun energy 0 and 3, in every map), a known class
+## of Intel/macOS OpenGL driver bugs (godotengine/godot#74763). Baking
+## looks the same on every GPU and costs nothing per frame. Per vertex:
+##   ambient + sky fill (faces pointing up) + sun * max(N.L, 0)
+## times a cheap ambient occlusion: surfaces darken toward the ground
+## (`ao_ground_y`) over `ao_height` metres - the grounded look real
+## contact shadows give. BuiltMap copies the sun direction and the
+## map's ambient into these fields.
+##
+## Winding: Godot treats clockwise triangles as front faces; _tri()
+## orders every triangle from its intended normal, so callers never
+## think about it.
+
+const CELL: float = 64.0
+
+var ao_ground_y: float = 0.0
+var ao_height: float = 3.0
+var ao_min: float = 0.55
+var sun_dir: Vector3 = Vector3(0.4, -0.75, -0.5).normalized() ## direction the light travels
+var sun: float = 0.5
+var sky: float = 0.14
+var ambient: float = 0.42
+var sun_tint: Color = Color(1.0, 0.97, 0.9)
+var shadow_groups: Array = []
+
+var _mats: Dictionary = {}
+var _batches: Dictionary = {} # "mat|cx|cz" -> SurfaceTool
+var _batch_mat: Dictionary = {}
+var _col: Dictionary = {} # "cx|cz" -> Array of Vector3 (a plain Array:
+# appending to a PackedVector3Array held in a Dictionary copies it every time)
+var _cell_key: String = ""
+var _cell_col: Array = []
+
+# --- materials ---------------------------------------------------------------
+
+func add_material(mat_name: String, mat: Material) -> void:
+	_mats[mat_name] = mat
+
+func has_material(mat_name: String) -> bool:
+	return _mats.has(mat_name)
+
+## World-projected (triplanar) texture: no UVs needed on any primitive,
+## the texture stays the same real-world size on every face.
+static func tex_mat(tex: Texture2D, tint: Color = Color.WHITE, metres_per_tile: float = 4.0, roughness: float = 0.9, metallic: float = 0.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = tex
+	m.albedo_color = tint
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE / metres_per_tile
+	m.roughness = roughness
+	m.metallic = metallic
+	m.vertex_color_use_as_albedo = true
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return m
+
+static func flat_mat(color: Color, roughness: float = 0.85, metallic: float = 0.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.roughness = roughness
+	m.metallic = metallic
+	m.vertex_color_use_as_albedo = true
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	return m
+
+## Water: a flat, slightly see-through surface with a sky sheen. Real
+## reflections would need engine lighting (see the header) - a bright
+## unshaded tint reads as water from a drone's height.
+static func water_mat(deep: Color = Color(0.12, 0.3, 0.38), alpha: float = 0.88) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(deep.r, deep.g, deep.b, alpha)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.vertex_color_use_as_albedo = true
+	m.albedo_texture = MapTextures.get_tex("ground_neutral")
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE / 30.0
+	return m
+
+static func glow_mat(color: Color, energy: float = 2.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.emission_enabled = true
+	m.emission = color
+	m.emission_energy_multiplier = energy
+	return m
+
+# --- primitives --------------------------------------------------------------
+
+## Axis-aligned box (optionally turned about Y), by center and size.
+func box(center: Vector3, size: Vector3, mat: String, yaw: float = 0.0, collide: bool = true, shadow: bool = true) -> void:
+	box_xf(Transform3D(Basis(Vector3.UP, yaw), center), size, mat, collide, shadow)
+
+## Box with any orientation. Faces are emitted in world space.
+func box_xf(xf: Transform3D, size: Vector3, mat: String, collide: bool = true, shadow: bool = true) -> void:
+	var h: Vector3 = size * 0.5
+	var c: Array[Vector3] = []
+	for i in range(8):
+		c.append(xf * Vector3(h.x if i & 1 else -h.x, h.y if i & 2 else -h.y, h.z if i & 4 else -h.z))
+	_begin(mat, xf.origin, collide)
+	var b: Basis = xf.basis
+	# (corner bit 0 = +x, bit 1 = +y, bit 2 = +z)
+	_quad(c[1], c[3], c[7], c[5], b.x, collide)
+	_quad(c[0], c[4], c[6], c[2], -b.x, collide)
+	_quad(c[2], c[6], c[7], c[3], b.y, collide)
+	_quad(c[0], c[1], c[5], c[4], -b.y, collide)
+	_quad(c[4], c[5], c[7], c[6], b.z, collide)
+	_quad(c[0], c[2], c[3], c[1], -b.z, collide)
+	if shadow:
+		_shadow(PackedVector3Array(c))
+
+## Beam from a to b with a square cross-section (girders, rails, bracing).
+func beam(a: Vector3, b: Vector3, thickness: Vector2, mat: String, collide: bool = true, shadow: bool = true) -> void:
+	var d: Vector3 = b - a
+	if d.length() < 0.001:
+		return
+	var up: Vector3 = Vector3.UP if absf(d.normalized().y) < 0.99 else Vector3.RIGHT
+	var basis := Basis.looking_at(d.normalized(), up)
+	box_xf(Transform3D(basis, (a + b) * 0.5), Vector3(thickness.x, thickness.y, d.length()), mat, collide, shadow)
+
+## Solid cylinder from a to b (columns, tanks, chimneys seen from outside).
+func cylinder(a: Vector3, b: Vector3, r: float, mat: String, sides: int = 14, collide: bool = true, caps: bool = true, shadow: bool = true) -> void:
+	_tube(a, b, r, r, 0.0, mat, sides, collide, caps, shadow)
+
+## Hollow tube you can fly through: outer wall, inner wall, end rings.
+func pipe(a: Vector3, b: Vector3, r: float, wall: float, mat: String, sides: int = 18, collide: bool = true, shadow: bool = true) -> void:
+	_tube(a, b, r, r, wall, mat, sides, collide, false, shadow)
+
+## Cone / tapered cylinder (r0 at a, r1 at b).
+func cone(a: Vector3, b: Vector3, r0: float, r1: float, mat: String, sides: int = 14, collide: bool = true, shadow: bool = true) -> void:
+	_tube(a, b, r0, r1, 0.0, mat, sides, collide, true, shadow)
+
+## Surface of revolution around a vertical axis through `base`.
+## profile: Vector2(radius, height) from bottom to top. `wall` > 0 makes
+## it a shell with an inside surface too (cooling tower, open hopper).
+func lathe(base: Vector3, profile: Array, mat: String, sides: int = 24, wall: float = 0.0, collide: bool = true, shadow: bool = true) -> void:
+	_begin(mat, base, collide)
+	var pts := PackedVector3Array()
+	for layer in ([0.0, wall] if wall > 0.0 else [0.0]):
+		var inward: bool = layer > 0.0
+		for i in range(profile.size() - 1):
+			var p0: Vector2 = profile[i]
+			var p1: Vector2 = profile[i + 1]
+			var r0: float = maxf(p0.x - layer, 0.01)
+			var r1: float = maxf(p1.x - layer, 0.01)
+			for s in range(sides):
+				var a0: float = TAU * s / sides
+				var a1: float = TAU * (s + 1) / sides
+				var q0 := base + Vector3(cos(a0) * r0, p0.y, sin(a0) * r0)
+				var q1 := base + Vector3(cos(a1) * r0, p0.y, sin(a1) * r0)
+				var q2 := base + Vector3(cos(a1) * r1, p1.y, sin(a1) * r1)
+				var q3 := base + Vector3(cos(a0) * r1, p1.y, sin(a0) * r1)
+				var mid: float = (a0 + a1) * 0.5
+				var n := Vector3(cos(mid), (r0 - r1) / maxf(p1.y - p0.y, 0.01), sin(mid)).normalized()
+				_quad(q0, q1, q2, q3, -n if inward else n, collide)
+				if i == 0 or i == profile.size() - 2:
+					pts.append(q0 if i == 0 else q2)
+	if wall > 0.0:
+		# Rim at the top (and bottom) joining outside and inside.
+		for end in [0, profile.size() - 1]:
+			var p: Vector2 = profile[end]
+			for s in range(sides):
+				var a0: float = TAU * s / sides
+				var a1: float = TAU * (s + 1) / sides
+				var o0 := base + Vector3(cos(a0) * p.x, p.y, sin(a0) * p.x)
+				var o1 := base + Vector3(cos(a1) * p.x, p.y, sin(a1) * p.x)
+				var i0 := base + Vector3(cos(a0) * (p.x - wall), p.y, sin(a0) * (p.x - wall))
+				var i1 := base + Vector3(cos(a1) * (p.x - wall), p.y, sin(a1) * (p.x - wall))
+				_quad(o0, o1, i1, i0, Vector3.UP if end > 0 else Vector3.DOWN, collide)
+	if shadow:
+		_shadow(pts)
+
+## Flat ground-lying slab: a box whose top is at `top_y`.
+func slab(rect: Rect2, top_y: float, thickness: float, mat: String, collide: bool = true) -> void:
+	var c := Vector3(rect.get_center().x, top_y - thickness * 0.5, rect.get_center().y)
+	box(c, Vector3(rect.size.x, thickness, rect.size.y), mat, 0.0, collide, false)
+
+# --- internals ---------------------------------------------------------------
+
+func _tube(a: Vector3, b: Vector3, r0: float, r1: float, wall: float, mat: String, sides: int, collide: bool, caps: bool, shadow: bool) -> void:
+	var d: Vector3 = b - a
+	var length: float = d.length()
+	if length < 0.001:
+		return
+	var up: Vector3 = Vector3.UP if absf(d.normalized().y) < 0.99 else Vector3.RIGHT
+	var basis := Basis.looking_at(d / length, up) # local -Z runs a -> b
+	_begin(mat, (a + b) * 0.5, collide)
+	var pts := PackedVector3Array()
+	var layers: Array = [[r0, r1, false]]
+	if wall > 0.0:
+		layers.append([r0 - wall, r1 - wall, true])
+	for l in layers:
+		var ra: float = l[0]
+		var rb: float = l[1]
+		for s in range(sides):
+			var a0: float = TAU * s / sides
+			var a1: float = TAU * (s + 1) / sides
+			var q0: Vector3 = a + basis * Vector3(cos(a0) * ra, sin(a0) * ra, 0.0)
+			var q1: Vector3 = a + basis * Vector3(cos(a1) * ra, sin(a1) * ra, 0.0)
+			var q2: Vector3 = a + basis * Vector3(cos(a1) * rb, sin(a1) * rb, -length)
+			var q3: Vector3 = a + basis * Vector3(cos(a0) * rb, sin(a0) * rb, -length)
+			var mid: float = (a0 + a1) * 0.5
+			var n: Vector3 = basis * Vector3(cos(mid), sin(mid), 0.0)
+			_quad(q0, q1, q2, q3, -n if l[2] else n, collide)
+			if not l[2]:
+				pts.append(q0)
+				pts.append(q3)
+	for end in [0, 1]:
+		var center: Vector3 = a if end == 0 else b
+		var rr: float = r0 if end == 0 else r1
+		var n_end: Vector3 = -(d / length) if end == 0 else d / length
+		for s in range(sides):
+			var a0: float = TAU * s / sides
+			var a1: float = TAU * (s + 1) / sides
+			var z: float = 0.0 if end == 0 else -length
+			var o0: Vector3 = a + basis * Vector3(cos(a0) * rr, sin(a0) * rr, z)
+			var o1: Vector3 = a + basis * Vector3(cos(a1) * rr, sin(a1) * rr, z)
+			if wall > 0.0:
+				var ri: float = rr - wall
+				var i0: Vector3 = a + basis * Vector3(cos(a0) * ri, sin(a0) * ri, z)
+				var i1: Vector3 = a + basis * Vector3(cos(a1) * ri, sin(a1) * ri, z)
+				_quad(o0, o1, i1, i0, n_end, collide)
+			elif caps:
+				_tri(center, o0, o1, n_end, collide)
+	if shadow:
+		_shadow(pts)
+
+func _begin(mat: String, pos: Vector3, collide: bool) -> void:
+	assert(_mats.has(mat), "Geo: unknown material " + mat)
+	var cx: int = floori(pos.x / CELL)
+	var cz: int = floori(pos.z / CELL)
+	var key: String = "%s|%d|%d" % [mat, cx, cz]
+	if not _batches.has(key):
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		_batches[key] = st
+		_batch_mat[key] = mat
+	_cell_key = key
+	var ck: String = "%d|%d" % [cx, cz]
+	if not _col.has(ck):
+		_col[ck] = []
+	_cell_col = _col[ck]
+
+func _quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, collide: bool) -> void:
+	_tri(a, b, c, n, collide)
+	_tri(a, c, d, n, collide)
+
+func _tri(a: Vector3, b: Vector3, c: Vector3, n: Vector3, collide: bool) -> void:
+	var st: SurfaceTool = _batches[_cell_key]
+	var order: Array[Vector3] = [a, b, c]
+	if (b - a).cross(c - a).dot(n) > 0.0:
+		order = [a, c, b]
+	for p in order:
+		st.set_normal(n)
+		st.set_color(shade(n, p.y))
+		st.add_vertex(p)
+	if collide:
+		_cell_col.append_array(order)
+
+## Baked light for a surface with normal n at height y (see the header).
+func shade(n: Vector3, y: float) -> Color:
+	var f: float = clampf((y - ao_ground_y) / ao_height, 0.0, 1.0)
+	var ao: float = lerpf(ao_min, 1.0, f * f * (3.0 - 2.0 * f))
+	var direct: float = sun * maxf(n.dot(-sun_dir), 0.0)
+	var base: float = ambient + sky * (0.5 + 0.5 * n.y)
+	var c: Color = Color(base, base, base * 1.04) + sun_tint * direct
+	return Color(minf(c.r * ao, 1.0), minf(c.g * ao, 1.0), minf(c.b * ao, 1.0))
+
+func _shadow(pts: PackedVector3Array) -> void:
+	shadow_groups.append(pts)
+
+## Turns everything into nodes under `root`. Call once, after building.
+func commit(root: Node3D) -> void:
+	var holder := Node3D.new()
+	holder.name = "Generated"
+	root.add_child(holder)
+	for key in _batches:
+		var st: SurfaceTool = _batches[key]
+		var mesh: ArrayMesh = st.commit()
+		if mesh.get_surface_count() == 0:
+			continue
+		mesh.surface_set_material(0, _mats[_batch_mat[key]])
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.set_meta("geo_batch", true)
+		holder.add_child(mi)
+	var body := StaticBody3D.new()
+	body.name = "GeneratedCollision"
+	holder.add_child(body)
+	for ck in _col:
+		var faces := PackedVector3Array(_col[ck])
+		if faces.is_empty():
+			continue
+		var shape := ConcavePolygonShape3D.new()
+		shape.backface_collision = true
+		shape.set_faces(faces)
+		var cs := CollisionShape3D.new()
+		cs.shape = shape
+		body.add_child(cs)
+	var groups: Array = root.get_meta("shadow_groups", [])
+	groups.append_array(shadow_groups)
+	root.set_meta("shadow_groups", groups)
+	_batches.clear()
+	_col.clear()
+
+## Everything built so far as one local-space mesh (one surface per
+## material) instead of scene nodes - for MultiMesh sources like trees.
+func build_mesh() -> ArrayMesh:
+	var by_mat: Dictionary = {}
+	for key in _batches:
+		var m: String = _batch_mat[key]
+		if not by_mat.has(m):
+			by_mat[m] = []
+		by_mat[m].append(_batches[key])
+	var mesh := ArrayMesh.new()
+	for m in by_mat:
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for part: SurfaceTool in by_mat[m]:
+			st.append_from(part.commit(), 0, Transform3D.IDENTITY)
+		st.commit(mesh)
+		mesh.surface_set_material(mesh.get_surface_count() - 1, _mats[m])
+	_batches.clear()
+	_col.clear()
+	shadow_groups.clear()
+	return mesh

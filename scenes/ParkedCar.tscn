@@ -1,0 +1,73 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scripts/parked_car.gd" id="1"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_body"]
+size = Vector3(4.3, 0.75, 1.8)
+
+[sub_resource type="BoxMesh" id="BoxMesh_cabin"]
+size = Vector3(2.3, 0.62, 1.62)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cabin"]
+albedo_color = Color(0.16, 0.2, 0.24, 1)
+metallic = 0.5
+roughness = 0.15
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_wheel"]
+top_radius = 0.33
+bottom_radius = 0.33
+height = 0.24
+radial_segments = 10
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_wheel"]
+albedo_color = Color(0.08, 0.08, 0.08, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_body"]
+size = Vector3(4.3, 1.1, 1.8)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_cabin"]
+size = Vector3(2.3, 0.62, 1.62)
+
+[node name="ParkedCar" type="StaticBody3D"]
+script = ExtResource("1")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.7, 0)
+mesh = SubResource("BoxMesh_body")
+
+[node name="Cabin" type="MeshInstance3D" parent="."]
+position = Vector3(-0.2, 1.38, 0)
+mesh = SubResource("BoxMesh_cabin")
+surface_material_override/0 = SubResource("StandardMaterial3D_cabin")
+
+[node name="WheelFL" type="MeshInstance3D" parent="."]
+position = Vector3(1.35, 0.33, 0.8)
+rotation = Vector3(1.5707964, 0, 0)
+mesh = SubResource("CylinderMesh_wheel")
+surface_material_override/0 = SubResource("StandardMaterial3D_wheel")
+
+[node name="WheelFR" type="MeshInstance3D" parent="."]
+position = Vector3(1.35, 0.33, -0.8)
+rotation = Vector3(1.5707964, 0, 0)
+mesh = SubResource("CylinderMesh_wheel")
+surface_material_override/0 = SubResource("StandardMaterial3D_wheel")
+
+[node name="WheelRL" type="MeshInstance3D" parent="."]
+position = Vector3(-1.35, 0.33, 0.8)
+rotation = Vector3(1.5707964, 0, 0)
+mesh = SubResource("CylinderMesh_wheel")
+surface_material_override/0 = SubResource("StandardMaterial3D_wheel")
+
+[node name="WheelRR" type="MeshInstance3D" parent="."]
+position = Vector3(-1.35, 0.33, -0.8)
+rotation = Vector3(1.5707964, 0, 0)
+mesh = SubResource("CylinderMesh_wheel")
+surface_material_override/0 = SubResource("StandardMaterial3D_wheel")
+
+[node name="BodyCollision" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.55, 0)
+shape = SubResource("BoxShape3D_body")
+
+[node name="CabinCollision" type="CollisionShape3D" parent="."]
+position = Vector3(-0.2, 1.38, 0)
+shape = SubResource("BoxShape3D_cabin")

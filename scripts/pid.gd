@@ -8,7 +8,7 @@ extends RefCounted
 var kp: float = 0.0
 var ki: float = 0.0
 var kd: float = 0.0
-var integral_limit: float = 10.0
+var integral_limit: float = 1.0 ## rad of accumulated rate error
 
 ## A raw (error - prev_error) / delta derivative amplifies any frame-to-
 ## frame noise - real flight controllers always low-pass filter the
@@ -22,14 +22,19 @@ var _integral: float = 0.0
 var _prev_error: float = 0.0
 var _filtered_derivative: float = 0.0
 
-func update(error: float, delta: float) -> float:
+## i_scale (0..1) scales how much of this step's error is integrated -
+## used by the drone for Betaflight-style I-term relax.
+func update(error: float, delta: float, i_scale: float = 1.0) -> float:
 	if delta <= 0.0:
 		return 0.0
-	_integral = clamp(_integral + error * delta, -integral_limit, integral_limit)
+	_integral = clamp(_integral + error * delta * i_scale, -integral_limit, integral_limit)
 	var raw_derivative: float = (error - _prev_error) / delta
 	_filtered_derivative = lerp(_filtered_derivative, raw_derivative, d_filter_alpha)
 	_prev_error = error
 	return kp * error + ki * _integral + kd * _filtered_derivative
+
+func reset_integral() -> void:
+	_integral = 0.0
 
 func reset() -> void:
 	_integral = 0.0

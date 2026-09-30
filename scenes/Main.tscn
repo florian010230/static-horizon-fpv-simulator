@@ -7,12 +7,17 @@
 [ext_resource type="PackedScene" path="res://scenes/Pole.tscn" id="5"]
 [ext_resource type="PackedScene" path="res://scenes/Tree.tscn" id="6"]
 [ext_resource type="PackedScene" path="res://scenes/SmallHouse.tscn" id="7"]
+[ext_resource type="Script" path="res://scripts/hollow_building.gd" id="20"]
+[ext_resource type="Script" path="res://scripts/embankment.gd" id="21"]
+[ext_resource type="PackedScene" path="res://scenes/StreetLamp.tscn" id="22"]
+[ext_resource type="PackedScene" path="res://scenes/ParkedCar.tscn" id="23"]
+[ext_resource type="PackedScene" path="res://scenes/Tree.tscn" id="24"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_main"]
 sky_top_color = Color(0.28, 0.5, 0.75, 1)
 sky_horizon_color = Color(0.75, 0.82, 0.85, 1)
-ground_bottom_color = Color(0.3, 0.27, 0.22, 1)
-ground_horizon_color = Color(0.75, 0.82, 0.85, 1)
+ground_bottom_color = Color(0.2, 0.3, 0.17, 1)
+ground_horizon_color = Color(0.62, 0.7, 0.66, 1)
 
 [sub_resource type="Sky" id="Sky_main"]
 sky_material = SubResource("ProceduralSkyMaterial_main")
@@ -23,7 +28,8 @@ process_mode = 1
 background_mode = 2
 sky = SubResource("Sky_main")
 ambient_light_source = 2
-ambient_light_color = Color(0.55, 0.6, 0.68, 1)
+ambient_light_color = Color(0.62, 0.68, 0.76, 1)
+ambient_light_energy = 1.25
 
 [sub_resource type="BoxMesh" id="BoxMesh_ground"]
 size = Vector3(500, 0.2, 500)
@@ -80,22 +86,6 @@ height = 2.0
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hill"]
 albedo_color = Color(0.28, 0.42, 0.22, 1)
 
-[sub_resource type="BoxMesh" id="BoxMesh_border_ns"]
-size = Vector3(460, 120, 2)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_border_ns"]
-size = Vector3(460, 120, 2)
-
-[sub_resource type="BoxMesh" id="BoxMesh_border_ew"]
-size = Vector3(2, 120, 460)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_border_ew"]
-size = Vector3(2, 120, 460)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_border"]
-albedo_color = Color(0.5, 0.75, 0.95, 0.12)
-transparency = 1
-
 [sub_resource type="BoxMesh" id="BoxMesh_street"]
 size = Vector3(130, 0.2, 10)
 
@@ -104,6 +94,15 @@ albedo_color = Color(0.28, 0.28, 0.3, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_street"]
 size = Vector3(130, 0.2, 10)
+
+[sub_resource type="BoxMesh" id="BoxMesh_connector"]
+size = Vector3(6, 0.2, 22)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_connector"]
+albedo_color = Color(0.28, 0.28, 0.3, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_connector"]
+size = Vector3(6, 0.2, 22)
 
 [sub_resource type="BoxMesh" id="BoxMesh_sidewalk"]
 size = Vector3(3, 0.15, 14)
@@ -153,6 +152,226 @@ size = Vector3(0.3, 4.3, 14)
 [sub_resource type="BoxShape3D" id="BoxShape3D_pipe_wall"]
 size = Vector3(0.3, 4.3, 14)
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_0"]
+albedo_color = Color(0.3, 0.3, 0.32, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_1"]
+albedo_color = Color(0.66, 0.64, 0.6, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_2"]
+albedo_color = Color(0.66, 0.6, 0.48, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_3"]
+albedo_color = Color(0.5, 0.38, 0.26, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_4"]
+albedo_color = Color(0.95, 0.95, 0.93, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_5"]
+size = Vector3(205, 0.2, 10)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_v_6"]
+size = Vector3(205, 0.2, 10)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_7"]
+size = Vector3(155, 0.2, 10)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_v_8"]
+size = Vector3(155, 0.2, 10)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_9"]
+size = Vector3(40, 0.15, 0.3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_v_10"]
+size = Vector3(40, 0.15, 0.3)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_11"]
+size = Vector3(62, 0.15, 0.3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_v_12"]
+size = Vector3(62, 0.15, 0.3)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_13"]
+size = Vector3(232, 0.3, 2.5)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_v_14"]
+size = Vector3(232, 0.3, 2.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_15"]
+size = Vector3(4, 0.02, 0.25)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_16"]
+size = Vector3(3, 0.02, 0.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_17"]
+size = Vector3(34, 0.04, 32)
+
+[sub_resource type="PrismMesh" id="PrismMesh_v_18"]
+size = Vector3(12.4, 5.2, 21.2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_19"]
+albedo_color = Color(0.36, 0.23, 0.17, 1)
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_v_20"]
+points = PackedVector3Array(-6.2, -2.6, -10.6, 6.2, -2.6, -10.6, 6.2, -2.6, 10.6, -6.2, -2.6, 10.6, 0, 2.6, -10.6, 0, 2.6, 10.6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_21"]
+size = Vector3(5.6, 25, 5.6)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_22"]
+albedo_color = Color(0.95, 0.93, 0.88, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_v_23"]
+size = Vector3(5.6, 25, 5.6)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_v_24"]
+top_radius = 0.0
+bottom_radius = 3.9598
+height = 9
+radial_segments = 4
+rings = 1
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_25"]
+albedo_color = Color(0.24, 0.3, 0.28, 1)
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_v_26"]
+points = PackedVector3Array(-2.8, -4.5, -2.8, 2.8, -4.5, -2.8, 2.8, -4.5, 2.8, -2.8, -4.5, 2.8, 0, 4.5, 0)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_v_27"]
+top_radius = 1.1
+bottom_radius = 1.1
+height = 0.06
+radial_segments = 20
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_28"]
+albedo_color = Color(0.95, 0.95, 0.9, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_29"]
+size = Vector3(0.12, 0.7, 0.02)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_30"]
+albedo_color = Color(0.1, 0.1, 0.1, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_31"]
+size = Vector3(0.8, 0.09, 0.02)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_32"]
+size = Vector3(22, 0.2, 15)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_v_33"]
+size = Vector3(22, 0.2, 15)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_34"]
+size = Vector3(0.12, 0.02, 5)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_v_35"]
+top_radius = 0.05
+bottom_radius = 0.06
+height = 7.0
+radial_segments = 6
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_36"]
+albedo_color = Color(0.85, 0.85, 0.85, 1)
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_v_37"]
+radius = 0.06
+height = 7.0
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_v_38"]
+top_radius = 0.12
+bottom_radius = 0.3
+height = 1.6
+radial_segments = 10
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_39"]
+albedo_color = Color(0.95, 0.45, 0.1, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_40"]
+size = Vector3(1.6, 0.02, 1.6)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_41"]
+albedo_color = Color(0.95, 0.5, 0.1, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_42"]
+size = Vector3(0.9, 0.02, 0.9)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_43"]
+size = Vector3(4.5, 0.04, 105)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_44"]
+size = Vector3(4.5, 0.04, 26)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_45"]
+size = Vector3(4.5, 0.3, 4.0264)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_v_46"]
+size = Vector3(4.5, 0.3, 4.0264)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_47"]
+size = Vector3(45, 0.03, 30)
+
+[sub_resource type="PrismMesh" id="PrismMesh_v_48"]
+size = Vector3(15.2, 4.4, 25)
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_v_49"]
+points = PackedVector3Array(-7.6, -2.2, -12.5, 7.6, -2.2, -12.5, 7.6, -2.2, 12.5, -7.6, -2.2, 12.5, 0, 2.2, -12.5, 0, 2.2, 12.5)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_v_50"]
+top_radius = 3.0
+bottom_radius = 3.0
+height = 15.0
+radial_segments = 16
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_51"]
+albedo_color = Color(0.78, 0.8, 0.8, 1)
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_v_52"]
+radius = 3.0
+height = 15.0
+
+[sub_resource type="SphereMesh" id="SphereMesh_v_53"]
+radius = 3.0
+height = 3.0
+radial_segments = 16
+rings = 6
+is_hemisphere = true
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v_54"]
+albedo_color = Color(0.55, 0.57, 0.6, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_55"]
+size = Vector3(90, 0.01, 40)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_56"]
+size = Vector3(70, 0.01, 50)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_57"]
+size = Vector3(60, 0.01, 70)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_loop_segment"]
+size = Vector3(1.000, 1.000, 0.934)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_17_churchsquare"]
+size = Vector3(34, 0.1, 11)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_43_farmtracksouth"]
+size = Vector3(4.5, 0.2, 105)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_44_farmtracknorth"]
+size = Vector3(4.5, 0.2, 26)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_47_farmyard"]
+size = Vector3(45, 0.2, 30)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_55_field0"]
+size = Vector3(90, 0.2, 40)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_56_field1"]
+size = Vector3(70, 0.2, 50)
+
+[sub_resource type="BoxMesh" id="BoxMesh_v_57_field2"]
+size = Vector3(60, 0.2, 70)
+
 [node name="Main" type="Node3D" unique_id=1537932311]
 script = ExtResource("1")
 
@@ -161,7 +380,7 @@ environment = SubResource("Environment_main")
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=1382993395]
 transform = Transform3D(0.87758255, 0.37554693, -0.2980157, 0, 0.62161, 0.7833269, 0.47942555, -0.687434, 0.54551405, 0, 30, 0)
-light_energy = 1.4
+light_energy = 1.2
 shadow_enabled = false
 
 [node name="Ground" type="StaticBody3D" parent="." unique_id=1730777446]
@@ -195,10 +414,10 @@ surface_material_override/0 = SubResource("StandardMaterial3D_roof")
 shape = SubResource("BoxShape3D_tower_roof")
 
 [node name="House1" parent="." instance=ExtResource("7")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0, 82)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0.56, 82)
 
 [node name="House2" parent="." instance=ExtResource("7")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 0, 82)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 0.56, 82)
 
 [node name="TunnelFloor" type="StaticBody3D" parent="." unique_id=1249513108]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.75, -55)
@@ -272,96 +491,106 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 0.775, 75)
 mesh = SubResource("BoxMesh_curb")
 surface_material_override/0 = SubResource("StandardMaterial3D_curb")
 
+[node name="ConnectorRoad" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 0.6, 54)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="ConnectorRoad"]
+mesh = SubResource("BoxMesh_connector")
+surface_material_override/0 = SubResource("StandardMaterial3D_connector")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ConnectorRoad"]
+shape = SubResource("BoxShape3D_connector")
+
 [node name="CollisionShape3D" type="CollisionShape3D" parent="CurbSouth"]
 shape = SubResource("BoxShape3D_curb")
 
 [node name="SidewalkHouse1" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0.62, 75)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0.4, 75)
 mesh = SubResource("BoxMesh_sidewalk")
 surface_material_override/0 = SubResource("StandardMaterial3D_sidewalk")
 
 [node name="SidewalkHouse2" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 0.62, 75)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25, 0.4, 75)
 mesh = SubResource("BoxMesh_sidewalk")
 surface_material_override/0 = SubResource("StandardMaterial3D_sidewalk")
 
 [node name="SidewalkBuilding" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55, 0.62, 75)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55, 0.4, 75)
 mesh = SubResource("BoxMesh_sidewalk_wide")
 surface_material_override/0 = SubResource("StandardMaterial3D_sidewalk")
 
 [node name="Dash0" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -31.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -31.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash1" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -23.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -23.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash2" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash3" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash4" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash5" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash6" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash7" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash8" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 33.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 33.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash9" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 41.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 41.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash10" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 49.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 49.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash11" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 57.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 57.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash12" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 65.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 65.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash13" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 73.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 73.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
 [node name="Dash14" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 81.0, 0.71, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 81.0, 0.75, 70)
 mesh = SubResource("BoxMesh_dash")
 surface_material_override/0 = SubResource("StandardMaterial3D_dash")
 
@@ -431,6 +660,128 @@ rotation = Vector3(1.5707963, 0, 0)
 mesh = SubResource("TorusMesh_loop")
 surface_material_override/0 = SubResource("StandardMaterial3D_loop")
 
+[node name="LoopCollision" type="StaticBody3D" parent="Loop1"]
+
+[node name="Segment0" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(3.4701, 0, 0.4568)
+rotation = Vector3(0, -0.13090, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment1" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(3.2336, 0, 1.3394)
+rotation = Vector3(0, -0.39270, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment2" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(2.7767, 0, 2.1307)
+rotation = Vector3(0, -0.65450, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment3" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(2.1307, 0, 2.7767)
+rotation = Vector3(0, -0.91630, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment4" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(1.3394, 0, 3.2336)
+rotation = Vector3(0, -1.17810, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment5" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(0.4568, 0, 3.4701)
+rotation = Vector3(0, -1.43990, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment6" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(-0.4568, 0, 3.4701)
+rotation = Vector3(0, -1.70170, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment7" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(-1.3394, 0, 3.2336)
+rotation = Vector3(0, -1.96350, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment8" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(-2.1307, 0, 2.7767)
+rotation = Vector3(0, -2.22529, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment9" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(-2.7767, 0, 2.1307)
+rotation = Vector3(0, -2.48709, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment10" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(-3.2336, 0, 1.3394)
+rotation = Vector3(0, -2.74889, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment11" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(-3.4701, 0, 0.4568)
+rotation = Vector3(0, -3.01069, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment12" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(-3.4701, 0, -0.4568)
+rotation = Vector3(0, -3.27249, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment13" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(-3.2336, 0, -1.3394)
+rotation = Vector3(0, -3.53429, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment14" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(-2.7767, 0, -2.1307)
+rotation = Vector3(0, -3.79609, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment15" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(-2.1307, 0, -2.7767)
+rotation = Vector3(0, -4.05789, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment16" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(-1.3394, 0, -3.2336)
+rotation = Vector3(0, -4.31969, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment17" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(-0.4568, 0, -3.4701)
+rotation = Vector3(0, -4.58149, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment18" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(0.4568, 0, -3.4701)
+rotation = Vector3(0, -4.84329, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment19" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(1.3394, 0, -3.2336)
+rotation = Vector3(0, -5.10509, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment20" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(2.1307, 0, -2.7767)
+rotation = Vector3(0, -5.36689, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment21" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(2.7767, 0, -2.1307)
+rotation = Vector3(0, -5.62869, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment22" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(3.2336, 0, -1.3394)
+rotation = Vector3(0, -5.89049, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
+[node name="Segment23" type="CollisionShape3D" parent="Loop1/LoopCollision"]
+position = Vector3(3.4701, 0, -0.4568)
+rotation = Vector3(0, -6.15229, 0)
+shape = SubResource("BoxShape3D_loop_segment")
+
 [node name="PipeFloor" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 35, 0.65, 52)
 
@@ -471,75 +822,35 @@ surface_material_override/0 = SubResource("StandardMaterial3D_tunnel")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="PipeWallRight"]
 shape = SubResource("BoxShape3D_pipe_wall")
 
-[node name="BorderNorth" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 60, -230)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="BorderNorth"]
-mesh = SubResource("BoxMesh_border_ns")
-surface_material_override/0 = SubResource("StandardMaterial3D_border")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="BorderNorth"]
-shape = SubResource("BoxShape3D_border_ns")
-
-[node name="BorderSouth" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 60, 230)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="BorderSouth"]
-mesh = SubResource("BoxMesh_border_ns")
-surface_material_override/0 = SubResource("StandardMaterial3D_border")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="BorderSouth"]
-shape = SubResource("BoxShape3D_border_ns")
-
-[node name="BorderEast" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 230, 60, 0)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="BorderEast"]
-mesh = SubResource("BoxMesh_border_ew")
-surface_material_override/0 = SubResource("StandardMaterial3D_border")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="BorderEast"]
-shape = SubResource("BoxShape3D_border_ew")
-
-[node name="BorderWest" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -230, 60, 0)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="BorderWest"]
-mesh = SubResource("BoxMesh_border_ew")
-surface_material_override/0 = SubResource("StandardMaterial3D_border")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="BorderWest"]
-shape = SubResource("BoxShape3D_border_ew")
-
 [node name="Gate1" parent="." unique_id=2011873533 instance=ExtResource("4")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -35)
 
 [node name="Gate2" parent="." unique_id=1857130539 instance=ExtResource("4")]
-transform = Transform3D(0.49999955, 0, 0.8660257, 0, 1, 0, -0.8660257, 0, 0.49999955, 50, 0, -55)
+transform = Transform3D(0.5, 0, 0.866, 0, 1, 0, -0.866, 0, 0.5, 50, 0, -28)
 
 [node name="Gate3" parent="." unique_id=1362121149 instance=ExtResource("4")]
 transform = Transform3D(0.70476943, 0, -0.2565152, 0, 0.75, 0, 0.2565152, 0, 0.70476943, -10, 0, -80)
 
 [node name="Pole1" parent="." unique_id=1991681577 instance=ExtResource("5")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 3.5, 45)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 3.5, 20)
 
 [node name="Pole2" parent="." unique_id=783724216 instance=ExtResource("5")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 3.5, 50)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 3.5, 25)
 
 [node name="Pole3" parent="." unique_id=773941734 instance=ExtResource("5")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 3.5, 55)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 3.5, 30)
 
 [node name="Pole4" parent="." unique_id=1460592913 instance=ExtResource("5")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 3.5, 60)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 3.5, 35)
 
 [node name="Pole5" parent="." unique_id=36861226 instance=ExtResource("5")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 3.5, 65)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 3.5, 40)
 
 [node name="Pole6" parent="." unique_id=1973345851 instance=ExtResource("5")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 3.5, 70)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 3.5, 45)
 
 [node name="Tree0" parent="." instance=ExtResource("6")]
-transform = Transform3D(1.2927, 0, 0, 0, 1.2927, 0, 0, 0, 1.2927, -164.101, 0.5, 68.384)
+transform = Transform3D(1.2927, 0, 0, 0, 1.2927, 0, 0, 0, 1.2927, -164.1, 0.5, 59.66)
 
 [node name="Tree1" parent="." instance=ExtResource("6")]
 transform = Transform3D(1.2101, 0, 0, 0, 1.2101, 0, 0, 0, 1.2101, -86.78, 0.5, -198.833)
@@ -605,7 +916,7 @@ transform = Transform3D(0.7155, 0, 0, 0, 0.7155, 0, 0, 0, 0.7155, -11.567, 0.5, 
 transform = Transform3D(0.8827, 0, 0, 0, 0.8827, 0, 0, 0, 0.8827, -135.828, 0.5, -180.476)
 
 [node name="Tree22" parent="." instance=ExtResource("6")]
-transform = Transform3D(0.7838, 0, 0, 0, 0.7838, 0, 0, 0, 0.7838, 105.472, 0.5, -43.447)
+transform = Transform3D(0.7838, 0, 0, 0, 0.7838, 0, 0, 0, 0.7838, 105.47, 0.5, -34.28)
 
 [node name="Tree23" parent="." instance=ExtResource("6")]
 transform = Transform3D(0.9287, 0, 0, 0, 0.9287, 0, 0, 0, 0.9287, -76.58, 0.5, 9.937)
@@ -641,7 +952,7 @@ transform = Transform3D(0.7119, 0, 0, 0, 0.7119, 0, 0, 0, 0.7119, 141.324, 0.5, 
 transform = Transform3D(1.1826, 0, 0, 0, 1.1826, 0, 0, 0, 1.1826, 214.064, 0.5, 184.765)
 
 [node name="Tree34" parent="." instance=ExtResource("6")]
-transform = Transform3D(1.0212, 0, 0, 0, 1.0212, 0, 0, 0, 1.0212, 151.279, 0.5, -50.282)
+transform = Transform3D(1.0212, 0, 0, 0, 1.0212, 0, 0, 0, 1.0212, 151.28, 0.5, -33.75)
 
 [node name="Tree35" parent="." instance=ExtResource("6")]
 transform = Transform3D(1.0657, 0, 0, 0, 1.0657, 0, 0, 0, 1.0657, 30.635, 0.5, -126.119)
@@ -650,10 +961,10 @@ transform = Transform3D(1.0657, 0, 0, 0, 1.0657, 0, 0, 0, 1.0657, 30.635, 0.5, -
 transform = Transform3D(0.7534, 0, 0, 0, 0.7534, 0, 0, 0, 0.7534, 72.632, 0.5, 54.002)
 
 [node name="Tree37" parent="." instance=ExtResource("6")]
-transform = Transform3D(0.9376, 0, 0, 0, 0.9376, 0, 0, 0, 0.9376, -127.69, 0.5, -70.285)
+transform = Transform3D(0.9376, 0, 0, 0, 0.9376, 0, 0, 0, 0.9376, -127.69, 0.5, -76.06)
 
 [node name="Tree38" parent="." instance=ExtResource("6")]
-transform = Transform3D(1.2419, 0, 0, 0, 1.2419, 0, 0, 0, 1.2419, -64.854, 0.5, 74.037)
+transform = Transform3D(1.2419, 0, 0, 0, 1.2419, 0, 0, 0, 1.2419, -64.9, 0.5, 100)
 
 [node name="Tree39" parent="." instance=ExtResource("6")]
 transform = Transform3D(1.2361, 0, 0, 0, 1.2361, 0, 0, 0, 1.2361, 171.08, 0.5, -21.513)
@@ -665,10 +976,10 @@ transform = Transform3D(0.7677, 0, 0, 0, 0.7677, 0, 0, 0, 0.7677, -124.929, 0.5,
 transform = Transform3D(1.1867, 0, 0, 0, 1.1867, 0, 0, 0, 1.1867, 42.853, 0.5, 151.534)
 
 [node name="Tree42" parent="." instance=ExtResource("6")]
-transform = Transform3D(0.7526, 0, 0, 0, 0.7526, 0, 0, 0, 0.7526, -199.929, 0.5, 71.814)
+transform = Transform3D(0.7526, 0, 0, 0, 0.7526, 0, 0, 0, 0.7526, -199.93, 0.5, 79.16)
 
 [node name="Tree43" parent="." instance=ExtResource("6")]
-transform = Transform3D(1.0183, 0, 0, 0, 1.0183, 0, 0, 0, 1.0183, 92.681, 0.5, -48.436)
+transform = Transform3D(1.0183, 0, 0, 0, 1.0183, 0, 0, 0, 1.0183, 92.68, 0.5, -33.76)
 
 [node name="Tree44" parent="." instance=ExtResource("6")]
 transform = Transform3D(1.0391, 0, 0, 0, 1.0391, 0, 0, 0, 1.0391, -10.269, 0.5, 131.875)
@@ -683,7 +994,7 @@ transform = Transform3D(0.7345, 0, 0, 0, 0.7345, 0, 0, 0, 0.7345, -135.66, 0.5, 
 transform = Transform3D(0.9725, 0, 0, 0, 0.9725, 0, 0, 0, 0.9725, 202.699, 0.5, 159.701)
 
 [node name="Tree48" parent="." instance=ExtResource("6")]
-transform = Transform3D(0.9667, 0, 0, 0, 0.9667, 0, 0, 0, 0.9667, 136.477, 0.5, -47.75)
+transform = Transform3D(0.9667, 0, 0, 0, 0.9667, 0, 0, 0, 0.9667, 136.48, 0.5, -33.87)
 
 [node name="Tree49" parent="." instance=ExtResource("6")]
 transform = Transform3D(0.9446, 0, 0, 0, 0.9446, 0, 0, 0, 0.9446, 206.316, 0.5, 6.264)
@@ -716,7 +1027,7 @@ transform = Transform3D(1.2557, 0, 0, 0, 1.2557, 0, 0, 0, 1.2557, 38.023, 0.5, -
 transform = Transform3D(0.8955, 0, 0, 0, 0.8955, 0, 0, 0, 0.8955, -59.099, 0.5, 48.118)
 
 [node name="Tree59" parent="." instance=ExtResource("6")]
-transform = Transform3D(0.9673, 0, 0, 0, 0.9673, 0, 0, 0, 0.9673, -150.765, 0.5, 67.397)
+transform = Transform3D(0.9673, 0, 0, 0, 0.9673, 0, 0, 0, 0.9673, -150.76, 0.5, 60.37)
 
 [node name="Tree60" parent="." instance=ExtResource("6")]
 transform = Transform3D(0.9288, 0, 0, 0, 0.9288, 0, 0, 0, 0.9288, -154.032, 0.5, -129.359)
@@ -731,7 +1042,7 @@ transform = Transform3D(1.0335, 0, 0, 0, 1.0335, 0, 0, 0, 1.0335, -89.347, 0.5, 
 transform = Transform3D(1.1821, 0, 0, 0, 1.1821, 0, 0, 0, 1.1821, 4.795, 0.5, -190.092)
 
 [node name="Tree64" parent="." instance=ExtResource("6")]
-transform = Transform3D(0.943, 0, 0, 0, 0.943, 0, 0, 0, 0.943, 55.746, 0.5, -60.303)
+transform = Transform3D(0.943, 0, 0, 0, 0.943, 0, 0, 0, 0.943, 55.75, 0.5, -76.07)
 
 [node name="Tree65" parent="." instance=ExtResource("6")]
 transform = Transform3D(0.8859, 0, 0, 0, 0.8859, 0, 0, 0, 0.8859, -205.477, 0.5, 134.324)
@@ -752,10 +1063,10 @@ transform = Transform3D(0.9447, 0, 0, 0, 0.9447, 0, 0, 0, 0.9447, 184.746, 0.5, 
 transform = Transform3D(1.1189, 0, 0, 0, 1.1189, 0, 0, 0, 1.1189, -184.09, 0.5, -210.074)
 
 [node name="Tree71" parent="." instance=ExtResource("6")]
-transform = Transform3D(1.0474, 0, 0, 0, 1.0474, 0, 0, 0, 1.0474, -94.785, 0.5, 64.742)
+transform = Transform3D(1.0474, 0, 0, 0, 1.0474, 0, 0, 0, 1.0474, -94.78, 0.5, 60.2)
 
 [node name="Tree72" parent="." instance=ExtResource("6")]
-transform = Transform3D(0.8305, 0, 0, 0, 0.8305, 0, 0, 0, 0.8305, 67.685, 0.5, -72.539)
+transform = Transform3D(0.8305, 0, 0, 0, 0.8305, 0, 0, 0, 0.8305, 67.69, 0.5, -75.83)
 
 [node name="Tree73" parent="." instance=ExtResource("6")]
 transform = Transform3D(1.0961, 0, 0, 0, 1.0961, 0, 0, 0, 1.0961, -17.916, 0.5, 96.817)
@@ -764,7 +1075,7 @@ transform = Transform3D(1.0961, 0, 0, 0, 1.0961, 0, 0, 0, 1.0961, -17.916, 0.5, 
 transform = Transform3D(1.2441, 0, 0, 0, 1.2441, 0, 0, 0, 1.2441, -57.3, 0.5, 112.747)
 
 [node name="Tree75" parent="." instance=ExtResource("6")]
-transform = Transform3D(0.841, 0, 0, 0, 0.841, 0, 0, 0, 0.841, -198.311, 0.5, -45.369)
+transform = Transform3D(0.841, 0, 0, 0, 0.841, 0, 0, 0, 0.841, -198.31, 0.5, -34.15)
 
 [node name="Tree76" parent="." instance=ExtResource("6")]
 transform = Transform3D(1.0809, 0, 0, 0, 1.0809, 0, 0, 0, 1.0809, 213.713, 0.5, 3.76)
@@ -776,7 +1087,921 @@ transform = Transform3D(1.0821, 0, 0, 0, 1.0821, 0, 0, 0, 1.0821, 203.571, 0.5, 
 transform = Transform3D(1.0528, 0, 0, 0, 1.0528, 0, 0, 0, 1.0528, -35.31, 0.5, 168.583)
 
 [node name="Tree79" parent="." instance=ExtResource("6")]
-transform = Transform3D(0.9352, 0, 0, 0, 0.9352, 0, 0, 0, 0.9352, -62.03, 0.5, -36.368)
+transform = Transform3D(0.9352, 0, 0, 0, 0.9352, 0, 0, 0, 0.9352, -62.03, 0.5, -33.94)
+
+[node name="StreetWest" type="StaticBody3D" parent="."]
+position = Vector3(-142.5, 0.6, 70)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="StreetWest" groups=["asphalt"]]
+mesh = SubResource("BoxMesh_v_5")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_0")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="StreetWest"]
+shape = SubResource("BoxShape3D_v_6")
+
+[node name="StreetEast" type="StaticBody3D" parent="."]
+position = Vector3(167.5, 0.6, 70)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="StreetEast" groups=["asphalt"]]
+mesh = SubResource("BoxMesh_v_7")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_0")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="StreetEast"]
+shape = SubResource("BoxShape3D_v_8")
+
+[node name="CurbNW" type="StaticBody3D" parent="."]
+position = Vector3(-60, 0.775, 65)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CurbNW"]
+mesh = SubResource("BoxMesh_v_9")
+surface_material_override/0 = SubResource("StandardMaterial3D_curb")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CurbNW"]
+shape = SubResource("BoxShape3D_v_10")
+
+[node name="CurbSW" type="StaticBody3D" parent="."]
+position = Vector3(-60, 0.775, 75)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CurbSW"]
+mesh = SubResource("BoxMesh_v_9")
+surface_material_override/0 = SubResource("StandardMaterial3D_curb")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CurbSW"]
+shape = SubResource("BoxShape3D_v_10")
+
+[node name="CurbNE" type="StaticBody3D" parent="."]
+position = Vector3(121, 0.775, 65)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CurbNE"]
+mesh = SubResource("BoxMesh_v_11")
+surface_material_override/0 = SubResource("StandardMaterial3D_curb")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CurbNE"]
+shape = SubResource("BoxShape3D_v_12")
+
+[node name="CurbSE" type="StaticBody3D" parent="."]
+position = Vector3(121, 0.775, 75)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CurbSE"]
+mesh = SubResource("BoxMesh_v_11")
+surface_material_override/0 = SubResource("StandardMaterial3D_curb")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CurbSE"]
+shape = SubResource("BoxShape3D_v_12")
+
+[node name="SidewalkSouth" type="StaticBody3D" parent="."]
+position = Vector3(36, 0.65, 76.4)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="SidewalkSouth" groups=["paving"]]
+mesh = SubResource("BoxMesh_v_13")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_1")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="SidewalkSouth"]
+shape = SubResource("BoxShape3D_v_14")
+
+[node name="SidewalkNorth" type="StaticBody3D" parent="."]
+position = Vector3(36, 0.65, 63.6)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="SidewalkNorth" groups=["paving"]]
+mesh = SubResource("BoxMesh_v_13")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_1")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="SidewalkNorth"]
+shape = SubResource("BoxShape3D_v_14")
+
+[node name="DashExt0" type="MeshInstance3D" parent="."]
+position = Vector3(-239, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt1" type="MeshInstance3D" parent="."]
+position = Vector3(-231, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt2" type="MeshInstance3D" parent="."]
+position = Vector3(-223, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt3" type="MeshInstance3D" parent="."]
+position = Vector3(-215, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt4" type="MeshInstance3D" parent="."]
+position = Vector3(-207, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt5" type="MeshInstance3D" parent="."]
+position = Vector3(-199, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt6" type="MeshInstance3D" parent="."]
+position = Vector3(-191, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt7" type="MeshInstance3D" parent="."]
+position = Vector3(-183, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt8" type="MeshInstance3D" parent="."]
+position = Vector3(-175, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt9" type="MeshInstance3D" parent="."]
+position = Vector3(-167, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt10" type="MeshInstance3D" parent="."]
+position = Vector3(-159, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt11" type="MeshInstance3D" parent="."]
+position = Vector3(-151, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt12" type="MeshInstance3D" parent="."]
+position = Vector3(-143, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt13" type="MeshInstance3D" parent="."]
+position = Vector3(-135, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt14" type="MeshInstance3D" parent="."]
+position = Vector3(-127, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt15" type="MeshInstance3D" parent="."]
+position = Vector3(-119, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt16" type="MeshInstance3D" parent="."]
+position = Vector3(-111, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt17" type="MeshInstance3D" parent="."]
+position = Vector3(-103, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt18" type="MeshInstance3D" parent="."]
+position = Vector3(-95, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt19" type="MeshInstance3D" parent="."]
+position = Vector3(-87, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt20" type="MeshInstance3D" parent="."]
+position = Vector3(-79, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt21" type="MeshInstance3D" parent="."]
+position = Vector3(-71, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt22" type="MeshInstance3D" parent="."]
+position = Vector3(-63, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt23" type="MeshInstance3D" parent="."]
+position = Vector3(-55, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt24" type="MeshInstance3D" parent="."]
+position = Vector3(-47, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt25" type="MeshInstance3D" parent="."]
+position = Vector3(-39, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt26" type="MeshInstance3D" parent="."]
+position = Vector3(89, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt27" type="MeshInstance3D" parent="."]
+position = Vector3(97, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt28" type="MeshInstance3D" parent="."]
+position = Vector3(105, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt29" type="MeshInstance3D" parent="."]
+position = Vector3(113, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt30" type="MeshInstance3D" parent="."]
+position = Vector3(121, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt31" type="MeshInstance3D" parent="."]
+position = Vector3(129, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt32" type="MeshInstance3D" parent="."]
+position = Vector3(137, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt33" type="MeshInstance3D" parent="."]
+position = Vector3(145, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt34" type="MeshInstance3D" parent="."]
+position = Vector3(153, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt35" type="MeshInstance3D" parent="."]
+position = Vector3(161, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt36" type="MeshInstance3D" parent="."]
+position = Vector3(169, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt37" type="MeshInstance3D" parent="."]
+position = Vector3(177, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt38" type="MeshInstance3D" parent="."]
+position = Vector3(185, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt39" type="MeshInstance3D" parent="."]
+position = Vector3(193, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt40" type="MeshInstance3D" parent="."]
+position = Vector3(201, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt41" type="MeshInstance3D" parent="."]
+position = Vector3(209, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt42" type="MeshInstance3D" parent="."]
+position = Vector3(217, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt43" type="MeshInstance3D" parent="."]
+position = Vector3(225, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt44" type="MeshInstance3D" parent="."]
+position = Vector3(233, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="DashExt45" type="MeshInstance3D" parent="."]
+position = Vector3(241, 0.75, 70)
+mesh = SubResource("BoxMesh_v_15")
+surface_material_override/0 = SubResource("StandardMaterial3D_dash")
+
+[node name="Zebra0" type="MeshInstance3D" parent="."]
+position = Vector3(124, 0.75, 66)
+mesh = SubResource("BoxMesh_v_16")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="Zebra1" type="MeshInstance3D" parent="."]
+position = Vector3(124, 0.75, 67)
+mesh = SubResource("BoxMesh_v_16")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="Zebra2" type="MeshInstance3D" parent="."]
+position = Vector3(124, 0.75, 68)
+mesh = SubResource("BoxMesh_v_16")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="Zebra3" type="MeshInstance3D" parent="."]
+position = Vector3(124, 0.75, 69)
+mesh = SubResource("BoxMesh_v_16")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="Zebra4" type="MeshInstance3D" parent="."]
+position = Vector3(124, 0.75, 70)
+mesh = SubResource("BoxMesh_v_16")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="Zebra5" type="MeshInstance3D" parent="."]
+position = Vector3(124, 0.75, 71)
+mesh = SubResource("BoxMesh_v_16")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="Zebra6" type="MeshInstance3D" parent="."]
+position = Vector3(124, 0.75, 72)
+mesh = SubResource("BoxMesh_v_16")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="Zebra7" type="MeshInstance3D" parent="."]
+position = Vector3(124, 0.75, 73)
+mesh = SubResource("BoxMesh_v_16")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="Zebra8" type="MeshInstance3D" parent="."]
+position = Vector3(124, 0.75, 74)
+mesh = SubResource("BoxMesh_v_16")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="VillageHouse1" parent="." instance=ExtResource("7")]
+position = Vector3(-70, 0.56, 82)
+exterior_style = "plaster"
+exterior_tint = Color(1, 1, 1, 1)
+roof_color = Color(0.36, 0.23, 0.17, 1)
+
+[node name="VillageHouse2" parent="." instance=ExtResource("7")]
+position = Vector3(-55, 0.56, 82)
+exterior_style = "plaster"
+exterior_tint = Color(1, 0.95, 0.82, 1)
+roof_color = Color(0.6, 0.25, 0.18, 1)
+
+[node name="VillageHouse3" parent="." instance=ExtResource("7")]
+position = Vector3(-40, 0.56, 82)
+exterior_style = "plaster"
+exterior_tint = Color(1, 0.91, 0.66, 1)
+roof_color = Color(0.72, 0.36, 0.2, 1)
+
+[node name="VillageHouse4" parent="." instance=ExtResource("7")]
+position = Vector3(5, 0.56, 82)
+exterior_style = "siding"
+exterior_tint = Color(1, 0.83, 0.74, 1)
+roof_color = Color(0.26, 0.27, 0.29, 1)
+
+[node name="VillageHouse5" parent="." instance=ExtResource("7")]
+position = Vector3(40, 0.56, 82)
+exterior_style = "plaster"
+exterior_tint = Color(0.86, 0.9, 0.95, 1)
+roof_color = Color(0.36, 0.23, 0.17, 1)
+
+[node name="VillageHouse6" parent="." instance=ExtResource("7")]
+position = Vector3(75, 0.56, 82)
+exterior_style = "plaster"
+exterior_tint = Color(0.87, 0.93, 0.82, 1)
+roof_color = Color(0.6, 0.25, 0.18, 1)
+
+[node name="VillageHouse7" parent="." instance=ExtResource("7")]
+position = Vector3(90, 0.56, 82)
+exterior_style = "plaster"
+exterior_tint = Color(1, 1, 1, 1)
+roof_color = Color(0.72, 0.36, 0.2, 1)
+
+[node name="VillageHouse8" parent="." instance=ExtResource("7")]
+position = Vector3(105, 0.56, 82)
+exterior_style = "siding"
+exterior_tint = Color(1, 0.95, 0.82, 1)
+roof_color = Color(0.26, 0.27, 0.29, 1)
+
+[node name="VillageHouse9" parent="." instance=ExtResource("7")]
+position = Vector3(-70, 0.56, 58)
+rotation = Vector3(0, 3.1416, 0)
+exterior_style = "siding"
+exterior_tint = Color(1, 0.83, 0.74, 1)
+roof_color = Color(0.26, 0.27, 0.29, 1)
+
+[node name="VillageHouse10" parent="." instance=ExtResource("7")]
+position = Vector3(-55, 0.56, 58)
+rotation = Vector3(0, 3.1416, 0)
+exterior_style = "plaster"
+exterior_tint = Color(0.86, 0.9, 0.95, 1)
+roof_color = Color(0.36, 0.23, 0.17, 1)
+
+[node name="VillageHouse11" parent="." instance=ExtResource("7")]
+position = Vector3(-25, 0.56, 58)
+rotation = Vector3(0, 3.1416, 0)
+exterior_style = "plaster"
+exterior_tint = Color(0.87, 0.93, 0.82, 1)
+roof_color = Color(0.6, 0.25, 0.18, 1)
+
+[node name="VillageHouse12" parent="." instance=ExtResource("7")]
+position = Vector3(-10, 0.56, 58)
+rotation = Vector3(0, 3.1416, 0)
+exterior_style = "plaster"
+exterior_tint = Color(1, 1, 1, 1)
+roof_color = Color(0.72, 0.36, 0.2, 1)
+
+[node name="VillageHouse13" parent="." instance=ExtResource("7")]
+position = Vector3(55, 0.56, 58)
+rotation = Vector3(0, 3.1416, 0)
+exterior_style = "siding"
+exterior_tint = Color(1, 0.95, 0.82, 1)
+roof_color = Color(0.26, 0.27, 0.29, 1)
+
+[node name="VillageHouse14" parent="." instance=ExtResource("7")]
+position = Vector3(85, 0.56, 58)
+rotation = Vector3(0, 3.1416, 0)
+exterior_style = "plaster"
+exterior_tint = Color(1, 0.91, 0.66, 1)
+roof_color = Color(0.36, 0.23, 0.17, 1)
+
+[node name="VillageHouse15" parent="." instance=ExtResource("7")]
+position = Vector3(115, 0.56, 58)
+rotation = Vector3(0, 3.1416, 0)
+exterior_style = "plaster"
+exterior_tint = Color(1, 0.83, 0.74, 1)
+roof_color = Color(0.6, 0.25, 0.18, 1)
+
+[node name="GardenTree0" parent="." instance=ExtResource("24")]
+position = Vector3(-62, 0.5, 93)
+scale = Vector3(0.55, 0.55, 0.55)
+
+[node name="GardenTree1" parent="." instance=ExtResource("24")]
+position = Vector3(-33, 0.5, 94)
+scale = Vector3(0.63, 0.63, 0.63)
+
+[node name="GardenTree2" parent="." instance=ExtResource("24")]
+position = Vector3(12, 0.5, 95)
+scale = Vector3(0.71, 0.71, 0.71)
+
+[node name="GardenTree3" parent="." instance=ExtResource("24")]
+position = Vector3(47, 0.5, 93)
+scale = Vector3(0.55, 0.55, 0.55)
+
+[node name="GardenTree4" parent="." instance=ExtResource("24")]
+position = Vector3(82, 0.5, 94)
+scale = Vector3(0.63, 0.63, 0.63)
+
+[node name="GardenTree5" parent="." instance=ExtResource("24")]
+position = Vector3(-62, 0.5, 47)
+scale = Vector3(0.71, 0.71, 0.71)
+
+[node name="GardenTree6" parent="." instance=ExtResource("24")]
+position = Vector3(-18, 0.5, 47)
+scale = Vector3(0.55, 0.55, 0.55)
+
+[node name="GardenTree7" parent="." instance=ExtResource("24")]
+position = Vector3(70, 0.5, 44)
+scale = Vector3(0.63, 0.63, 0.63)
+
+[node name="GardenTree8" parent="." instance=ExtResource("24")]
+position = Vector3(100, 0.5, 47)
+scale = Vector3(0.71, 0.71, 0.71)
+
+[node name="StreetLampS0" parent="." instance=ExtResource("22")]
+position = Vector3(-75, 0.8, 75.6)
+
+[node name="StreetLampN0" parent="." instance=ExtResource("22")]
+position = Vector3(-64, 0.8, 64.4)
+rotation = Vector3(0, 3.1416, 0)
+
+[node name="StreetLampS1" parent="." instance=ExtResource("22")]
+position = Vector3(-49, 0.8, 75.6)
+
+[node name="StreetLampN1" parent="." instance=ExtResource("22")]
+position = Vector3(-38, 0.8, 64.4)
+rotation = Vector3(0, 3.1416, 0)
+
+[node name="StreetLampS2" parent="." instance=ExtResource("22")]
+position = Vector3(-31, 0.8, 75.6)
+
+[node name="StreetLampN2" parent="." instance=ExtResource("22")]
+position = Vector3(-20, 0.8, 64.4)
+rotation = Vector3(0, 3.1416, 0)
+
+[node name="StreetLampS3" parent="." instance=ExtResource("22")]
+position = Vector3(-9, 0.8, 75.6)
+
+[node name="StreetLampN3" parent="." instance=ExtResource("22")]
+position = Vector3(2, 0.8, 64.4)
+rotation = Vector3(0, 3.1416, 0)
+
+[node name="StreetLampS4" parent="." instance=ExtResource("22")]
+position = Vector3(13, 0.8, 75.6)
+
+[node name="StreetLampN4" parent="." instance=ExtResource("22")]
+position = Vector3(24, 0.8, 64.4)
+rotation = Vector3(0, 3.1416, 0)
+
+[node name="StreetLampS5" parent="." instance=ExtResource("22")]
+position = Vector3(35, 0.8, 75.6)
+
+[node name="StreetLampN5" parent="." instance=ExtResource("22")]
+position = Vector3(46, 0.8, 64.4)
+rotation = Vector3(0, 3.1416, 0)
+
+[node name="StreetLampS6" parent="." instance=ExtResource("22")]
+position = Vector3(61, 0.8, 75.6)
+
+[node name="StreetLampN6" parent="." instance=ExtResource("22")]
+position = Vector3(72, 0.8, 64.4)
+rotation = Vector3(0, 3.1416, 0)
+
+[node name="StreetLampS7" parent="." instance=ExtResource("22")]
+position = Vector3(83, 0.8, 75.6)
+
+[node name="StreetLampN7" parent="." instance=ExtResource("22")]
+position = Vector3(94, 0.8, 64.4)
+rotation = Vector3(0, 3.1416, 0)
+
+[node name="StreetLampS8" parent="." instance=ExtResource("22")]
+position = Vector3(101, 0.8, 75.6)
+
+[node name="StreetLampN8" parent="." instance=ExtResource("22")]
+position = Vector3(112, 0.8, 64.4)
+rotation = Vector3(0, 3.1416, 0)
+
+[node name="StreetLampS9" parent="." instance=ExtResource("22")]
+position = Vector3(123, 0.8, 75.6)
+
+[node name="StreetLampN9" parent="." instance=ExtResource("22")]
+position = Vector3(134, 0.8, 64.4)
+rotation = Vector3(0, 3.1416, 0)
+
+[node name="StreetLampS10" parent="." instance=ExtResource("22")]
+position = Vector3(145, 0.8, 75.6)
+
+[node name="StreetLampN10" parent="." instance=ExtResource("22")]
+position = Vector3(156, 0.8, 64.4)
+rotation = Vector3(0, 3.1416, 0)
+
+[node name="StreetCar0" parent="." instance=ExtResource("23")]
+position = Vector3(-48, 0.7, 73.9)
+body_color = Color(0.75, 0.1, 0.1, 1)
+
+[node name="StreetCar1" parent="." instance=ExtResource("23")]
+position = Vector3(13, 0.7, 73.9)
+body_color = Color(0.15, 0.25, 0.55, 1)
+
+[node name="StreetCar2" parent="." instance=ExtResource("23")]
+position = Vector3(68, 0.7, 73.9)
+body_color = Color(0.85, 0.85, 0.82, 1)
+
+[node name="StreetCar3" parent="." instance=ExtResource("23")]
+position = Vector3(99, 0.7, 66.1)
+rotation = Vector3(0, 3.1416, 0)
+body_color = Color(0.2, 0.2, 0.22, 1)
+
+[node name="StreetCar4" parent="." instance=ExtResource("23")]
+position = Vector3(-33, 0.7, 66.1)
+rotation = Vector3(0, 3.1416, 0)
+body_color = Color(0.35, 0.5, 0.35, 1)
+
+[node name="ChurchSquare" type="MeshInstance3D" parent="." groups=["paving"]]
+position = Vector3(135, 0.55, 80.5)
+mesh = SubResource("BoxMesh_v_17_churchsquare")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_1")
+
+[node name="Church" type="StaticBody3D" parent="."]
+position = Vector3(135, 0.56, 97)
+script = ExtResource("20")
+size = Vector3(11, 9, 20)
+wall_thickness = 0.6
+left_doors = PackedVector4Array(-5.5, 1.8, 0, 3.2)
+right_doors = PackedVector4Array(-5.5, 1.8, 0, 3.2)
+left_windows = PackedVector4Array(0.5, 1.4, 3, 7.2, 6, 1.4, 3, 7.2)
+right_windows = PackedVector4Array(0.5, 1.4, 3, 7.2, 6, 1.4, 3, 7.2)
+back_windows = PackedVector4Array(0, 2.2, 3.5, 7.5)
+interior_style = "house"
+exterior_style = "plaster"
+exterior_tint = Color(1, 0.98, 0.93, 1)
+
+[node name="ChurchRoof" type="StaticBody3D" parent="."]
+position = Vector3(135, 12.76, 97)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="ChurchRoof"]
+mesh = SubResource("PrismMesh_v_18")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_19")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ChurchRoof"]
+shape = SubResource("ConvexPolygonShape3D_v_20")
+
+[node name="ChurchTower" type="StaticBody3D" parent="."]
+position = Vector3(135, 13.06, 84.3)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="ChurchTower"]
+mesh = SubResource("BoxMesh_v_21")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_22")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ChurchTower"]
+shape = SubResource("BoxShape3D_v_23")
+
+[node name="ChurchSpire" type="StaticBody3D" parent="."]
+position = Vector3(135, 30.06, 84.3)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="ChurchSpire"]
+rotation = Vector3(0, 0.7854, 0)
+mesh = SubResource("CylinderMesh_v_24")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_25")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ChurchSpire"]
+shape = SubResource("ConvexPolygonShape3D_v_26")
+
+[node name="ClockFace0" type="MeshInstance3D" parent="."]
+position = Vector3(135, 20.5, 81.47)
+rotation = Vector3(1.5708, 0, 0)
+mesh = SubResource("CylinderMesh_v_27")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_28")
+
+[node name="ClockFace1" type="MeshInstance3D" parent="."]
+position = Vector3(132.17, 20.5, 84.3)
+rotation = Vector3(0, 0, 1.5708)
+mesh = SubResource("CylinderMesh_v_27")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_28")
+
+[node name="ClockFace2" type="MeshInstance3D" parent="."]
+position = Vector3(137.83, 20.5, 84.3)
+rotation = Vector3(0, 0, 1.5708)
+mesh = SubResource("CylinderMesh_v_27")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_28")
+
+[node name="ClockHandH" type="MeshInstance3D" parent="."]
+position = Vector3(135, 20.8, 81.42)
+mesh = SubResource("BoxMesh_v_29")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_30")
+
+[node name="ClockHandM" type="MeshInstance3D" parent="."]
+position = Vector3(135.35, 20.5, 81.42)
+mesh = SubResource("BoxMesh_v_31")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_30")
+
+[node name="SquareTree0" parent="." instance=ExtResource("24")]
+position = Vector3(122, 0.5, 96)
+scale = Vector3(0.6, 0.6, 0.6)
+
+[node name="SquareTree1" parent="." instance=ExtResource("24")]
+position = Vector3(148, 0.5, 96)
+scale = Vector3(0.6, 0.6, 0.6)
+
+[node name="SquareTree2" parent="." instance=ExtResource("24")]
+position = Vector3(122, 0.5, 104)
+scale = Vector3(0.6, 0.6, 0.6)
+
+[node name="SquareTree3" parent="." instance=ExtResource("24")]
+position = Vector3(148, 0.5, 104)
+scale = Vector3(0.6, 0.6, 0.6)
+
+[node name="ClubCarPark" type="StaticBody3D" parent="."]
+position = Vector3(36, 0.6, 35.5)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="ClubCarPark" groups=["asphalt"]]
+mesh = SubResource("BoxMesh_v_32")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_0")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ClubCarPark"]
+shape = SubResource("BoxShape3D_v_33")
+
+[node name="StallLine0" type="MeshInstance3D" parent="."]
+position = Vector3(25.5, 0.75, 31)
+mesh = SubResource("BoxMesh_v_34")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="StallLine1" type="MeshInstance3D" parent="."]
+position = Vector3(28, 0.75, 31)
+mesh = SubResource("BoxMesh_v_34")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="StallLine2" type="MeshInstance3D" parent="."]
+position = Vector3(30.5, 0.75, 31)
+mesh = SubResource("BoxMesh_v_34")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="StallLine3" type="MeshInstance3D" parent="."]
+position = Vector3(33, 0.75, 31)
+mesh = SubResource("BoxMesh_v_34")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="StallLine4" type="MeshInstance3D" parent="."]
+position = Vector3(35.5, 0.75, 31)
+mesh = SubResource("BoxMesh_v_34")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="StallLine5" type="MeshInstance3D" parent="."]
+position = Vector3(38, 0.75, 31)
+mesh = SubResource("BoxMesh_v_34")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="StallLine6" type="MeshInstance3D" parent="."]
+position = Vector3(40.5, 0.75, 31)
+mesh = SubResource("BoxMesh_v_34")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="StallLine7" type="MeshInstance3D" parent="."]
+position = Vector3(43, 0.75, 31)
+mesh = SubResource("BoxMesh_v_34")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="StallLine8" type="MeshInstance3D" parent="."]
+position = Vector3(45.5, 0.75, 31)
+mesh = SubResource("BoxMesh_v_34")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="ClubCar0" parent="." instance=ExtResource("23")]
+position = Vector3(26.75, 0.7, 31)
+rotation = Vector3(0, 1.5708, 0)
+body_color = Color(0.85, 0.85, 0.82, 1)
+
+[node name="ClubCar1" parent="." instance=ExtResource("23")]
+position = Vector3(31.75, 0.7, 31)
+rotation = Vector3(0, 1.5708, 0)
+body_color = Color(0.2, 0.2, 0.22, 1)
+
+[node name="ClubCar2" parent="." instance=ExtResource("23")]
+position = Vector3(34.25, 0.7, 31)
+rotation = Vector3(0, 1.5708, 0)
+body_color = Color(0.35, 0.5, 0.35, 1)
+
+[node name="ClubCar3" parent="." instance=ExtResource("23")]
+position = Vector3(41.75, 0.7, 31)
+rotation = Vector3(0, 1.5708, 0)
+body_color = Color(0.8, 0.6, 0.15, 1)
+
+[node name="Clubhouse" type="StaticBody3D" parent="."]
+position = Vector3(54, 0.56, 36)
+script = ExtResource("20")
+size = Vector3(8, 3.2, 6)
+wall_thickness = 0.25
+front_doors = PackedVector4Array(-1.8, 1.2, 0, 2.2)
+front_windows = PackedVector4Array(1.6, 2.2, 0.9, 2.2)
+right_windows = PackedVector4Array(0, 1.8, 0.9, 2.2)
+left_doors = PackedVector4Array(0.8, 1.4, 0.9, 2.2)
+interior_style = "office"
+exterior_style = "siding"
+
+[node name="WindsockPole" type="StaticBody3D" parent="."]
+position = Vector3(48, 4, 26)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="WindsockPole"]
+mesh = SubResource("CylinderMesh_v_35")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_36")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="WindsockPole"]
+shape = SubResource("CylinderShape3D_v_37")
+
+[node name="Windsock" type="MeshInstance3D" parent="."]
+position = Vector3(48.8, 7.1, 26)
+rotation = Vector3(0, 0, 1.3208)
+mesh = SubResource("CylinderMesh_v_38")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_39")
+
+[node name="LaunchPad" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.56, 0)
+mesh = SubResource("BoxMesh_v_40")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_41")
+
+[node name="LaunchPadMark" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.59, 0)
+mesh = SubResource("BoxMesh_v_42")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_4")
+
+[node name="RailEmbankmentWest" type="StaticBody3D" parent="."]
+position = Vector3(-147.1, 0.5, -55)
+script = ExtResource("21")
+length = 205.8
+height = 7.5
+top_width = 8.0
+slope = 1.5
+
+[node name="RailEmbankmentEast" type="StaticBody3D" parent="."]
+position = Vector3(107.1, 0.5, -55)
+script = ExtResource("21")
+length = 285.8
+height = 7.5
+top_width = 8.0
+slope = 1.5
+
+[node name="RailOverTunnel" type="StaticBody3D" parent="."]
+position = Vector3(-40, 7.5, -55)
+script = ExtResource("21")
+length = 8.8
+height = 0.5
+top_width = 8.0
+slope = 0.0
+
+[node name="FarmTrackSouth" type="MeshInstance3D" parent="." groups=["gravel"]]
+position = Vector3(-40, 0.5, 12.5)
+mesh = SubResource("BoxMesh_v_43_farmtracksouth")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_2")
+
+[node name="FarmTrackNorth" type="MeshInstance3D" parent="." groups=["gravel"]]
+position = Vector3(-40, 0.5, -87)
+mesh = SubResource("BoxMesh_v_44_farmtracknorth")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_2")
+
+[node name="TunnelRampSouth" type="StaticBody3D" parent="."]
+position = Vector3(-40, 0.621, -38.0171)
+rotation = Vector3(0.1145, 0, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="TunnelRampSouth" groups=["gravel"]]
+mesh = SubResource("BoxMesh_v_45")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_2")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TunnelRampSouth"]
+shape = SubResource("BoxShape3D_v_46")
+
+[node name="TunnelRampNorth" type="StaticBody3D" parent="."]
+position = Vector3(-40, 0.621, -71.9829)
+rotation = Vector3(-0.1145, 0, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="TunnelRampNorth" groups=["gravel"]]
+mesh = SubResource("BoxMesh_v_45")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_2")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TunnelRampNorth"]
+shape = SubResource("BoxShape3D_v_46")
+
+[node name="FarmYard" type="MeshInstance3D" parent="." groups=["gravel"]]
+position = Vector3(-37.5, 0.49, -115)
+mesh = SubResource("BoxMesh_v_47_farmyard")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_2")
+
+[node name="Farmhouse" parent="." instance=ExtResource("7")]
+position = Vector3(-52, 0.56, -118)
+rotation = Vector3(0, -1.5708, 0)
+exterior_style = "plaster"
+exterior_tint = Color(1, 0.94, 0.8, 1)
+roof_color = Color(0.55, 0.22, 0.15, 1)
+
+[node name="Barn" type="StaticBody3D" parent="."]
+position = Vector3(-26, 0.56, -118)
+script = ExtResource("20")
+size = Vector3(14, 8, 24)
+wall_thickness = 0.35
+front_doors = PackedVector4Array(0, 5, 0, 5)
+back_doors = PackedVector4Array(0, 5, 0, 5)
+left_windows = PackedVector4Array(-6, 1.2, 4.5, 5.5, 6, 1.2, 4.5, 5.5)
+interior_style = "house"
+exterior_style = "siding"
+exterior_tint = Color(0.78, 0.36, 0.3, 1)
+
+[node name="BarnRoof" type="StaticBody3D" parent="."]
+position = Vector3(-26, 11.11, -118)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BarnRoof"]
+mesh = SubResource("PrismMesh_v_48")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_0")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BarnRoof"]
+shape = SubResource("ConvexPolygonShape3D_v_49")
+
+[node name="Silo" type="StaticBody3D" parent="."]
+position = Vector3(-10, 8, -108)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Silo"]
+mesh = SubResource("CylinderMesh_v_50")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_51")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Silo"]
+shape = SubResource("CylinderShape3D_v_52")
+
+[node name="SiloCap" type="MeshInstance3D" parent="."]
+position = Vector3(-10, 15.5, -108)
+mesh = SubResource("SphereMesh_v_53")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_54")
+
+[node name="Field0" type="MeshInstance3D" parent="." groups=["field"]]
+position = Vector3(-65, 0.455, -160)
+mesh = SubResource("BoxMesh_v_55_field0")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_3")
+
+[node name="Field1" type="MeshInstance3D" parent="." groups=["field"]]
+position = Vector3(40, 0.455, -165)
+mesh = SubResource("BoxMesh_v_56_field1")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_3")
+
+[node name="Field2" type="MeshInstance3D" parent="." groups=["field"]]
+position = Vector3(-150, 0.455, -110)
+mesh = SubResource("BoxMesh_v_57_field2")
+surface_material_override/0 = SubResource("StandardMaterial3D_v_3")
 
 [node name="Drone" parent="." unique_id=793737330 instance=ExtResource("2")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 0)
