@@ -3,8 +3,8 @@ extends MeshInstance3D
 
 ## A soft shadow under the drone, cast along the real sun direction onto
 ## whatever is below (grass, a roof, a table) - found with one raycast
-## per frame. Part of FakeShadows' reason to exist (engine shadow maps
-## don't render on every GPU), and in FPV the most useful shadow of all:
+## per frame. The world's static sun shadows (WorldShading) can't show a
+## moving drone, and in FPV the most useful shadow of all:
 ## it's how a pilot judges height when landing or skimming the ground.
 ## Fades out with height; hidden when nothing is within reach.
 

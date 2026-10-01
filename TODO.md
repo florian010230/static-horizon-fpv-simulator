@@ -38,13 +38,19 @@ All 12 maps exist. Self-test: 413 checks.
 - [x] 2026-09-30: no visible world edge (depth fog), no ground flicker
       (ground layers), connected rails/roads/pipes with real turnouts,
       streets and tracks run out of every map, realistic vehicles,
-      cursor hidden in flight, 40+ FPS at spawn on every map. Phase 2 remaining: classic/KISS rate presets, replay, key/button bindings.
+      cursor hidden in flight, 40+ FPS at spawn on every map.
+- [x] 2026-10-01: real sun shadows everywhere (static shadow map,
+      WorldShading), cheap shader fog, glow removed, render distance
+      setting, five tree species with LOD, overlap filtering for cars and
+      trees, the steel mill rebuilt after the Völklinger Hütte, sunsets,
+      visible border, Settings in five tabs, Betaflight/Actual/Quick/KISS
+      rates per axis. Phase 2 remaining: replay, key/button bindings.
 
 ## Phase 2 - Sim features pilots expect (Liftoff / Velocidrone baseline)
 
-- [x] (partly) Rates: exact Betaflight Actual formula incl. expo (Settings slider). Still open: Betaflight classic
-      (RC rate / super rate / expo), KISS, Raceflight - enter the same
-      numbers as on the real quad.
+- [x] Rates: Betaflight, Actual, Quick and KISS with Betaflight's own
+      formulas, per axis, same numbers as the Configurator (Settings ->
+      Rates). (Raceflight not done.)
 - [x] OSD in the FPV view (Betaflight style): timer, battery voltage,
       throttle %, speed, altitude, flight mode, arming warnings; each
       element toggleable.

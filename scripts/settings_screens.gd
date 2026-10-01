@@ -79,10 +79,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	else:
 		close()
 
+const TAB_NAMES: Array[String] = ["Graphics", "Camera & HUD", "Flight", "Rates", "Radio"]
+const QUALITY_HINTS: Array[String] = [
+	"Low: 55% render resolution, small objects only drawn nearby. For older laptops and integrated graphics.",
+	"Medium: 75% render resolution, most details. For most laptops.",
+	"High: full resolution, every detail, longest tree distance. For gaming PCs."]
+
 func _build_settings() -> Control:
-	var parts: Array = UIKit.screen_card(self, "Settings", "", 820, close, 1440)
-	# Three tabs (it outgrew one screen): Display, Flight, Radio - each a
-	# page of two columns.
+	var parts: Array = UIKit.screen_card(self, "Settings", "", 860, close, 1440)
+	# One tab per topic, each a page of two columns (Rates: one wide
+	# page). Every option has a one-line explanation under it.
 	var tabs := TabContainer.new()
 	settings_tabs = tabs
 	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -97,72 +103,86 @@ func _build_settings() -> Control:
 	tabs.add_theme_constant_override("side_margin", 0)
 	parts[1].add_child(tabs)
 	var pages: Array = []
-	for title in ["Display", "Flight", "Radio"]:
+	for title in TAB_NAMES:
 		var page := HBoxContainer.new()
 		page.name = title
 		page.add_theme_constant_override("separation", 56)
 		tabs.add_child(page)
 		var cols_of_page: Array = []
-		for k in range(2):
+		for k in range(1 if title == "Rates" else 2):
 			var col := VBoxContainer.new()
 			col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			col.add_theme_constant_override("separation", 10)
+			col.add_theme_constant_override("separation", 8)
 			page.add_child(col)
+			UIKit.gap(col, 10)
 			cols_of_page.append(col)
 		pages.append(cols_of_page)
-	var left: VBoxContainer = pages[0][0]
-	var left2: VBoxContainer = pages[0][1]
-	var right: VBoxContainer = pages[1][0]
-	var phys: VBoxContainer = pages[1][1]
-	var third: VBoxContainer = pages[2][0]
-	_radio_help(pages[2][1])
-	UIKit.gap(left, 12)
-	UIKit.gap(left2, 12)
-	UIKit.gap(right, 12)
-	UIKit.gap(phys, 12)
-	UIKit.gap(third, 12)
-	UIKit.section(left, "Display")
-	UIKit.toggle(left, "Fullscreen", Settings.is_fullscreen(), func(v: bool): Settings.set_fullscreen(v))
-	UIKit.toggle(left, "Crosshair", Settings.crosshair_enabled, func(v: bool): Settings.crosshair_enabled = v)
-	UIKit.toggle(left, "OSD (throttle, altitude, speed, time)", Settings.osd_enabled, func(v: bool): Settings.osd_enabled = v)
-	_segmented(left, "Units", ["Metric (km/h, m)", "Imperial (mph, ft)"], Settings.units, func(i: int): Settings.units = i)
-	_segmented(left, "Analog video look", ["Off", "Light", "Strong"], Settings.video_effect, func(i: int): Settings.video_effect = i)
-	UIKit.toggle(left, "Shadows (costs performance)", Settings.shadows_enabled, func(v: bool): Settings.shadows_enabled = v)
-	UIKit.section(left2, "Performance")
-	_add_quality_picker(left2)
-	UIKit.gap(left2, 6)
+
+	# Graphics
+	var g1: VBoxContainer = pages[0][0]
+	var g2: VBoxContainer = pages[0][1]
+	UIKit.section(g1, "Quality")
+	var quality_hint := _hint_label()
+	_segmented(g1, "Graphics quality", Settings.QUALITY_NAMES, Settings.graphics_quality, func(i: int):
+		Settings.graphics_quality = i
+		quality_hint.text = QUALITY_HINTS[i])
+	quality_hint.text = QUALITY_HINTS[clampi(Settings.graphics_quality, 0, 2)]
+	g1.add_child(quality_hint)
+	UIKit.gap(g1, 6)
+	UIKit.slider(g1, "Render distance", Settings.VIEW_DISTANCE_MIN, Settings.VIEW_DISTANCE_MAX, 100.0, Settings.view_distance, func(v: float): Settings.view_distance = v, " m")
+	_hint(g1, "How far the world is drawn before it fades into the haze. Shorter = more FPS.")
+	UIKit.gap(g1, 6)
+	UIKit.toggle(g1, "Sun shadows", Settings.shadows_enabled, func(v: bool): Settings.shadows_enabled = v)
+	_hint(g1, "Real shadows from every building, tree and crane. Cheap - computed once per map.")
+	UIKit.section(g2, "Screen")
+	UIKit.toggle(g2, "Fullscreen", Settings.is_fullscreen(), func(v: bool): Settings.set_fullscreen(v))
+	UIKit.gap(g2, 6)
 	var fps_initial: float = clamp(Settings.max_fps if Settings.max_fps > 0 else FPS_MAX, FPS_MIN, FPS_MAX)
-	_fps_value_label = UIKit.slider(left2, "Max FPS", FPS_MIN, FPS_MAX, 5, fps_initial, func(v: float):
+	_fps_value_label = UIKit.slider(g2, "Frame rate limit", FPS_MIN, FPS_MAX, 5, fps_initial, func(v: float):
 		# Stored now, applied when a map loads - the menu itself stays
 		# capped at MENU_FPS (see _ready).
 		Settings.max_fps = 0 if int(v) >= FPS_MAX else int(v)
 		_fps_value_label.text = _fps_label_text(int(v))
 	)
 	_fps_value_label.text = _fps_label_text(int(fps_initial))
+	_hint(g2, "Caps the FPS to save battery and heat. Far right = unlimited.")
+	UIKit.gap(g2, 6)
+	_segmented(g2, "Analog video look", ["Off", "Light", "Strong"], Settings.video_effect, func(i: int): Settings.video_effect = i)
+	_hint(g2, "Noise, scanlines and colour bleed like a real analog FPV feed.")
 
+	# Camera & HUD
+	var c1: VBoxContainer = pages[1][0]
+	var c2: VBoxContainer = pages[1][1]
+	UIKit.section(c1, "FPV camera")
+	UIKit.slider(c1, "Camera angle", 0.0, 60.0, 1.0, Settings.camera_angle_deg, func(v: float): Settings.camera_angle_deg = v, " deg")
+	_hint(c1, "Uptilt. Freestyle 25-40 deg, racing 35-50, cinematic 10-20.")
+	UIKit.slider(c1, "Field of view", 60.0, 140.0, 1.0, Settings.camera_fov_deg, func(v: float): Settings.camera_fov_deg = v, " deg")
+	_hint(c1, "Wider shows more but makes speed look faster. Real FPV cams: ~120-150 deg diagonal.")
+	UIKit.section(c2, "On screen")
+	UIKit.toggle(c2, "OSD (throttle, altitude, speed, time)", Settings.osd_enabled, func(v: bool): Settings.osd_enabled = v)
+	UIKit.toggle(c2, "Crosshair", Settings.crosshair_enabled, func(v: bool): Settings.crosshair_enabled = v)
+	UIKit.gap(c2, 6)
+	_segmented(c2, "Units", ["Metric (km/h, m)", "Imperial (mph, ft)"], Settings.units, func(i: int): Settings.units = i)
 
-	UIKit.section(right, "Acro Rates")
-	UIKit.slider(right, "Center Sensitivity", 10.0, 200.0, 5.0, Settings.rate_center_sensitivity_deg, func(v: float):
-		Settings.rate_center_sensitivity_deg = v
-		if _rate_curve:
-			_rate_curve.queue_redraw()
-	)
-	UIKit.slider(right, "Max Rate", 100.0, 1200.0, 10.0, Settings.rate_max_deg, func(v: float):
-		Settings.rate_max_deg = v
-		if _rate_curve:
-			_rate_curve.queue_redraw()
-	)
-	UIKit.slider(right, "Expo", 0.0, 1.0, 0.01, Settings.rate_expo, func(v: float):
-		Settings.rate_expo = v
-		if _rate_curve:
-			_rate_curve.queue_redraw()
-	)
-	_build_rate_curve(right)
-	UIKit.section(phys, "Physics")
-	UIKit.toggle(phys, "Performance mode (240 Hz physics)", Settings.performance_mode, func(v: bool): Settings.performance_mode = v)
-	UIKit.toggle(phys, "Battery simulation (drain, sag, OSD)", Settings.battery_enabled, func(v: bool): Settings.battery_enabled = v)
-	UIKit.gap(phys, 8)
-	_segmented(phys, "Wind (outdoor maps)", ["Off", "Light", "Gusty"], Settings.wind_level, func(i: int): Settings.wind_level = i)
+	# Flight
+	var f1: VBoxContainer = pages[2][0]
+	var f2: VBoxContainer = pages[2][1]
+	UIKit.section(f1, "Simulation")
+	UIKit.toggle(f1, "Battery simulation", Settings.battery_enabled, func(v: bool): Settings.battery_enabled = v)
+	_hint(f1, "The pack drains and sags under load; the OSD shows voltage and mAh.")
+	UIKit.gap(f1, 6)
+	_segmented(f1, "Wind (outdoor maps)", ["Off", "Light", "Gusty"], Settings.wind_level, func(i: int): Settings.wind_level = i)
+	_hint(f1, "Light: about 3 m/s. Gusty: about 7 m/s with gusts.")
+	UIKit.section(f2, "Physics")
+	UIKit.toggle(f2, "Performance mode (240 Hz physics)", Settings.performance_mode, func(v: bool): Settings.performance_mode = v)
+	_hint(f2, "A slightly crisper flight controller. Costs CPU - for strong PCs.")
+
+	# Rates
+	_build_rates(pages[3][0])
+
+	# Radio
+	var third: VBoxContainer = pages[4][0]
+	_radio_help(pages[4][1])
 	UIKit.section(third, "Radio")
 	_radio_status = Label.new()
 	_radio_status.theme_type_variation = "Muted"
@@ -204,6 +224,181 @@ func _build_settings() -> Control:
 
 	return parts[0]
 
+func _hint_label() -> Label:
+	var l := Label.new()
+	l.theme_type_variation = "Small"
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.add_theme_color_override("font_color", UIKit.MUTED_LIGHT)
+	return l
+
+func _hint(parent: Control, text: String) -> void:
+	var l := _hint_label()
+	l.text = text
+	parent.add_child(l)
+
+# --- Rates (like Betaflight Configurator's PID Tuning -> Rates) ---------------
+
+var _rate_rows: Array = [] # per axis: [SpinBox x3, max label]
+var _rate_header: Array[Label] = []
+var _rate_type_buttons: Array[Button] = []
+var _rate_updating: bool = false
+
+func _build_rates(parent: VBoxContainer) -> void:
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 40)
+	parent.add_child(top)
+	var left := VBoxContainer.new()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.add_theme_constant_override("separation", 8)
+	top.add_child(left)
+	var right := VBoxContainer.new()
+	right.custom_minimum_size = Vector2(560, 0)
+	right.add_theme_constant_override("separation", 8)
+	top.add_child(right)
+
+	_hint(left, "Same numbers as Betaflight Configurator -> PID Tuning -> Rates: copy them from your own quad and it flies the same here.")
+	UIKit.gap(left, 4)
+	var type_label := Label.new()
+	type_label.text = "Rates type"
+	left.add_child(type_label)
+	var type_row := HBoxContainer.new()
+	type_row.add_theme_constant_override("separation", 8)
+	left.add_child(type_row)
+	var group := ButtonGroup.new()
+	for i in range(Rates.TYPE_NAMES.size()):
+		var b := UIKit.button(Rates.TYPE_NAMES[i], "", 44)
+		b.toggle_mode = true
+		b.button_group = group
+		b.button_pressed = i == Settings.rates_type
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_stylebox_override("pressed", UIKit.box(UIKit.LOGO_SKY, UIKit.LOGO_SKY, 12))
+		b.add_theme_color_override("font_pressed_color", Color.WHITE)
+		var t: int = i
+		b.pressed.connect(func(): _set_rates_type(t))
+		type_row.add_child(b)
+		_rate_type_buttons.append(b)
+	UIKit.gap(left, 8)
+
+	var grid := GridContainer.new()
+	grid.columns = 5
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 10)
+	left.add_child(grid)
+	grid.add_child(Control.new())
+	for k in range(3):
+		var h := Label.new()
+		h.theme_type_variation = "Small"
+		h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		h.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_child(h)
+		_rate_header.append(h)
+	var mh := Label.new()
+	mh.text = "Max deg/s"
+	mh.theme_type_variation = "Small"
+	mh.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	grid.add_child(mh)
+	for axis in range(3):
+		var name_l := Label.new()
+		name_l.text = Rates.AXIS_NAMES[axis]
+		name_l.add_theme_color_override("font_color", AXIS_COLORS[axis])
+		name_l.custom_minimum_size = Vector2(70, 0)
+		grid.add_child(name_l)
+		var row: Array = []
+		for k in range(3):
+			var sb := SpinBox.new()
+			sb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			sb.custom_minimum_size = Vector2(130, 44)
+			sb.alignment = HORIZONTAL_ALIGNMENT_CENTER
+			sb.select_all_on_focus = true
+			var ax: int = axis
+			var col: int = k
+			sb.value_changed.connect(func(v: float): _on_rate_value(ax, col, v))
+			grid.add_child(sb)
+			row.append(sb)
+		var max_l := Label.new()
+		max_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		max_l.custom_minimum_size = Vector2(110, 0)
+		max_l.add_theme_color_override("font_color", UIKit.ACCENT)
+		grid.add_child(max_l)
+		row.append(max_l)
+		_rate_rows.append(row)
+	UIKit.gap(left, 10)
+	var preset_row := HBoxContainer.new()
+	preset_row.add_theme_constant_override("separation", 10)
+	left.add_child(preset_row)
+	var pl := Label.new()
+	pl.text = "Presets"
+	preset_row.add_child(pl)
+	for pr in Rates.PRESETS:
+		var b := UIKit.button(pr[0], "", 40)
+		b.add_theme_font_size_override("font_size", 18)
+		var preset: Array = pr
+		b.pressed.connect(func():
+			Settings.rates_type = preset[1]
+			Settings.rates_roll = preset[2].duplicate()
+			Settings.rates_pitch = preset[2].duplicate()
+			Settings.rates_yaw = preset[3].duplicate()
+			_refresh_rates())
+		preset_row.add_child(b)
+	var link := CheckButton.new()
+	link.text = "Pitch follows roll"
+	link.button_pressed = Settings.rates_roll == Settings.rates_pitch
+	link.set_meta("rates_link", true)
+	left.add_child(link)
+	_rate_link = link
+	_hint(left, "Tip: with \"Pitch follows roll\" on, editing roll sets pitch too, like most pilots fly.")
+
+	var gl := Label.new()
+	gl.text = "Rates preview - stick deflection to rotation rate"
+	gl.theme_type_variation = "Small"
+	right.add_child(gl)
+	_rate_curve = Control.new()
+	_rate_curve.custom_minimum_size = Vector2(0, 420)
+	_rate_curve.draw.connect(func(): _draw_rate_curve(_rate_curve))
+	right.add_child(_rate_curve)
+	_refresh_rates()
+
+var _rate_link: CheckButton
+const AXIS_COLORS: Array[Color] = [Color("#e8551a"), Color("#3fae5a"), Color("#3ea6ff")]
+
+func _set_rates_type(t: int) -> void:
+	if t == Settings.rates_type:
+		return
+	for axis in range(3):
+		Settings.set_rate_values(axis, Rates.convert(Settings.rates_type, Settings.rate_values(axis), t))
+	Settings.rates_type = t
+	_refresh_rates()
+
+func _refresh_rates() -> void:
+	_rate_updating = true
+	var cols: Array = Rates.COLUMNS[Settings.rates_type]
+	for k in range(3):
+		_rate_header[k].text = cols[k][0]
+	for i in range(_rate_type_buttons.size()):
+		_rate_type_buttons[i].set_pressed_no_signal(i == Settings.rates_type)
+	for axis in range(3):
+		var v: Array = Settings.rate_values(axis)
+		for k in range(3):
+			var sb: SpinBox = _rate_rows[axis][k]
+			sb.min_value = cols[k][1]
+			sb.max_value = cols[k][2]
+			sb.step = cols[k][3]
+			sb.value = v[k]
+		(_rate_rows[axis][3] as Label).text = "%d" % int(round(Rates.max_deg(Settings.rates_type, v)))
+	_rate_updating = false
+	if _rate_curve:
+		_rate_curve.queue_redraw()
+
+func _on_rate_value(axis: int, col: int, v: float) -> void:
+	if _rate_updating:
+		return
+	var vals: Array = Settings.rate_values(axis).duplicate()
+	vals[col] = v
+	Settings.set_rate_values(axis, vals)
+	if axis == 0 and _rate_link and _rate_link.button_pressed:
+		Settings.set_rate_values(1, vals.duplicate())
+	_refresh_rates()
+
 ## Radio tab, right column: how to connect, per radio family.
 func _radio_help(parent: VBoxContainer) -> void:
 	UIKit.gap(parent, 12)
@@ -242,32 +437,6 @@ func _segmented(parent: Control, label: String, options: Array, current: int, on
 		b.pressed.connect(func(): on_pick.call(idx))
 		row.add_child(b)
 
-## Low / Medium / High as a segmented control - see
-## Settings.graphics_quality for what each level changes.
-func _add_quality_picker(parent: Control) -> void:
-	var l := Label.new()
-	l.text = "Graphics quality"
-	parent.add_child(l)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	parent.add_child(row)
-	var group := ButtonGroup.new()
-	for i in range(Settings.QUALITY_NAMES.size()):
-		var b := UIKit.button(Settings.QUALITY_NAMES[i], "", 48)
-		b.toggle_mode = true
-		b.button_group = group
-		b.button_pressed = i == Settings.graphics_quality
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.add_theme_stylebox_override("pressed", UIKit.box(UIKit.LOGO_SKY, UIKit.LOGO_SKY, 12))
-		b.add_theme_color_override("font_pressed_color", Color.WHITE)
-		var q: int = i
-		b.pressed.connect(func(): Settings.graphics_quality = q)
-		row.add_child(b)
-	var hint := Label.new()
-	hint.text = "Low for older laptops and integrated graphics."
-	hint.theme_type_variation = "Small"
-	parent.add_child(hint)
-
 ## "Automatic" plus every connected controller by name.
 func _refresh_devices() -> void:
 	if _device_picker == null:
@@ -296,59 +465,45 @@ func _radio_status_text() -> String:
 func _fps_label_text(v: int) -> String:
 	return "Unlimited" if v >= FPS_MAX else str(v)
 
-## Styled after Betaflight Configurator's own "Rates Preview" graph (PID
-## Tuning -> Rate Profile Settings): a dark plot with a curve from stick
-## input to output rate. Computed with the exact same formula as
-## Drone._actual_rate(), so it isn't just decorative - it's what the
-## selected rates will actually fly like.
-func _build_rate_curve(parent: Control) -> void:
-	var label := Label.new()
-	label.text = "Rate curve preview"
-	label.theme_type_variation = "Small"
-	parent.add_child(label)
-	_rate_curve = Control.new()
-	_rate_curve.custom_minimum_size = Vector2(0, 230)
-	_rate_curve.draw.connect(func(): _draw_rate_curve(_rate_curve))
-	parent.add_child(_rate_curve)
-
+## Styled after Betaflight Configurator's own rates preview: a dark
+## plot from stick deflection to rotation rate, one curve per axis
+## (roll orange, pitch green, yaw blue), computed with the same Rates
+## functions the drone flies with.
 func _draw_rate_curve(c: Control) -> void:
 	var w: float = c.size.x
 	var h: float = c.size.y
 	c.draw_style_box(UIKit.box(UIKit.BG, UIKit.BORDER, 12), Rect2(0, 0, w, h))
-
-	var pad_left := 50.0
-	var pad_bottom := 28.0
+	var pad_left := 56.0
+	var pad_bottom := 30.0
 	var pad_top := 18.0
 	var pad_right := 18.0
 	var plot_pos := Vector2(pad_left, pad_top)
 	var plot_size := Vector2(w - pad_left - pad_right, h - pad_top - pad_bottom)
 	var plot_end: Vector2 = plot_pos + plot_size
-
+	var top: float = 200.0
+	for axis in range(3):
+		top = maxf(top, Rates.max_deg(Settings.rates_type, Settings.rate_values(axis)))
+	top = ceilf(top / 200.0) * 200.0
+	var font: Font = ThemeDB.fallback_font
+	for i in range(0, int(top) + 1, 200):
+		var gy: float = plot_end.y - plot_size.y * i / top
+		c.draw_line(Vector2(plot_pos.x, gy), Vector2(plot_end.x, gy), Color(1, 1, 1, 0.06), 1.0)
+		c.draw_string(font, Vector2(6, gy + 5), "%d" % i, HORIZONTAL_ALIGNMENT_RIGHT, pad_left - 12, 14, UIKit.MUTED_LIGHT)
 	for i in range(1, 4):
 		var gx: float = plot_pos.x + plot_size.x * i / 4.0
-		var gy: float = plot_pos.y + plot_size.y * i / 4.0
-		c.draw_line(Vector2(gx, plot_pos.y), Vector2(gx, plot_end.y), Color(1, 1, 1, 0.05), 1.0)
-		c.draw_line(Vector2(plot_pos.x, gy), Vector2(plot_end.x, gy), Color(1, 1, 1, 0.05), 1.0)
-	c.draw_line(Vector2(plot_pos.x, plot_pos.y), Vector2(plot_pos.x, plot_end.y), UIKit.BORDER, 1.0)
+		c.draw_line(Vector2(gx, plot_pos.y), Vector2(gx, plot_end.y), Color(1, 1, 1, 0.06), 1.0)
 	c.draw_line(Vector2(plot_pos.x, plot_end.y), Vector2(plot_end.x, plot_end.y), UIKit.BORDER, 1.0)
-
-	var center_sens: float = Settings.rate_center_sensitivity_deg
-	var max_rate: float = Settings.rate_max_deg
-	var points := PackedVector2Array()
-	var n := 48
-	for i in range(n + 1):
-		var stick: float = float(i) / float(n)
-		var deg: float = Drone.actual_rate_deg(stick, center_sens, max_rate, Settings.rate_expo)
-		var x: float = plot_pos.x + stick * plot_size.x
-		var y: float = plot_end.y - clamp(deg / max_rate, 0.0, 1.0) * plot_size.y
-		points.append(Vector2(x, y))
-	c.draw_polyline(points, UIKit.LOGO_GROUND, 3.0, true)
-
-	var font: Font = ThemeDB.fallback_font
-	c.draw_string(font, Vector2(8, pad_top + 8), "%d" % int(max_rate), HORIZONTAL_ALIGNMENT_LEFT, pad_left - 10, 14, UIKit.MUTED_LIGHT)
-	c.draw_string(font, Vector2(8, plot_end.y + 4), "0", HORIZONTAL_ALIGNMENT_LEFT, pad_left - 10, 14, UIKit.MUTED_LIGHT)
-	c.draw_string(font, Vector2(plot_end.x - 90, plot_end.y + 22), "100% stick", HORIZONTAL_ALIGNMENT_RIGHT, 90, 14, UIKit.MUTED_LIGHT)
-	c.draw_string(font, Vector2(plot_pos.x, plot_end.y + 22), "deg/s", HORIZONTAL_ALIGNMENT_LEFT, 60, 14, UIKit.MUTED_LIGHT)
+	c.draw_line(Vector2(plot_pos.x, plot_pos.y), Vector2(plot_pos.x, plot_end.y), UIKit.BORDER, 1.0)
+	for axis in [2, 1, 0]:
+		var points := PackedVector2Array()
+		for i in range(65):
+			var stick: float = i / 64.0
+			var deg: float = Rates.rate_deg(Settings.rates_type, Settings.rate_values(axis), stick)
+			points.append(Vector2(plot_pos.x + stick * plot_size.x, plot_end.y - clampf(deg / top, 0.0, 1.0) * plot_size.y))
+		c.draw_polyline(points, AXIS_COLORS[axis], 3.0, true)
+	c.draw_string(font, Vector2(plot_pos.x, plot_end.y + 22), "0% stick", HORIZONTAL_ALIGNMENT_LEFT, 90, 14, UIKit.MUTED_LIGHT)
+	c.draw_string(font, Vector2(plot_end.x - 120, plot_end.y + 22), "100% stick", HORIZONTAL_ALIGNMENT_RIGHT, 120, 14, UIKit.MUTED_LIGHT)
+	c.draw_string(font, Vector2(plot_pos.x + 10, plot_pos.y + 16), "deg/s", HORIZONTAL_ALIGNMENT_LEFT, 80, 14, UIKit.MUTED_LIGHT)
 
 # --- Radio calibration wizard ------------------------------------------------
 

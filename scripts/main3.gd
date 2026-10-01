@@ -25,7 +25,7 @@ func _process(_delta: float) -> void:
 	# The school's footprint: sports hall, foyer, corridor, classrooms.
 	# All outside doors/windows are closed, so this only ever fires if
 	# the drone clips through something.
-	WorldBorder.check_box(_drone, _ui, Vector3(-23.5, -1.0, -14.5), Vector3(51.0, 8.5, 37.0), 4.0, get_tree())
+	WorldBorder.check_box(_drone, _ui, Vector3(-23.5, -1.0, -14.5), Vector3(51.0, 8.5, 37.0), 10.0, get_tree())
 
 func _apply_textures() -> void:
 	BuildingStyles.apply_ground_surfaces(get_tree())

@@ -17,8 +17,11 @@ var _noise := FastNoiseLite.new()
 var _ridge := FastNoiseLite.new()
 
 func map_env() -> Dictionary:
-	return {"sun_rot": Vector3(-32, 140, 0), "sun_color": Color(1.0, 0.92, 0.8), "fog_begin": 450.0, "aerial": 0.08,
-		"sky_top": Color(0.25, 0.45, 0.8), "sky_horizon": Color(0.75, 0.82, 0.9)}
+	# Evening alpenglow: the sun low over the ridge, warm light on the
+	# peaks, the valley already in long shadow.
+	return {"sun_rot": Vector3(-13, 128, 0), "sun_color": Color(1.0, 0.74, 0.52), "sun_energy": 1.55, "fog_begin": 450.0,
+		"sky_top": Color(0.22, 0.36, 0.64), "sky_horizon": Color(0.95, 0.76, 0.64),
+		"ambient": Color(0.66, 0.66, 0.74), "ambient_energy": 0.76}
 
 func border() -> Array:
 	return [950.0, 1050.0, 480.0, 560.0]

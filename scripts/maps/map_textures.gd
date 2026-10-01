@@ -79,6 +79,39 @@ static func _dark_brick() -> Image:
 static func _forest_floor() -> Image:
 	return _ramp(256, Color(0.2, 0.26, 0.12), Color(0.3, 0.24, 0.14), 0.02, 0.4, 16)
 
+## Foliage (grey, tinted per species by the material): bright leaf
+## clusters with dark gaps between them, so a crown reads as leaves
+## rather than a painted ball.
+static func _foliage() -> Image:
+	var n := FastNoiseLite.new()
+	n.noise_type = FastNoiseLite.TYPE_CELLULAR
+	n.seed = 31
+	n.frequency = 0.09
+	n.cellular_return_type = FastNoiseLite.RETURN_DISTANCE
+	var cells: Image = n.get_seamless_image(128, 128)
+	var fine := _noise(128, 0.3, 32, 2)
+	var img := Image.create(128, 128, false, Image.FORMAT_RGB8)
+	for y in range(128):
+		for x in range(128):
+			var d: float = cells.get_pixel(x, y).r
+			var v: float = lerpf(1.0, 0.45, smoothstep(0.35, 0.8, d)) * (0.85 + fine.get_pixel(x, y).r * 0.3)
+			img.set_pixel(x, y, Color(v, v * 1.02, v * 0.95))
+	return img
+
+## Bark: vertical furrows (grey, tinted per species).
+static func _bark() -> Image:
+	var n := FastNoiseLite.new()
+	n.seed = 33
+	n.frequency = 0.04
+	var img := Image.create(64, 64, false, Image.FORMAT_RGB8)
+	var base: Image = n.get_seamless_image(64, 64)
+	for y in range(64):
+		for x in range(64):
+			var f: float = 0.5 + 0.5 * sin(x * TAU * 6.0 / 64.0 + base.get_pixel(x, y).r * 6.0)
+			var v: float = lerpf(0.55, 1.0, f) * (0.85 + base.get_pixel(x, (y * 3) % 64).r * 0.3)
+			img.set_pixel(x, y, Color(v, v, v))
+	return img
+
 ## Meadow: two greens in patches, darker clumps, fine blade grain and a
 ## sprinkle of dry stalks and small flowers.
 static func _meadow() -> Image:

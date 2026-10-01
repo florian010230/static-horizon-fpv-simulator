@@ -38,8 +38,10 @@ var roads: Roads
 var city: City
 
 func map_env() -> Dictionary:
-	return {"sun_rot": Vector3(-42, -35, 0), "sun_color": Color(1.0, 0.95, 0.86), "fog_begin": 350.0, "aerial": 0.08,
-		"sky_top": Color(0.3, 0.5, 0.8), "sky_horizon": Color(0.78, 0.83, 0.88),
+	# Late afternoon: warm, fairly low sun - the cranes and the steel
+	# frame throw long shadows across the site.
+	return {"sun_rot": Vector3(-21, -58, 0), "sun_color": Color(1.0, 0.82, 0.62), "sun_energy": 1.4, "fog_begin": 350.0,
+		"sky_top": Color(0.28, 0.45, 0.74), "sky_horizon": Color(0.92, 0.82, 0.72),
 		"shadow_ground_y": 0.0, "shadow_region": Rect2(-520, -460, 1040, 900)}
 
 func border() -> Array:
@@ -100,6 +102,8 @@ func build() -> void:
 	_steel_frame(Vector3(88, 0, 30))
 	_site_yard()
 	_viaduct()
+	# Site clutter wherever there's room left (not in the pit).
+	YardProps.scatter(geo, SITE.grow(-5.0), 0.05, 70, rng, [PIT])
 	Forest.plant(self, city.trees, self)
 
 # --- ground ---------------------------------------------------------------------

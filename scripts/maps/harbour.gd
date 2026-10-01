@@ -40,8 +40,11 @@ var city: City
 var _colors: Array[String] = []
 
 func map_env() -> Dictionary:
-	return {"sun_rot": Vector3(-35, 30, 0), "sun_color": Color(1.0, 0.94, 0.84), "fog_begin": 380.0, "aerial": 0.08,
-		"sky_top": Color(0.32, 0.52, 0.8), "sky_horizon": Color(0.78, 0.84, 0.9),
+	# Sunset over the port: the sun low in the west, long shadows down
+	# the streets and across the container stacks, an orange haze.
+	return {"sun_rot": Vector3(-9, -95, 0), "sun_color": Color(1.0, 0.62, 0.36), "sun_energy": 1.75, "fog_begin": 380.0,
+		"sky_top": Color(0.2, 0.3, 0.52), "sky_horizon": Color(0.98, 0.68, 0.46),
+		"ambient": Color(0.74, 0.64, 0.66), "ambient_energy": 0.72,
 		"ground_horizon": Color(0.3, 0.45, 0.55), "ground_bottom": Color(0.12, 0.25, 0.32),
 		"shadow_ground_y": 0.0, "shadow_region": Rect2(-760, -1000, 1400, 1260)}
 

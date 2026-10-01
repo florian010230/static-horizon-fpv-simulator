@@ -26,7 +26,7 @@ const MAPS: Array[Dictionary] = [
 	 "text": "A full-size sports hall with goals, ropes and hoops, a long corridor and furnished classrooms. Indoors only."},
 	{"id": "steelmill", "name": "Abandoned Steel Mill", "scene": "res://scenes/maps/SteelMill.tscn", "tier": "High", "drone": "any",
 	 "color": Color("#b5552b"),
-	 "text": "A huge derelict steelworks in a forest: blast furnaces, hot stoves, a cooling tower to dive, gas mains to fly through, torpedo cars on the rails."},
+	 "text": "After the Völklinger Hütte: six blast furnaces in a row, skip hoists to the tops, a column slalom under the bunker hall, hollow gas mains, the ore monorail."},
 	{"id": "playground", "name": "Playground", "scene": "res://scenes/maps/Playground.tscn", "tier": "Low", "drone": "whoop",
 	 "color": Color("#e0a526"),
 	 "text": "Slides, swings, a climbing frame and a tunnel tube - a Tiny Whoop playground."},
@@ -47,10 +47,10 @@ const MAPS: Array[Dictionary] = [
 	 "text": "A high-rise going up in the city: fly through its open floors, round two tower cranes, down the 12 m pit, through a steel frame and under the railway arches."},
 	{"id": "harbour", "name": "Harbour & Central Station", "scene": "res://scenes/maps/Harbour.tscn", "tier": "High", "drone": "any",
 	 "color": Color("#2a7fb0"),
-	 "text": "A port city: container cranes and ships, a rail branch into the terminal, freight sidings, a through station with a 280 m glass train shed, the old harbour basin and the city grid."},
+	 "text": "A port city at sunset: container cranes and ships, a rail branch into the terminal, a through station with a glass train shed, the old harbour and the city grid."},
 	{"id": "mountain_lake", "name": "Mountain Lake", "scene": "res://scenes/maps/MountainLake.tscn", "tier": "High", "drone": "any",
 	 "color": Color("#3a9a8a"),
-	 "text": "An alpine lake under snowy peaks: surf the ridges, skim the water, dive the dam, chase the waterfall and the cable car."},
+	 "text": "An alpine lake in the evening alpenglow: surf the ridges, skim the water, dive the dam, chase the waterfall and the cable car."},
 ]
 
 ## Maps whose scene exists in this build.

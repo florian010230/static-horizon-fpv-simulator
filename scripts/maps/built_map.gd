@@ -22,6 +22,30 @@ var sun: DirectionalLight3D
 func build() -> void:
 	pass
 
+var _building: bool = false
+var _queued_trees: Array = []
+
+## Forest.plant during build() lands here; planted after build().
+func queue_trees(trees: Array) -> bool:
+	if not _building:
+		return false
+	_queued_trees.append_array(trees)
+	return true
+
+func _plant_trees() -> void:
+	var kept: Array = []
+	for t in _queued_trees:
+		var p: Vector3 = t[0]
+		var q := Vector2(p.x, p.z)
+		if geo.blocked(q, 0.7 * t[2], p.y + 0.6, p.y + 5.0 * t[2]) or geo.on_lane(q, 1.2):
+			continue
+		kept.append(t)
+	if OS.has_environment("SH_PERF"):
+		print("TREES kept %d of %d" % [kept.size(), _queued_trees.size()])
+	if not kept.is_empty():
+		Forest.plant(self, kept)
+	_queued_trees.clear()
+
 func map_env() -> Dictionary:
 	return {}
 
@@ -35,13 +59,23 @@ func border() -> Array:
 func _ready() -> void:
 	_make_environment(map_env())
 	fleet = Fleet.new(geo)
+	_building = true
 	build()
-	geo.commit(self)
+	_building = false
+	# Scattered things go last, around whatever the map built: parked cars
+	# and trees that would stand inside a building, a crane, another car,
+	# or (trees) on a road or track are dropped (Geo's footprints).
 	fleet.commit(self)
+	_plant_trees()
+	geo.commit(self)
 	if ui.has_method("set_drone"):
 		ui.set_drone(drone)
 	after_build()
 	Settings.apply_graphics_settings()
+	if OS.has_environment("SH_PERF"):
+		# Measure the real cost: no frame cap, no vsync.
+		Engine.max_fps = 0
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 
 func _process(_delta: float) -> void:
 	check_border()
@@ -144,6 +178,14 @@ func _make_environment(e: Dictionary) -> void:
 	geo.ambient = 0.56 * env.ambient_light_energy
 	# On GPUs where the engine sun does work it would light the drone
 	# model only - nothing else uses lit materials in a generated map.
-	if e.has("shadow_ground_y"):
-		set_meta("shadow_ground_y", e.shadow_ground_y)
-		set_meta("shadow_region", e.get("shadow_region", Rect2(-250, -250, 500, 500)))
+	set_meta("light_parts", Vector3(geo.ambient, geo.sky, geo.sun))
+	# Sun shadow map area (WorldShading): the map's own, or the border
+	# circle's square. Indoor maps get none.
+	if not e.get("indoor", false) and e.get("shadows", true):
+		var region: Rect2 = e.get("shadow_region", Rect2())
+		if not region.has_area():
+			var b: Array = border()
+			var c: Vector2 = b[4] if b.size() > 4 else Vector2.ZERO
+			var r: float = minf(b[0], 800.0)
+			region = Rect2(c - Vector2(r, r), Vector2(r, r) * 2.0)
+		set_meta("shadow_region", region)

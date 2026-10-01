@@ -4,10 +4,9 @@ extends Node
 ## changes (menu <-> gameplay): crosshair, fullscreen, shadow quality.
 
 var crosshair_enabled: bool = true
-## On by default: these are FakeShadows (computed once per map on the
-## CPU, one draw call) plus the drone's own DroneShadow, not Godot's
-## shadow maps - those rendered nothing at all on the dev machine's
-## Intel GPU, and cost real GPU time where they do work.
+## On by default: WorldShading's static sun shadow map (rendered once
+## per map) plus the drone's own DroneShadow, not Godot's shadow maps -
+## those rendered nothing at all on the dev machine's Intel GPU.
 var shadows_enabled: bool = true
 
 ## Graphics quality, so the sim runs on weak PCs too: 0 Low, 1 Medium
@@ -33,26 +32,36 @@ const QUALITY_RENDER_SCALE: Array[float] = [0.55, 0.75, 1.0]
 ## MEDIUM_OBJECT_SIZE aren't drawn (0 = no limit).
 const QUALITY_SMALL_RANGE: Array[float] = [80.0, 150.0, 300.0]
 const QUALITY_MEDIUM_RANGE: Array[float] = [200.0, 400.0, 0.0]
-const QUALITY_VIEW_DISTANCE: Array[float] = [650.0, 1300.0, 1800.0]
+## Render distance (m): how far the world is drawn before it fades into
+## the fog. Its own setting since 2026-10 (it used to follow the
+## quality); the slider in Settings -> Graphics.
+var view_distance: float = 1200.0
+const VIEW_DISTANCE_MIN: float = 300.0
+const VIEW_DISTANCE_MAX: float = 3000.0
 const SMALL_OBJECT_SIZE: float = 3.0
 const MEDIUM_OBJECT_SIZE: float = 12.0
 var max_fps: int = 60 ## 0 means uncapped ("Unlimited" in the menu slider).
 
-## Acro's "Actual Rates" curve (see Drone.center_sensitivity_deg /
-## max_rate_deg) - exposed here so a player can set their preferred feel
-## once from the menu instead of re-tuning it every flight. The in-game
-## "O" debug panel still live-edits the drone's own fields directly for
-## quick A/B testing mid-flight; these are just what a freshly spawned
-## drone starts from.
 ## FPV camera, set from the in-game pause menu and kept across maps.
 var camera_angle_deg: float = 25.0
 var camera_fov_deg: float = 80.0
 
-var rate_center_sensitivity_deg: float = 70.0
-var rate_max_deg: float = 670.0
-## Betaflight Actual Rates' third number: 0 = the plain curve, up to 1 =
-## much softer around centre stick.
-var rate_expo: float = 0.54 ## Betaflight 4.x default (rc_expo 54)
+## Acro rates exactly like Betaflight's Rates tab (see Rates): the rate
+## type and, per axis, the three numbers the Configurator shows. What a
+## freshly spawned drone flies with; the pause menu changes them live.
+var rates_type: int = Rates.ACTUAL
+var rates_roll: Array = [70.0, 670.0, 0.54]
+var rates_pitch: Array = [70.0, 670.0, 0.54]
+var rates_yaw: Array = [70.0, 670.0, 0.54]
+
+func rate_values(axis: int) -> Array:
+	return [rates_roll, rates_pitch, rates_yaw][axis]
+
+func set_rate_values(axis: int, v: Array) -> void:
+	match axis:
+		0: rates_roll = v
+		1: rates_pitch = v
+		2: rates_yaw = v
 
 ## Betaflight-style on-screen display in the FPV view (timer, battery,
 ## speed, altitude...). The top-left key hints are separate.
@@ -105,7 +114,7 @@ var selected_drone: String = "seeker3"
 ## pilot's own file.
 const SETTINGS_PATH: String = "user://settings.cfg"
 const SAVED_FIELDS: Array[String] = ["crosshair_enabled", "shadows_enabled", "graphics_quality", "performance_mode",
-	"max_fps", "camera_angle_deg", "camera_fov_deg", "rate_center_sensitivity_deg", "rate_max_deg", "rate_expo",
+	"max_fps", "camera_angle_deg", "camera_fov_deg", "view_distance", "rates_type", "rates_roll", "rates_pitch", "rates_yaw",
 	"selected_drone", "osd_enabled", "battery_enabled", "video_effect", "wind_level", "units"]
 var _persist: bool = true
 var _last_saved: String = ""
@@ -154,6 +163,17 @@ func _load() -> void:
 			var v = cfg.get_value("settings", f)
 			if typeof(v) == typeof(get(f)) or (typeof(get(f)) == TYPE_FLOAT and typeof(v) == TYPE_INT):
 				set(f, v)
+	# Before per-axis rates (2026-10): one Actual Rates curve for all axes.
+	if not cfg.has_section_key("settings", "rates_roll") and cfg.has_section_key("settings", "rate_max_deg"):
+		var old: Array = [float(cfg.get_value("settings", "rate_center_sensitivity_deg", 70.0)), float(cfg.get_value("settings", "rate_max_deg", 670.0)), float(cfg.get_value("settings", "rate_expo", 0.54))]
+		rates_type = Rates.ACTUAL
+		rates_roll = old.duplicate()
+		rates_pitch = old.duplicate()
+		rates_yaw = old.duplicate()
+	for axis in range(3):
+		var v: Array = rate_values(axis)
+		if v.size() != 3:
+			set_rate_values(axis, Rates.DEFAULTS[Rates.ACTUAL].duplicate())
 	if not Drone.PROFILES.has(selected_drone):
 		selected_drone = "seeker3"
 	if cfg.get_value("settings", "fullscreen", false):
@@ -181,20 +201,18 @@ func apply_graphics_settings() -> void:
 		(drone as RigidBody3D).contact_monitor = performance_mode
 	var cam: Camera3D = vp.get_camera_3d()
 	if cam:
-		cam.far = minf(cam.get_meta("profile_far", cam.far), QUALITY_VIEW_DISTANCE[q])
+		# (The whoop's camera keeps its own shorter limit: its near plane
+		# is 12 mm, and depth precision runs out far beyond 400 m.)
+		cam.far = minf(cam.get_meta("profile_far", cam.far), clampf(view_distance, VIEW_DISTANCE_MIN, VIEW_DISTANCE_MAX))
 		_fit_fog(scene, cam.far)
 
-## Generated maps use depth fog that turns fully into the horizon
-## colour just before the camera's far plane - so the end of the drawn
-## world is never a visible edge, whatever the view distance.
+## Depth fog turns fully into the horizon colour just before the
+## camera's far plane - so the end of the drawn world is never a visible
+## edge, whatever the view distance (WorldShading's own cheap fog).
 func _fit_fog(scene: Node, far: float) -> void:
 	var we := scene.get_node_or_null("WorldEnvironment") as WorldEnvironment
-	if we == null or we.environment == null or not we.environment.has_meta("depth_fog"):
-		return
-	var env: Environment = we.environment
-	var start: float = env.get_meta("depth_fog")
-	env.fog_depth_end = far * 0.96
-	env.fog_depth_begin = minf(start, far * 0.4)
+	if we:
+		WorldShading.fit_fog(we.environment, far)
 
 func _apply_draw_distances(node: Node, small_range: float, medium_range: float) -> void:
 	if node is GeometryInstance3D and not (node.get_parent() is Drone) and not node.has_meta("geo_detail"):
@@ -220,25 +238,31 @@ func _max_scale(n: Node3D) -> float:
 	var s: Vector3 = n.global_transform.basis.get_scale()
 	return maxf(s.x, maxf(s.y, s.z))
 
-## Ground height per map for FakeShadows (the factory's paved site sits
-## 2 cm above its grass). Maps without an entry (the indoor school) get
-## no ground shadows, just the drone's own.
-const SHADOW_GROUND_Y := {"Main": 0.5, "Main2": 0.52}
+## Hand-made outdoor maps: the area their sun shadow map covers.
+## (Generated maps say it themselves, see BuiltMap.shadow_region.)
+const SHADOW_REGIONS := {"Main": Rect2(-260, -260, 520, 520), "Main2": Rect2(-260, -260, 520, 520)}
 
+## Converts the map's materials to WorldShading (fog, sun shadows) and
+## switches the shadows. The shadow map itself is rendered once per map.
 func apply_shadow_setting() -> void:
 	var scene: Node = get_tree().current_scene
 	var sun := get_tree().root.find_child("Sun", true, false) as DirectionalLight3D
-	if scene == null or sun == null:
+	if scene == null:
 		return
-	sun.shadow_enabled = false # engine shadow maps: see shadows_enabled
-	# The ground shadow mask is built once per map (it doesn't depend on
-	# the drone); later calls just switch it on/off.
-	# Generated maps declare their own (meta "shadow_ground_y" and
-	# optionally "shadow_region", see BuiltMap).
-	var ground_y = scene.get_meta("shadow_ground_y") if scene.has_meta("shadow_ground_y") else SHADOW_GROUND_Y.get(scene.name, null)
-	if ground_y != null and not scene.has_meta("ground_materials"):
-		FakeShadows.build(scene, sun, ground_y, scene.get_meta("shadow_region", Rect2(-250, -250, 500, 500)))
-	FakeShadows.set_enabled(scene, shadows_enabled)
+	var we := scene.get_node_or_null("WorldEnvironment") as WorldEnvironment
+	WorldShading.setup(scene, we.environment if we else null)
+	var region: Rect2 = scene.get_meta("shadow_region", SHADOW_REGIONS.get(scene.name, Rect2()))
+	if sun:
+		sun.shadow_enabled = false # engine shadow maps: see WorldShading
+		var parts: Vector3 = scene.get_meta("light_parts", Vector3(0.45, 0.14, 0.55))
+		WorldShading.set_light(-sun.global_transform.basis.z, parts.x, parts.y, parts.z, sun.light_color)
+		if region.has_area() and not scene.has_meta("shadow_map_done"):
+			scene.set_meta("shadow_map_done", true)
+			WorldShading.clear_shadow_map()
+			WorldShading.capture(scene, -sun.global_transform.basis.z, region, WorldShading.RES[clampi(graphics_quality, 0, 2)])
+	if not region.has_area():
+		WorldShading.clear_shadow_map()
+	WorldShading.set_shadows(shadows_enabled and region.has_area())
 	var old_drone_shadow: Node = scene.get_node_or_null("DroneShadow")
 	if old_drone_shadow:
 		old_drone_shadow.free()

@@ -47,9 +47,7 @@ extends RigidBody3D
 ## Sensitivity 70 deg/s, Max Rate 670 deg/s, same on roll/pitch/yaw.
 ## The curve is soft near center and steep at full deflection - a flat
 ## linear mapping (what this used to be) is objectively twitchier.
-@export_group("Acro Rates (deg/s)")
-@export var center_sensitivity_deg: float = 70.0
-@export var max_rate_deg: float = 670.0
+## (Acro rates: Settings.rates_type / rates_roll... - see Rates.)
 
 ## Angle (self-level) mode: sticks command a target tilt angle instead
 ## of a rotation rate, and an outer P-loop corrects back to it - this is
@@ -248,7 +246,7 @@ const PROFILES: Dictionary = {
 }
 
 ## Pure safety ceilings, well above anything normal flight ever produces
-## (top speed is ~41.7 m/s, acro's max_rate_deg tops out around 11.7
+## (top speed is ~41.7 m/s, acro's max rate tops out around 11.7
 ## rad/s) - they only ever engage right after a hard collision. Measured
 ## empirically (headless tumbling-impact test) that a corner hit could
 ## momentarily spike angular velocity to ~39 rad/s (2234 deg/s), which
@@ -321,8 +319,6 @@ var flight_time: float = 0.0
 @onready var _camera: Camera3D = $CameraMount/Camera3D
 
 func _ready() -> void:
-	center_sensitivity_deg = Settings.rate_center_sensitivity_deg
-	max_rate_deg = Settings.rate_max_deg
 	camera_angle_deg = Settings.camera_angle_deg
 	camera_fov_deg = Settings.camera_fov_deg
 	InputManager.new_flight()
@@ -423,7 +419,7 @@ func _build_collision(p: Dictionary) -> void:
 	if _camera:
 		_camera.near = near
 		_camera.far = p.camera_far
-		_camera.set_meta("profile_far", p.camera_far) # Settings caps it per quality
+		_camera.set_meta("profile_far", p.camera_far) # Settings caps it at the render distance
 
 ## The visual frame is fully rebuilt from primitives (DroneFrameBuilder)
 ## rather than kept as hand-authored nodes in Drone.tscn, so the same
@@ -533,9 +529,9 @@ func _physics_process(delta: float) -> void:
 		# Sticks read +1 = right/forward (see InputManager); in body axes
 		# a right roll is a rotation about -Z, a nose-down (forward)
 		# pitch about -X, and a right yaw about -Y.
-		desired_roll_rate = -_actual_rate(roll_in)
-		desired_pitch_rate = -_actual_rate(pitch_in)
-	var desired_yaw_rate: float = -_actual_rate(yaw_in)
+		desired_roll_rate = -_actual_rate(0, roll_in)
+		desired_pitch_rate = -_actual_rate(1, pitch_in)
+	var desired_yaw_rate: float = -_actual_rate(2, yaw_in)
 
 	if throttle_in >= airmode_start_throttle:
 		_airmode_active = true
@@ -663,10 +659,10 @@ func _reset_controller() -> void:
 	_setpoint_lp = Vector3.ZERO
 	_airmode_active = false
 
-## Betaflight-style Actual Rates curve: soft near center (slope =
-## center_sensitivity_deg), steep at full stick (reaches max_rate_deg).
-func _actual_rate(stick: float) -> float:
-	return deg_to_rad(actual_rate_deg(stick, center_sensitivity_deg, max_rate_deg, Settings.rate_expo))
+## The pilot's Betaflight rates (Settings -> Rates, see Rates): stick
+## -1..1 on axis 0 roll / 1 pitch / 2 yaw to a target rate in rad/s.
+func _actual_rate(axis: int, stick: float) -> float:
+	return deg_to_rad(Rates.rate_deg(Settings.rates_type, Settings.rate_values(axis), stick))
 
 ## Betaflight's "Actual Rates" (src/main/fc/rc.c, applyActualRates):
 ## expof = |x| * (x^5 * expo + x * (1 - expo)),
@@ -727,7 +723,7 @@ func _compute_self_level_rates(roll_in: float, pitch_in: float) -> Vector2:
 	else:
 		error_axis = fwd_h # current/target exactly aligned or exactly opposite - pick an arbitrary recovery axis
 
-	var max_rate_rad: float = deg_to_rad(max_rate_deg)
+	var max_rate_rad: float = deg_to_rad(maxf(Rates.max_deg(Settings.rates_type, Settings.rate_values(0)), 200.0))
 	var correction: Vector3 = error_axis * error_angle * angle_p_gain
 	var correction_local: Vector3 = global_transform.basis.inverse() * correction
 	return Vector2(

@@ -17,10 +17,10 @@ func map_env() -> Dictionary:
 	# The "sun" points straight down: the hall's ceiling lights. It lights
 	# floors and the tops of things, leaves the black walls dark.
 	return {"sun_rot": Vector3(-80, -30, 0), "sun_energy": 1.0, "ambient_energy": 0.7,
-		"fog": false, "sky_top": Color(0.05, 0.05, 0.07), "sky_horizon": Color(0.05, 0.05, 0.07)}
+		"fog": false, "shadows": false, "sky_top": Color(0.05, 0.05, 0.07), "sky_horizon": Color(0.05, 0.05, 0.07)}
 
 func check_border() -> void:
-	WorldBorder.check_box(drone, ui, HALL.position, HALL.end, 3.0, get_tree())
+	WorldBorder.check_box(drone, ui, HALL.position, HALL.end, 10.0, get_tree())
 
 func preview_views() -> Array:
 	return [

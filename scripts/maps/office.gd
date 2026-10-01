@@ -17,7 +17,7 @@ func map_env() -> Dictionary:
 	return {"sun_rot": Vector3(-35, 150, 0), "fog_density": 0.002, "ambient_energy": 1.35}
 
 func check_border() -> void:
-	WorldBorder.check_box(drone, ui, ROOM.position, ROOM.end, 1.0, get_tree())
+	WorldBorder.check_box(drone, ui, ROOM.position, ROOM.end, 12.0, get_tree())
 
 func preview_views() -> Array:
 	return [

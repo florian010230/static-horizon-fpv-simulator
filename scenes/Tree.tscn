@@ -1,4 +1,6 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/tree_prop.gd" id="1_tree"]
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_trunk"]
 top_radius = 0.35
@@ -19,6 +21,7 @@ radial_segments = 8
 albedo_color = Color(0.2, 0.38, 0.18, 1)
 
 [node name="Tree" type="Node3D"]
+script = ExtResource("1_tree")
 
 [node name="Trunk" type="MeshInstance3D" parent="."]
 position = Vector3(0, 2.0, 0)

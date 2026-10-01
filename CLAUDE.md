@@ -12,15 +12,16 @@ Read `README.md` first for how the project actually works right now
 raw material for a blog, and it should get a new entry after any future
 multi-part session, same style as the existing entries.
 
-## Current state (as of 2026-09-30)
+## Current state (as of 2026-10-01)
 
-Committed up to 14fd2cb. DEVLOG Acts XI-addendum and XII (OSD/units,
-vehicles, then the "world that connects" round: depth fog, ground
-layers, Route/Rails/Roads/City/Fleet, the rebuilt harbour, Construction
-Site replacing the quarry) are uncommitted until the user asks.
+All work through DEVLOG Act XIII is committed (Act XIII: WorldShading
+shadows + fog, no glow, render distance, five-species trees, overlap
+filtering, the Völklingen steel mill, sunsets, visible border, Settings
+in five tabs, Betaflight rates in scripts/rates.gd).
+Only commit when the user asks.
 TODO.md is the roadmap: Phases 1 and 3 are done (12 maps), Phase 2
-mostly (open: classic/KISS rate presets, replay, bindings), then Phase 4.
-`--selftest`: 413 checks, all passing.
+mostly (open: replay, bindings), then Phase 4.
+`--selftest`: run it after changes; see the count it prints.
 
 InputManager is a *scene* autoload: the editor can't see its return
 types, so never write `var x := InputManager.foo()` - type it
@@ -40,7 +41,7 @@ unshaded materials**: `Geo.shade()` for generated maps, `LightBaker`
 (scripts/light_baker.gd) for the hand-made ones (called in each
 main*.gd before `Settings.apply_graphics_settings()`). Never rely on
 engine lights for how a map looks; the Sun node is still needed (its
-direction drives the baking, FakeShadows and the drone shadow).
+direction drives the baking, the shadow map and the drone shadow).
 
 ## Generated maps (scripts/maps/)
 
@@ -69,6 +70,11 @@ The user's standing requirements for maps (2026-09-30), all built in:
   either leaves the map (runs on 2-3 km into the fog) or ends at a
   buffer stop / junction / gate / car park. On hilly maps, carve the
   terrain to the line's grade (see steel_mill.gd `_corridors`).
+- **Scattered things are placed last**: Geo records every solid
+  primitive's footprint and every road/rail lane; Fleet cars and
+  Forest trees planted during build() are queued and dropped if they
+  would stand inside something (BuiltMap._plant_trees, Fleet.commit).
+  Use `geo.blocked()` / `geo.on_lane()` for any other scatter.
 - **Cars go through `Fleet`** (BuiltMap.fleet), not Vehicles.car, when
   there are more than a handful - and keep materials shared, or every
   car becomes its own draw call. Check `SH_PERF=1` draw calls after
@@ -193,10 +199,20 @@ The user's standing requirements for maps (2026-09-30), all built in:
   both the main menu and the in-game `PauseMenu`, each deciding where
   Back returns to), `PauseMenu` (Esc in game, pauses the tree, created
   by ui.gd, PROCESS_MODE_ALWAYS).
-- Shadows: `Settings.shadows_enabled` = `FakeShadows` + `DroneShadow`,
-  NOT the sun's shadow maps (they render nothing on the dev machine's
-  Intel GPU); `Settings.apply_shadow_setting()` builds them per map
-  (`SHADOW_GROUND_Y` lists the ground height per outdoor map).
+- Shadows and fog: `WorldShading` (scripts/world_shading.gd) converts
+  every world material at load to one shader family
+  (shaders/world.gdshaderinc + world_common.gdshaderinc; ground layers
+  and trees include the same common file) and renders a static sun
+  shadow map ONCE per map (ortho camera along the sun, depth packed in
+  RG8). Parameters are global shader uniforms (project.godot
+  [shader_globals]) - no per-material setup. Engine fog and glow are
+  switched off (glow cost ~40% FPS on High). NOT the sun's shadow maps
+  (they render nothing on the dev machine's Intel GPU).
+  `Settings.apply_shadow_setting()` runs it per map; regions come from
+  BuiltMap (meta "shadow_region") / `Settings.SHADOW_REGIONS`. A runtime
+  StandardMaterial3D you change every frame must carry meta
+  "keep_material" (or be a DroneShadow), or the converter freezes it.
+  Moving objects need meta "dynamic" (hidden from the shadow capture).
 - `MainMenu.tscn`/`main_menu.gd` — everything built at runtime, no
   hand-laid-out UI in the `.tscn`, themed with the website's dark
   palette. Sub-screens are fixed-size cards (`_screen_card`) with an
@@ -242,6 +258,9 @@ godot --headless --editor --path . --quit
 
 # real screenshots (needs a real display); optional sections
 godot --path . -- --dev-preview [menu] [village] [factory] [school]
+# every map with the drone just outside its flight area: prints
+# "BORDER ok/FAIL" per map (the border must show on all of them)
+godot --path . -- --dev-preview borders
 # the first run after new materials can show ~1 FPS stale frames
 # (shader compilation) - just run it again
 ```

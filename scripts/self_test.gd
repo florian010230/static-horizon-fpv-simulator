@@ -35,10 +35,15 @@ func _run() -> void:
 	Settings.units = 0
 	_check(imp and Settings.speed_text(10.0) == "36km/h", "units: metric and imperial conversions")
 	# Betaflight Actual Rates: ends exact, and default expo ~ the old cubic.
-	var full: float = Drone.actual_rate_deg(1.0, 70.0, 670.0, 0.54)
-	var half: float = Drone.actual_rate_deg(0.5, 70.0, 670.0, 0.54)
+	var full: float = Rates.rate_deg(Rates.ACTUAL, [70.0, 670.0, 0.54], 1.0)
+	var half: float = Rates.rate_deg(Rates.ACTUAL, [70.0, 670.0, 0.54], 0.5)
 	var cubic_half: float = 70.0 * 0.5 + 600.0 * 0.125
-	_check(is_equal_approx(full, 670.0) and Drone.actual_rate_deg(0.0, 70.0, 670.0, 0.54) == 0.0 and absf(half - cubic_half) < 3.0 and Drone.actual_rate_deg(-1.0, 70.0, 670.0, 0.54) < -669.0, "rates: Betaflight Actual formula", "half stick %.1f vs cubic %.1f deg/s" % [half, cubic_half])
+	_check(is_equal_approx(full, 670.0) and Rates.rate_deg(Rates.ACTUAL, [70.0, 670.0, 0.54], 0.0) == 0.0 and absf(half - cubic_half) < 3.0 and Rates.rate_deg(Rates.ACTUAL, [70.0, 670.0, 0.54], -1.0) < -669.0, "rates: Betaflight Actual formula", "half stick %.1f vs cubic %.1f deg/s" % [half, cubic_half])
+	# The other Betaflight rate types at full stick (Configurator's numbers).
+	var bf: float = Rates.rate_deg(Rates.BETAFLIGHT, [1.0, 0.7, 0.0], 1.0)
+	var quick: float = Rates.rate_deg(Rates.QUICK, [1.0, 670.0, 0.0], 1.0)
+	var kiss: float = Rates.rate_deg(Rates.KISS, [1.0, 0.7, 0.0], 1.0)
+	_check(absf(bf - 666.7) < 1.0 and absf(quick - 670.0) < 1.0 and absf(kiss - 666.7) < 1.0 and absf(Rates.rate_deg(Rates.QUICK, [1.0, 670.0, 0.0], 0.05) - 10.0) < 1.0, "rates: Betaflight, Quick and KISS formulas", "BF %.1f Quick %.1f KISS %.1f" % [bf, quick, kiss])
 	await _test_menu_flow()
 	await _test_calibration_and_arm_switch()
 	var cases: Array = [

@@ -23,7 +23,7 @@ func _ready() -> void:
 ## when iterating on one map. No names = everything.
 func _wants(section: String) -> bool:
 	var args := OS.get_cmdline_user_args()
-	var sections: Array = ["menu", "village", "factory", "school"]
+	var sections: Array = ["menu", "village", "factory", "school", "borders"]
 	for m in MapCatalog.MAPS:
 		sections.append(m.id)
 	# ("shadows" is a modifier, not a section.)
@@ -32,10 +32,63 @@ func _wants(section: String) -> bool:
 			return a == section or args.has(section)
 	return true
 
+## `-- --dev-preview borders`: every map, the drone parked just outside
+## its flight area - the border must show (prints BORDER ok/FAIL).
+func _border_shots() -> void:
+	var scenes: Array = ["res://scenes/Main.tscn", "res://scenes/Main2.tscn", "res://scenes/Main3.tscn"]
+	for m in MapCatalog.MAPS:
+		if not scenes.has(m.scene):
+			scenes.append(m.scene)
+	for sc in scenes:
+		WorldBorder.last = {}
+		get_tree().change_scene_to_file(sc)
+		await get_tree().create_timer(2.5).timeout
+		var root: Node = get_tree().current_scene
+		if root == null:
+			print("BORDER FAIL %s: scene did not load" % sc.get_file())
+			continue
+		var drone := root.find_child("Drone", true, false) as RigidBody3D
+		var b: Dictionary = WorldBorder.last
+		if drone == null or b.is_empty():
+			print("BORDER FAIL %s: no border check running" % sc.get_file())
+			continue
+		drone.freeze = true
+		InputManager.armed = false
+		var p: Vector3
+		var look: Vector3
+		if b.kind == "circle":
+			var c: Vector2 = b.c
+			p = Vector3(c.x + b.r + 6.0, 0, c.y + 8.0)
+			var hit: Dictionary = drone.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(Vector3(p.x, 900, p.z), Vector3(p.x, -200, p.z)))
+			p.y = (hit.position.y if hit else 0.0) + 6.0
+			look = p + Vector3(-14, -1, 10)
+		else:
+			var mn: Vector3 = b.min
+			var mx: Vector3 = b.max
+			p = Vector3(mx.x + b.margin * 0.4, (mn.y + mx.y) * 0.5, (mn.z + mx.z) * 0.5)
+			look = p + Vector3(-5, 0, 3)
+		drone.global_position = p
+		drone.look_at(look, Vector3.UP)
+		drone.reset_physics_interpolation()
+		await get_tree().create_timer(1.2).timeout
+		if not is_instance_valid(root) or root != get_tree().current_scene:
+			print("BORDER FAIL %s: the map reset (drone placed past the reset line)" % sc.get_file())
+			continue
+		var fb := root.get_node_or_null("FlightBorder") as Node3D
+		if fb == null:
+			fb = drone.get_parent().get_node_or_null("FlightBorder") as Node3D
+		var ok: bool = fb != null and fb.visible and float(fb.get_meta("strength", 0.0)) > 0.9
+		print("BORDER %s %s: %s" % ["ok" if ok else "FAIL", sc.get_file(), "visible" if ok else ("missing" if fb == null else "strength %.2f visible %s" % [fb.get_meta("strength", 0.0), fb.visible])])
+		_shot("preview_border_%s.png" % sc.get_file().get_basename().to_lower())
+
 func _go() -> void:
 	# `-- --dev-preview shadows ...` renders everything with shadows on.
 	if OS.get_cmdline_user_args().has("shadows"):
 		Settings.shadows_enabled = true
+	if OS.get_cmdline_user_args().has("borders"):
+		await _border_shots()
+		get_tree().quit()
+		return
 	if _wants("menu"):
 		await _menu_shots()
 	if _wants("village"):
@@ -99,10 +152,10 @@ func _menu_shots() -> void:
 	await get_tree().create_timer(0.5).timeout
 	_shot("preview_settings.png")
 	var st: SettingsScreens = get_tree().current_scene.get("_settings")
-	for t in [1, 2]:
+	for t in range(1, SettingsScreens.TAB_NAMES.size()):
 		st.settings_tabs.current_tab = t
 		await get_tree().create_timer(0.3).timeout
-		_shot("preview_settings_%s.png" % ["display", "flight", "radio"][t])
+		_shot("preview_settings_%s.png" % SettingsScreens.TAB_NAMES[t].to_lower().replace(" & ", "_"))
 	st.settings_tabs.current_tab = 0
 
 	# The calibration wizard, fed by a virtual radio (never completes a
@@ -220,6 +273,17 @@ func _map_shots(scene: String, prefix: String, views: Array, pause_shots: bool =
 		drone.reset_physics_interpolation()
 		await get_tree().create_timer(0.4).timeout
 		_shot("preview_%s_%s.png" % [prefix, v[0]])
+	# The flight-area border, which shows while the HUD warns.
+	var sc: Node = get_tree().current_scene
+	if sc.has_method("border") and not sc.has_method("check_border_box"):
+		var b: Array = sc.border()
+		var c: Vector2 = b[4] if b.size() > 4 else Vector2.ZERO
+		var p := Vector3(c.x + b[0] + 4.0, 10.0, c.y + 6.0)
+		drone.global_position = p
+		drone.look_at(p + Vector3(-12, -1, 9), Vector3.UP)
+		drone.reset_physics_interpolation()
+		await get_tree().create_timer(0.8).timeout
+		_shot("preview_%s_border.png" % prefix)
 	# The in-game pause menu over the last view, and its Settings.
 	if pause_shots and ui and "pause_menu" in ui and ui.pause_menu:
 		ui.pause_menu.open()

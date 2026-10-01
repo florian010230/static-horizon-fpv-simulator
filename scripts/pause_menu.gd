@@ -122,7 +122,7 @@ func _build_card() -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	content.add_child(row)
-	for spec in [["Reset drone", _reset_drone], ["Settings", _open_settings], ["Main menu", _to_main_menu]]:
+	for spec in [["Reset drone", _reset_drone], ["Change map", _change_map], ["Settings", _open_settings], ["Main menu", _to_main_menu]]:
 		var b := UIKit.button(spec[0], "", 54)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.pressed.connect(spec[1])
@@ -165,11 +165,15 @@ func _open_settings() -> void:
 	_settings.open()
 
 func _on_settings_closed() -> void:
-	# Apply whatever changed: quality, shadows, performance mode, rates.
+	# Apply whatever changed: quality, shadows, performance mode, view
+	# distance. (Rates are read live from Settings by the drone.)
 	Settings.apply_graphics_settings()
-	_drone.center_sensitivity_deg = Settings.rate_center_sensitivity_deg
-	_drone.max_rate_deg = Settings.rate_max_deg
 	_card.visible = true
+
+func _change_map() -> void:
+	get_tree().paused = false
+	MainMenu.start_screen = "map"
+	SceneLoader.goto("res://scenes/MainMenu.tscn", "Choose a map")
 
 func _to_main_menu() -> void:
 	get_tree().paused = false

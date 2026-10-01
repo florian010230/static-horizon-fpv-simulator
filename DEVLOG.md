@@ -965,6 +965,101 @@ house colours (`Geo.tint`) took it to 482 draws and 41 FPS. Harbour
 once - the spawn was 30 cm up and the drone settled more than the
 test's 20 cm; the spawn now sits at rest height).
 
+### Act XIII — Shadows for free, a steelworks from a real one, rates like the real thing (2026-10-01)
+
+The next list: objects inside each other; everything should run better;
+a render distance setting; prettier maps - real shadows, sunsets on
+some; realistic trees; maps built for freestyle; show the border when
+the "leaving flight area" warning flashes; fill the maps, make them
+smaller if they are empty; layouts that make sense, with the
+Völklinger Hütte as the model for the steel mill; the fog costs FPS;
+a clearer menu and settings; and rates that work like Betaflight's.
+
+**Measure first.** On the user's own settings (High, fullscreen Retina)
+the harbour ran at 28 FPS. Switching things off one at a time: fog
+alone was worth about 2 FPS - but *glow*, a full-screen post pass that
+had been on for every High map, was worth 20. Glow is gone; the harbour
+went to 46 FPS before anything else changed.
+
+**One shader for the whole world.** Every surface in every map was an
+unshaded StandardMaterial3D with the light baked into vertex colours.
+`WorldShading` now converts them all at load into one small shader
+family (`world.gdshaderinc`): same look, plus two things the engine
+couldn't give us on this GPU:
+- *Fog* computed in that shader (a few instructions), replacing the
+  Environment's fog with its aerial-perspective sky lookups. All
+  parameters are global shader uniforms, so the view distance changes
+  one value, not hundreds of materials.
+- *Real sun shadows.* Godot's shadow maps render nothing on the Intel
+  Iris (Act XI), and FakeShadows only darkened the ground. Now each map
+  renders its own shadow map **once**, at load: an orthographic camera
+  looking down the sun, every mesh temporarily drawn with a material
+  that writes its depth along the sun into red/green (16 bits), read
+  back into a texture. Every surface then compares its own sun-depth
+  with it - one to four texture reads a pixel, nothing else per frame.
+  Buildings shadow each other, bridges shadow roads, crane booms throw
+  lines across the container stacks. Two traps: first, the shadows were
+  there but invisible - the baked light is ambient-heavy, so taking out
+  the exact sun share only darkened ground by 30% and the textures ate
+  it (boosted to a believable ~50%); second, a guess that the GL
+  renderer would sRGB-encode the depth bytes, settled by reading pixels
+  back - it doesn't. FakeShadows and its two shaders are deleted.
+
+**Sunsets.** With shadows that work, low suns pay off: the harbour got a
+sunset (sun 9 degrees up in the west, orange haze, long shadows down
+the streets), the mountain lake evening alpenglow on the peaks with the
+valley already in shade, the construction site late-afternoon light.
+
+**Trees.** Five species instead of two cones: spruce (ten tiers of
+drooping star-shaped branch skirts), Scots pine (bare orange trunk,
+umbrella crown), a round broadleaf (lumpy leaf masses on real
+branches), birch and poplar. One material for leaves and bark (vertex
+alpha says which), lit in the shader so randomly turned MultiMesh
+trees still face the sun correctly, a leaf-cluster texture, a slight
+breeze. Full trees within 140-320 m (by quality), crude 40-triangle
+stand-ins beyond - drawn always and smaller than the real crowns, so
+up close they're just the dense inside of the foliage. The hand-placed
+trees of the village and factory became the new species too, without
+moving one (the scene swaps its own mesh at runtime).
+
+**Nothing inside anything.** Rather than hunting overlaps map by map,
+Geo now records every solid primitive's footprint and every road/rail
+sweep's lane. Parked cars and trees are placed *after* the map is
+built and dropped if they'd stand inside a building, a truck, a pillar
+or another car - or, for trees, on a road or track. The first run
+found 23 such cars in the harbour, 34 on the construction site.
+
+**The steelworks, rebuilt after Völklingen.** The old mill was a 2 km
+forest map with two furnaces. The new one is compact (border 430 m)
+and laid out like the Völklinger Hütte along the Saar: river and
+riverside road, the main line through Völklingen station, the Cowper
+stoves in a row, the iron line under the cast houses, six blast
+furnaces in one line, the inclined skip hoists rising from the
+Möllerhalle bunker building, the ore monorail chasing over from the
+ore yard, coking and sinter plants, the blower hall, the old town on
+the hill, and the "Paradies" corner gone back to birch wood. It's
+built for freestyle: a 244 m column slalom under the bunkers, hollow
+gas and blast mains with open joints, the skip hoists to follow up to
+the furnace tops, gaps between legs, catchers and pipes everywhere.
+
+**The border shows itself** while the warning flashes: a glowing grid
+with hazard stripes on the wall (and ceiling), visible only within
+~30 m of the drone - a force field, not a fence round the map.
+
+**Menus.** Settings became five tabs - Graphics, Camera & HUD, Flight,
+Rates, Radio - with a one-line explanation under every option, a new
+render distance slider (300-3000 m), and visible keyboard focus. The
+pause menu gained "Change map". (A "Fly again: <last map>" button on
+the home screen lasted one round - the user didn't want it.)
+
+**Rates like Betaflight.** All four of Betaflight's rate types -
+Betaflight, Actual, Quick, KISS - ported formula for formula from
+`rc.c`, per axis (roll, pitch, yaw), entered as the same numbers the
+Configurator shows, with the Configurator's coloured three-axis
+preview, presets, and "pitch follows roll". Switching type converts
+the numbers so the feel stays close. Old saved settings migrate.
+
+
 ## Recurring engineering themes
 
 A few patterns repeat often enough across all 13 commits to be the

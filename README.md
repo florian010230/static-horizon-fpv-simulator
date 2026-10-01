@@ -56,7 +56,7 @@ performance and can filter by it:
 
 | Map | Tier | What it is |
 |---|---|---|
-| Abandoned Steel Mill | High | A whole derelict integrated steelworks in a forested valley, laid out along the real process: rail yard, ore/coal stockyard with an ore bridge, coke ovens and quench tower, two blast furnaces with hot stoves, skip bridges and dust catchers, torpedo cars to the BOF shop, rolling mill hall, power plant with cooling tower. Hollow gas main and conveyor galleries to fly through, holes in every hall. |
+| Abandoned Steel Mill | High | Laid out after the Völklinger Hütte along the Saar: river, main line through Völklingen station, a row of Cowper stoves, six blast furnaces in one line with dust catchers and cast houses over the iron line, skip hoists up from the Möllerhalle bunker building (a 244 m column slalom underneath), the ore monorail from the ore yard, blower hall, coking and sinter plants, gas holder, the town on the hill and the overgrown "Paradies". Hollow gas and blast mains with open joints to fly through. |
 | Construction Site | High | A city block under construction: an 18-storey concrete frame with open floors, two lattice tower cranes, a 12 m excavation pit with sheet piles and struts, a steel frame, site machines, the city grid round it and an S-Bahn on brick arches. |
 | Mountain Lake | High | An alpine lake under rocky peaks: pine forest to the treeline, a lakeside village, cabin and pier, chapel, dam, waterfall, cable car, mountains to the horizon. |
 | Parking Garage | Medium | An abandoned multi-storey car park: 2.7 m decks, two-lane ramps, collapsed slabs, broken parapets, stair towers. |
@@ -77,13 +77,16 @@ their edge never shows, and are 2-4 times the area they were. Each drone carries
 pack (`scripts/battery.gd`: whoop 1S 300 mAh, Static Three 4S 850 mAh,
 Static Five 6S 1300 mAh) that drains with current and sags under load;
 Settings -> "Battery simulation" turns on drain, sag and the readout. Acro
-rates use Betaflight's exact Actual Rates formula including expo
-(default 70 / 670 / 0.54, Betaflight's own defaults), so a pilot can
-enter the numbers from their quad. Optional: an analog video look
+rates (Settings -> Rates) are Betaflight's own: all four rate types
+(Betaflight, Actual, Quick, KISS) with Betaflight's formulas from
+`rc.c`, per axis, entered as the same numbers the Configurator shows,
+with its three-axis preview graph and presets (`scripts/rates.gd`;
+default Actual 70 / 670 / 0.54) - copy them from your quad. Optional: an analog video look
 (noise, scanlines, colour smear, interference, vignette - under the OSD,
 like real goggles) and wind on outdoor maps (light ~3 m/s or gusty
 ~7 m/s; drag works on airspeed, weaker near the ground). Settings has
-three tabs: Display, Flight, Radio (with per-radio connection tips).
+five tabs: Graphics, Camera & HUD, Flight, Rates, Radio (with per-radio
+connection tips), every option explained in one line under it.
 All settings are saved (`user://settings.cfg`).
 
 Race maps time every lap: fly the gates in order (the next one glows
@@ -185,16 +188,18 @@ that way deliberately as the project grew:
 - "Compatibility" (GL) renderer by default — the lightest Godot 4
   option, for old/integrated GPUs. Change it in Project Settings ->
   Rendering -> Renderer if you have a decent GPU and want more later.
-- Shadows are off by default (toggle in the menu's Settings — one of the
-  more expensive things a weak GPU does; everything still reads fine
-  under the ambient + direct lighting alone).
 - Shadows are computed by the sim itself (see "Shadows and lighting") -
-  one extra draw call per map, not a shadow-map pass.
-- **Graphics quality** (Settings -> Display: Low / Medium / High,
+  a shadow map rendered once per map, not every frame.
+- No glow / bloom and no engine fog: measured on the dev machine, glow
+  alone cost ~40% of the frame rate on High. The fog is a few
+  instructions in the world shader instead.
+- **Render distance** (Settings -> Graphics, 300-3000 m, default 1200)
+  - the world fades into the haze there; shorter = more FPS.
+- **Graphics quality** (Settings -> Graphics: Low / Medium / High,
   Medium by default) scales the 3D render resolution (55% / 75% / 100%
   - the HUD and menu stay sharp), stops drawing small objects (lamps,
   cars, sleepers, desks) beyond 70 / 120 m and medium ones beyond
-  180 / 320 m, and shortens the view distance on Low. Matters most on
+  180 / 320 m, and draws full trees out to 140 / 220 / 320 m. Matters most on
   HiDPI/Retina screens, where the 3D view otherwise renders several
   times the pixels of a 1080p screen. Measured in the village: GPU
   ~30% on Medium, ~19% on Low.
@@ -271,14 +276,10 @@ that way deliberately as the project grew:
 - `O` show/hide the tuning panel
 - `Esc` pause menu (camera angle/FOV, drone, reset, Settings, main menu)
 
-The menu has a **Settings** button: fullscreen, crosshair, shadows, a
-max FPS slider (50 up to "Unlimited" — drag it all the way right), and
-Acro Rates (Center Sensitivity / Max Rate), shown next to a live
-Betaflight-style **Rate Curve Preview** graph - the same soft-center/
-steep-edge curve `drone.gd` actually flies, not just a decorative
-approximation. Set your preferred feel once and it's what a freshly
-spawned drone starts from every flight, rather than re-tuning it every
-time via the in-flight `O` panel. The drone is picked with the arrows on
+The menu has a **Settings** button (see above), and the Rates tab works
+like Betaflight Configurator's: pick the rates type, type in roll /
+pitch / yaw, watch the three curves. The drone reads them live. The
+pause menu has **Change map**. The drone is picked with the arrows on
 the home screen; **Play** leads to the map choice: **Village**,
 **Factory**, or **School (Tiny Whoop only)**, loaded behind a loading
 screen (progress bar, a tip, motor sound muted) instead of a frozen
@@ -387,18 +388,19 @@ Godot's own shadow maps render nothing at all on some GPUs - verified on
 the dev machine (Intel Iris 6100 on macOS, Compatibility and Vulkan
 renderers): screenshots with the sun's shadows on and off were identical
 (matching known engine issues, e.g. godotengine/godot#67866). So the
-Shadows setting (now on by default) uses shadows computed by the sim
-itself, which work on every GPU and cost next to nothing:
+Shadows setting (on by default) uses shadows made by the sim itself:
 
-- `FakeShadows` (`scripts/fake_shadows.gd`): once per map load, every
-  object's real outline - all its mesh vertices projected along the sun
-  onto the ground, one convex polygon per building (walls + roof) or per
-  mesh - is painted into one 2048x2048 top-down mask, softened into a
-  penumbra, and sampled by every ground surface (grass, roads,
-  sidewalks, paving) through `shaders/ground_shadowed.gdshader`. A gable
-  roof throws a gable-shaped shadow, and shadows fall across roads too.
-  No extra geometry above the ground: the earlier version drew shadow
-  meshes a few cm over the grass, which flickered at a distance.
+- `WorldShading` (`scripts/world_shading.gd`): at load every world
+  material is converted to one shader family (`shaders/world.gdshaderinc`,
+  same unshaded baked look), and the map renders a **static sun shadow
+  map once**: an orthographic camera along the sun, every mesh drawn
+  with `shaders/shadow_depth.gdshader` (depth along the sun, packed into
+  16 bits), read back into a texture. Every surface compares its own
+  depth with it (bilinear 4-tap PCF) and takes out the sun's share of
+  its baked light - buildings shadow buildings, bridges shadow roads.
+  It also does the distance fog. All of it runs on global shader
+  uniforms (`project.godot [shader_globals]`). Moving things (the
+  drone, nodes with meta "dynamic") are hidden during the capture.
 - `DroneShadow` (`scripts/drone_shadow.gd`): a soft shadow under the
   drone, one raycast along the sun per frame, onto whatever is below -
   the classic FPV height cue for landing.

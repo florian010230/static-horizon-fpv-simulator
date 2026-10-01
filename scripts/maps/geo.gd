@@ -7,9 +7,8 @@ extends RefCounted
 ## pieces is a few dozen draw calls, and the cells still frustum-cull.
 ## Collidable triangles go into one ConcavePolygonShape3D per cell
 ## (backface collision on, so hollow things - pipes, cooling towers,
-## halls - really are hollow). Each primitive also records its outline
-## for FakeShadows (the batched meshes themselves are skipped there -
-## one hull over a whole cell would be one giant blob).
+## halls - really are hollow). Sun shadows come from WorldShading's
+## shadow map, rendered from these meshes once per map.
 ##
 ## Lighting is baked into the vertex colors and every material is
 ## unshaded: the engine's DirectionalLight3D has no effect at all on the
@@ -55,7 +54,6 @@ var sun_tint: Color = Color(1.0, 0.97, 0.9)
 ## variants of one material (house paints, roof tiles) without a
 ## material - and a draw call - per variant.
 var tint: Color = Color.WHITE
-var shadow_groups: Array = []
 
 var _mats: Dictionary = {}
 var _batches: Dictionary = {} # "mat|cx|cz" -> SurfaceTool
@@ -160,6 +158,86 @@ static func glow_mat(color: Color, energy: float = 2.0) -> StandardMaterial3D:
 	m.emission_energy_multiplier = energy
 	return m
 
+# --- footprints -----------------------------------------------------------------
+# Every solid primitive leaves its footprint (an oriented rectangle on
+# the ground plus its height range), every road/rail sweep its lane, so
+# whatever is scattered afterwards - trees, parked cars - can avoid
+# being placed inside something (BuiltMap / Fleet check these).
+
+const OBS_CELL: float = 32.0
+var _obs: Array = [] # [centre: Vector2, axis: Vector2, half: Vector2, y0, y1]
+var _obs_grid: Dictionary = {}
+var _lanes: Array = [] # [a: Vector2, b: Vector2, half width]
+var _lane_grid: Dictionary = {}
+
+func _obstacle(c: Vector2, ax: Vector2, half: Vector2, y0: float, y1: float) -> void:
+	if y1 - y0 < 0.3:
+		return # flat: paving, kerbs, markings
+	var r: float = half.length()
+	if r > 120.0:
+		return # whole ground slabs
+	_obs.append([c, ax.normalized(), half, y0, y1])
+	_grid_add(_obs_grid, c, r, _obs.size() - 1)
+
+func _obstacle_box(o: Vector3, hx: Vector3, hz: Vector3, corners: Array) -> void:
+	var y0: float = INF
+	var y1: float = -INF
+	for p: Vector3 in corners:
+		y0 = minf(y0, p.y)
+		y1 = maxf(y1, p.y)
+	var ax := Vector2(hx.x, hx.z)
+	var az := Vector2(hz.x, hz.z)
+	_obstacle(Vector2(o.x, o.z), ax if ax.length() > 0.001 else Vector2(1, 0), Vector2(ax.length(), az.length()), y0, y1)
+
+func _obstacle_points(pts: Array) -> void:
+	var mn := Vector3(INF, INF, INF)
+	var mx := Vector3(-INF, -INF, -INF)
+	for p: Vector3 in pts:
+		mn = mn.min(p)
+		mx = mx.max(p)
+	if (mx.x - mn.x) * (mx.z - mn.z) > 600.0:
+		return # a long diagonal brace: its box would cover far too much
+	_obstacle(Vector2(mn.x + mx.x, mn.z + mx.z) * 0.5, Vector2(1, 0), Vector2(mx.x - mn.x, mx.z - mn.z) * 0.5, mn.y, mx.y)
+
+func _lane(a: Vector2, b: Vector2, half: float) -> void:
+	_lanes.append([a, b, half])
+	_grid_add(_lane_grid, (a + b) * 0.5, (b - a).length() * 0.5 + half, _lanes.size() - 1)
+
+func _grid_add(grid: Dictionary, c: Vector2, r: float, idx: int) -> void:
+	for gx in range(floori((c.x - r) / OBS_CELL), floori((c.x + r) / OBS_CELL) + 1):
+		for gz in range(floori((c.y - r) / OBS_CELL), floori((c.y + r) / OBS_CELL) + 1):
+			var k := Vector2i(gx, gz)
+			if not grid.has(k):
+				grid[k] = []
+			grid[k].append(idx)
+
+## Is a circle of radius r at p (x, z) inside any solid between heights y0 and y1?
+func blocked(p: Vector2, r: float, y0: float, y1: float) -> bool:
+	for idx in _obs_grid.get(Vector2i(floori(p.x / OBS_CELL), floori(p.y / OBS_CELL)), []):
+		var o: Array = _obs[idx]
+		if o[4] <= y0 or o[3] >= y1:
+			continue
+		var d: Vector2 = p - o[0]
+		var ax: Vector2 = o[1]
+		if absf(d.dot(ax)) <= o[2].x + r and absf(d.dot(Vector2(-ax.y, ax.x))) <= o[2].y + r:
+			return true
+	return false
+
+## Is p (x, z) on a road or track (within `margin` of its edge)?
+func on_lane(p: Vector2, margin: float) -> bool:
+	for idx in _lane_grid.get(Vector2i(floori(p.x / OBS_CELL), floori(p.y / OBS_CELL)), []):
+		var l: Array = _lanes[idx]
+		var a: Vector2 = l[0]
+		var ab: Vector2 = l[1] - a
+		var t: float = clampf((p - a).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+		if (a + ab * t).distance_to(p) < l[2] + margin:
+			return true
+	return false
+
+## Marks an area as taken (parked cars, so trees and other cars avoid them).
+func reserve(c: Vector2, ax: Vector2, half: Vector2, y0: float, y1: float) -> void:
+	_obstacle(c, ax, half, y0, y1)
+
 # --- primitives --------------------------------------------------------------
 
 ## Axis-aligned box (optionally turned about Y), by center and size.
@@ -174,6 +252,11 @@ func box_xf(xf: Transform3D, size: Vector3, mat: String, collide: bool = true, s
 		c.append(xf * Vector3(h.x if i & 1 else -h.x, h.y if i & 2 else -h.y, h.z if i & 4 else -h.z))
 	_begin(mat, xf.origin, collide)
 	var b: Basis = xf.basis
+	if collide:
+		if absf(b.y.normalized().y) > 0.9:
+			_obstacle_box(xf.origin, b.x * h.x, b.z * h.z, c)
+		else:
+			_obstacle_points(c)
 	# (corner bit 0 = +x, bit 1 = +y, bit 2 = +z)
 	_quad(c[1], c[3], c[7], c[5], b.x, collide)
 	_quad(c[0], c[4], c[6], c[2], -b.x, collide)
@@ -194,6 +277,8 @@ func hexa(c: Array, mat: String, collide: bool = true, shadow: bool = true) -> v
 		centre += p
 	centre /= 8.0
 	_begin(mat, centre, collide)
+	if collide:
+		_obstacle_points(c)
 	for f in [[1, 3, 7, 5], [0, 4, 6, 2], [2, 6, 7, 3], [0, 1, 5, 4], [4, 5, 7, 6], [0, 2, 3, 1]]:
 		var a: Vector3 = c[f[0]]
 		var b: Vector3 = c[f[1]]
@@ -248,6 +333,11 @@ func cone(a: Vector3, b: Vector3, r0: float, r1: float, mat: String, sides: int 
 ## it a shell with an inside surface too (cooling tower, open hopper).
 func lathe(base: Vector3, profile: Array, mat: String, sides: int = 24, wall: float = 0.0, collide: bool = true, shadow: bool = true) -> void:
 	_begin(mat, base, collide)
+	if collide and profile.size() > 1:
+		var rmax: float = 0.0
+		for q: Vector2 in profile:
+			rmax = maxf(rmax, q.x)
+		_obstacle(Vector2(base.x, base.z), Vector2(1, 0), Vector2(rmax, rmax), base.y + profile[0].y, base.y + profile[profile.size() - 1].y)
 	var pts := PackedVector3Array()
 	for layer in ([0.0, wall] if wall > 0.0 else [0.0]):
 		var inward: bool = layer > 0.0
@@ -302,6 +392,12 @@ func sweep(path: Array[Vector3], profile: Array, mat: String, closed: bool = fal
 	var m: int = profile.size()
 	if n < 2 or m < 2:
 		return
+	if mat.begins_with("rd_asphalt") or mat.begins_with("rw_ballast"):
+		var half: float = 0.0
+		for q: Vector2 in profile:
+			half = maxf(half, absf(q.x))
+		for i in range(n - 1):
+			_lane(Vector2(path[i].x, path[i].z), Vector2(path[i + 1].x, path[i + 1].z), half)
 	if closed:
 		inside = Vector2.ZERO
 		for q: Vector2 in profile:
@@ -382,6 +478,12 @@ func sweep(path: Array[Vector3], profile: Array, mat: String, closed: bool = fal
 ## x = -width/2 to +width/2, both sides capped. This is what gives cars,
 ## lorries and locomotives their real outline instead of stacked boxes.
 func prism(xf: Transform3D, profile: Array, width: float, mat: String, collide: bool = true, shadow: bool = true) -> void:
+	if collide:
+		var pts: Array = []
+		for q: Vector2 in profile:
+			pts.append(xf * Vector3(-width * 0.5, q.y, q.x))
+			pts.append(xf * Vector3(width * 0.5, q.y, q.x))
+		_obstacle_points(pts)
 	var poly := PackedVector2Array(profile)
 	var m: int = poly.size()
 	var area: float = 0.0
@@ -441,6 +543,17 @@ func _tube(a: Vector3, b: Vector3, r0: float, r1: float, wall: float, mat: Strin
 	var up: Vector3 = Vector3.UP if absf(d.normalized().y) < 0.99 else Vector3.RIGHT
 	var basis := Basis.looking_at(d / length, up) # local -Z runs a -> b
 	_begin(mat, (a + b) * 0.5, collide)
+	if collide:
+		var rr: float = maxf(r0, r1)
+		var flat := Vector3(d.x, 0, d.z)
+		var lo: float = minf(a.y, b.y) - (rr if absf(d.y) < length * 0.7 else 0.0)
+		var hi: float = maxf(a.y, b.y) + (rr if absf(d.y) < length * 0.7 else 0.0)
+		if flat.length() < 0.01:
+			_obstacle(Vector2(a.x, a.z), Vector2(1, 0), Vector2(rr, rr), lo, hi)
+		else:
+			var ax := Vector2(flat.x, flat.z).normalized()
+			var mid: Vector3 = (a + b) * 0.5
+			_obstacle(Vector2(mid.x, mid.z), ax, Vector2(flat.length() * 0.5 + rr, rr), lo, hi)
 	var pts := PackedVector3Array()
 	var layers: Array = [[r0, r1, false]]
 	if wall > 0.0:
@@ -531,8 +644,10 @@ func shade(n: Vector3, y: float) -> Color:
 	var c: Color = Color(base, base, base * 1.04) + sun_tint * direct
 	return Color(minf(c.r * ao, 1.0), minf(c.g * ao, 1.0), minf(c.b * ao, 1.0))
 
-func _shadow(pts: PackedVector3Array) -> void:
-	shadow_groups.append(pts)
+## (Shadows are WorldShading's shadow map now - every surface casts.
+## The `shadow` flags on the primitives are kept for callers' sake.)
+func _shadow(_pts: PackedVector3Array) -> void:
+	pass
 
 ## Turns everything into nodes under `root`. Call once, after building.
 func commit(root: Node3D) -> void:
@@ -568,9 +683,6 @@ func commit(root: Node3D) -> void:
 		var cs := CollisionShape3D.new()
 		cs.shape = shape
 		body.add_child(cs)
-	var groups: Array = root.get_meta("shadow_groups", [])
-	groups.append_array(shadow_groups)
-	root.set_meta("shadow_groups", groups)
 	_batches.clear()
 	_col.clear()
 
@@ -593,5 +705,4 @@ func build_mesh() -> ArrayMesh:
 		mesh.surface_set_material(mesh.get_surface_count() - 1, _mats[m])
 	_batches.clear()
 	_col.clear()
-	shadow_groups.clear()
 	return mesh

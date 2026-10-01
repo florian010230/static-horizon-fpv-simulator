@@ -8,6 +8,7 @@
 script = ExtResource("1")
 
 [node name="Drone" parent="." instance=ExtResource("2")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 220, 0.15, 170)
+position = Vector3(125, 0.15, 135)
+rotation = Vector3(0, 1.5708, 0)
 
 [node name="UI" parent="." instance=ExtResource("3")]

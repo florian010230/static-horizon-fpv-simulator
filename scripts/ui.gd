@@ -241,8 +241,6 @@ func _build_tuning_panel() -> void:
 	title.text = "PID & Camera Tuning (O to hide)"
 	vbox.add_child(title)
 
-	_add_slider(vbox, "Center Sensitivity", 10.0, 200.0, 5.0, _drone.center_sensitivity_deg, func(v: float): _drone.center_sensitivity_deg = v)
-	_add_slider(vbox, "Max Rate", 100.0, 1200.0, 10.0, _drone.max_rate_deg, func(v: float): _drone.max_rate_deg = v)
 	_add_slider(vbox, "Max Angle (self-level)", 10.0, 60.0, 1.0, _drone.max_angle_deg, func(v: float): _drone.max_angle_deg = v)
 	_add_slider(vbox, "Angle P Gain", 2.0, 15.0, 0.5, _drone.angle_p_gain, func(v: float): _drone.angle_p_gain = v)
 	_add_slider(vbox, "Roll P", 0.0, 100.0, 1.0, _drone.roll_p, func(v: float): _drone.roll_p = v)

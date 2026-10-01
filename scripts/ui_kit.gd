@@ -128,7 +128,9 @@ static func make_theme() -> Theme:
 	t.set_stylebox("hover", "CheckButton", box(Color(1, 1, 1, 0.04), Color(0, 0, 0, 0), 8, 0, row_pad))
 	t.set_stylebox("pressed", "CheckButton", box(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 8, 0, row_pad))
 	t.set_stylebox("hover_pressed", "CheckButton", box(Color(1, 1, 1, 0.04), Color(0, 0, 0, 0), 8, 0, row_pad))
-	t.set_stylebox("focus", "CheckButton", StyleBoxEmpty.new())
+	# Keyboard/gamepad focus must be visible, or the menus can't be
+	# navigated without a mouse.
+	t.set_stylebox("focus", "CheckButton", box(Color(0, 0, 0, 0), LINK, 8, 2, row_pad))
 	t.set_icon("checked", "CheckButton", switch_icon(true))
 	t.set_icon("unchecked", "CheckButton", switch_icon(false))
 
@@ -138,7 +140,21 @@ static func make_theme() -> Theme:
 	t.set_stylebox("grabber_area_highlight", "HSlider", box(ACCENT, ACCENT, 4, 0, track_pad))
 	t.set_icon("grabber", "HSlider", dot_icon(22, TEXT))
 	t.set_icon("grabber_highlight", "HSlider", dot_icon(24, Color.WHITE))
-	t.set_stylebox("focus", "HSlider", StyleBoxEmpty.new())
+	t.set_stylebox("focus", "HSlider", box(Color(0, 0, 0, 0), LINK, 6, 2, Vector4(4, 4, 4, 4)))
+
+	# Number fields (the rates table) and drop-downs.
+	t.set_stylebox("normal", "LineEdit", box(BG, BORDER, 8, 1, Vector4(10, 6, 10, 6)))
+	t.set_stylebox("focus", "LineEdit", box(BG, LINK, 8, 2, Vector4(10, 6, 10, 6)))
+	t.set_stylebox("read_only", "LineEdit", box(BG, BORDER, 8, 1, Vector4(10, 6, 10, 6)))
+	t.set_color("font_color", "LineEdit", TEXT)
+	t.set_color("caret_color", "LineEdit", ACCENT)
+	t.set_color("selection_color", "LineEdit", Color(LINK, 0.4))
+	t.set_font_size("font_size", "LineEdit", 22)
+	for st in ["normal", "hover", "pressed", "focus", "disabled"]:
+		t.set_stylebox(st, "OptionButton", box(BOX if st != "hover" else BOX_HOVER, LINK if st == "focus" else BORDER, 10, 2 if st == "focus" else 1, Vector4(14, 6, 14, 6)))
+	t.set_font_size("font_size", "OptionButton", 20)
+	t.set_color("font_color", "OptionButton", TEXT)
+	t.set_color("font_hover_color", "OptionButton", Color.WHITE)
 
 	var sep := StyleBoxLine.new()
 	sep.color = BORDER
@@ -239,7 +255,9 @@ static func slider(parent: Control, label_text: String, min_v: float, max_v: flo
 	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(lbl)
 	var value_lbl := Label.new()
-	value_lbl.text = str(snapped(initial, step)) + suffix
+	var fmt := func(v: float) -> String:
+		return (str(int(round(v))) if step >= 1.0 else str(snapped(v, step))) + suffix
+	value_lbl.text = fmt.call(initial)
 	value_lbl.add_theme_color_override("font_color", ACCENT)
 	head.add_child(value_lbl)
 
@@ -251,7 +269,7 @@ static func slider(parent: Control, label_text: String, min_v: float, max_v: flo
 	s.custom_minimum_size = Vector2(0, 30)
 	parent.add_child(s)
 	s.value_changed.connect(func(v: float):
-		value_lbl.text = str(snapped(v, step)) + suffix
+		value_lbl.text = fmt.call(v)
 		on_change.call(v)
 	)
 	return value_lbl

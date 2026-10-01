@@ -11,7 +11,7 @@ extends RefCounted
 ## Light is baked into the vertex colours (see Geo), which depends on
 ## which way the car faces - so each kind is built for 8 headings and a
 ## car uses the nearest one (at most 22.5 degrees off - not visible).
-## Collision: one box per car. Shadows: an outline per car.
+## Collision: one box per car.
 
 const CHUNK: float = 128.0
 const BINS: int = 8
@@ -58,10 +58,27 @@ func count() -> int:
 ## paint) is copied into one mesh per material with SurfaceTool.append_from
 ## - a C++ copy, fast - so a chunk full of cars is ~9 draw calls.
 func commit(root: Node3D) -> void:
+	# Drop cars that would stand inside a building, a truck, a pillar or
+	# another car (Geo's footprints); each kept car reserves its own.
+	var dropped: int = 0
+	for key in _items:
+		var kept: Array = []
+		for it in _items[key]:
+			var spec: Array = Vehicles.CAR_SPECS.get(it[0], Vehicles.CAR_SPECS.sedan)
+			var p: Vector3 = it[2].origin
+			var ax := Vector2(cos(it[4]), -sin(it[4]))
+			var half := Vector2(spec[1] * 0.5 - 0.15, spec[0] * 0.5 - 0.25)
+			if geo.blocked(Vector2(p.x, p.z), 0.0, p.y + 0.45, p.y + spec[2] - 0.1) or _blocked_box(p, ax, half, spec[2]):
+				dropped += 1
+				continue
+			geo.reserve(Vector2(p.x, p.z), ax, half, p.y + 0.3, p.y + spec[2])
+			kept.append(it)
+		_items[key] = kept
+	if OS.has_environment("SH_PERF"):
+		print("FLEET dropped %d" % dropped)
 	var holder := Node3D.new()
 	holder.name = "Fleet"
 	root.add_child(holder)
-	var groups: Array = root.get_meta("shadow_groups", [])
 	for key in _items:
 		var tools: Dictionary = {}
 		var body := StaticBody3D.new()
@@ -84,12 +101,6 @@ func commit(root: Node3D) -> void:
 			cs.shape = shape
 			cs.transform = Transform3D(b, p + Vector3(0, spec[2] * 0.5 + 0.1, 0))
 			body.add_child(cs)
-			var pts := PackedVector3Array()
-			for c in [Vector3(-1, 0, -1), Vector3(1, 0, -1), Vector3(1, 0, 1), Vector3(-1, 0, 1)]:
-				var q: Vector3 = c * Vector3(spec[1] * 0.5, 0, spec[0] * 0.45)
-				pts.append(p + b * q + Vector3(0, spec[3], 0))
-				pts.append(p + b * (q * 0.7) + Vector3(0, spec[2], 0))
-			groups.append(pts)
 		for mat in tools:
 			var mesh: ArrayMesh = tools[mat].commit()
 			mesh.surface_set_material(0, mat)
@@ -100,8 +111,17 @@ func commit(root: Node3D) -> void:
 			mi.set_meta("geo_detail", true)
 			mi.set_meta("geo_batch", true)
 			holder.add_child(mi)
-	root.set_meta("shadow_groups", groups)
 	_items.clear()
+
+## The four corners of a car's footprint, checked like its centre.
+func _blocked_box(p: Vector3, ax: Vector2, half: Vector2, h: float) -> bool:
+	var az := Vector2(-ax.y, ax.x)
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var q: Vector2 = Vector2(p.x, p.z) + ax * half.x * sx + az * half.y * sz
+			if geo.blocked(q, 0.0, p.y + 0.45, p.y + h - 0.1):
+				return true
+	return false
 
 var _parts: Dictionary = {}
 var _models: Dictionary = {}

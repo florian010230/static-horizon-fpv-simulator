@@ -1,3 +1,4 @@
+class_name MainMenu
 extends CanvasLayer
 
 ## The real entry point (see project.godot run/main_scene) - a proper
@@ -36,6 +37,9 @@ var _preview_name: Label
 var _preview_tags: Label
 var _preview_text: Label
 
+## Which screen opens first - the pause menu's "Change map" sets "map".
+static var start_screen: String = "main"
+
 func _ready() -> void:
 	# The menu doesn't need 60+ FPS for one slowly turning preview - and
 	# a menu left open should not spin up a laptop's fans (it did: GPU at
@@ -72,7 +76,8 @@ func _ready() -> void:
 	_settings.closed.connect(func():
 		_refresh_preview_labels() # units may have changed
 		_show("main"))
-	_show("main")
+	_show(start_screen)
+	start_screen = "main"
 
 func _exit_tree() -> void:
 	Engine.max_fps = Settings.max_fps
@@ -88,6 +93,22 @@ func _show(screen: String) -> void:
 	_current = screen
 	if screen == "settings":
 		_settings.open()
+	# Keyboard / gamepad: something is always focused, so arrows + Enter
+	# work everywhere without the mouse.
+	var first: Control = _first_focusable(_screens.get(screen))
+	if first:
+		(func(): if first.is_inside_tree() and first.is_visible_in_tree(): first.grab_focus()).call_deferred()
+
+func _first_focusable(n: Node) -> Control:
+	if n == null:
+		return null
+	if n is Button and (n as Button).visible and not (n as Button).disabled and (n as Button).focus_mode != Control.FOCUS_NONE and n.has_meta("default_focus"):
+		return n
+	for c in n.get_children():
+		var f: Control = _first_focusable(c)
+		if f:
+			return f
+	return null
 
 ## Backdrop: the site's near-black, a soft sky-blue glow up top and a
 ## ground-orange glow at the bottom - the logo's own two halves.
@@ -156,7 +177,7 @@ func _build_main_screen(root: Control) -> Control:
 	brand.add_child(heading)
 
 	var subtitle := Label.new()
-	subtitle.text = "Fly real-world quads with your own radio - over a village, through a factory, or down a school corridor."
+	subtitle.text = "Fly real-world quads with your own radio: freestyle a derelict steelworks, race league gates, dive cranes in a port city."
 	subtitle.theme_type_variation = "Muted"
 	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	subtitle.custom_minimum_size = Vector2(560, 0)
@@ -165,6 +186,7 @@ func _build_main_screen(root: Control) -> Control:
 	UIKit.gap(left, 18)
 	var play := UIKit.button("Play", "PrimaryButton", 68)
 	play.pressed.connect(func(): _show("map"))
+	play.set_meta("default_focus", true)
 	left.add_child(play)
 	var settings := UIKit.button("Settings", "", 60)
 	settings.pressed.connect(func(): _show("settings"))
@@ -516,6 +538,8 @@ func _build_map_screen(root: Control) -> Control:
 	content.add_child(grid)
 	for m in MapCatalog.available():
 		var card := _map_card(m)
+		if grid.get_child_count() == 0:
+			card.set_meta("default_focus", true)
 		grid.add_child(card)
 		var scene: String = m.scene
 		var map_name: String = m.name
@@ -526,7 +550,8 @@ func _build_map_screen(root: Control) -> Control:
 func _map_card(m: Dictionary) -> Button:
 	var b := Button.new()
 	b.theme_type_variation = "CardButton"
-	b.custom_minimum_size = Vector2(340, 205)
+	b.custom_minimum_size = Vector2(340, 236)
+	b.clip_contents = true
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.set_meta("find_text", m.name)
 	b.set_meta("tier", m.tier)
@@ -552,6 +577,7 @@ func _map_card(m: Dictionary) -> Button:
 	box.add_child(tags)
 	var tier_color: Color = MapCatalog.TIER_COLORS[m.tier]
 	tags.add_child(_pill(m.tier + " performance", tier_color))
+	tags.add_child(_pill("Indoor" if m.get("indoor", false) else "Outdoor", UIKit.MUTED_LIGHT))
 	if m.drone != "any":
 		tags.add_child(_pill(Drone.PROFILES[m.drone].display.name + " only", UIKit.MUTED_LIGHT))
 	var d := Label.new()

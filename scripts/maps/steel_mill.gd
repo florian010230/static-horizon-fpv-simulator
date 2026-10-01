@@ -1,74 +1,101 @@
 extends BuiltMap
 
-## Abandoned Steel Mill - the High-performance showcase map: a whole
-## integrated steelworks, derelict and overgrown, in a forested valley.
+## Abandoned Steel Mill - the High showcase map, laid out after the
+## Völklinger Hütte (Saarland; UNESCO World Heritage since 1994), the
+## only integrated ironworks of its era that survived complete. As
+## there, everything lines up along the Saar valley (north = -z):
 ##
-## Laid out along the real process (sources in TODO.md):
-##   coal + ore arrive by rail (west) -> stockyard with an ore bridge
-##   coal -> coke oven battery (north-west) -> quench tower
-##   coke + ore -> conveyor galleries -> skip bridges -> 2 blast furnaces
-##   hot stoves (hot blast) -> bustle pipe; top gas -> downcomer ->
-##   dust catcher -> gas main on trestles -> gas holder (north-east)
-##   hot metal -> torpedo cars through the cast houses -> BOF shop (east)
-##   -> rolling mill hall (far east) -> finished slabs on flat wagons
-##   power plant (south): turbine hall, chimneys, cooling tower.
-## North = -z. The site is x -360..360, z -210..190; forest all round.
+##   river Saar (south) - riverside road - main railway with Völklingen
+##   station - the Cowper stoves (hot-blast heaters, 3 per furnace) -
+##   the iron line under the cast houses - SIX blast furnaces in one row
+##   - the inclined skip hoists (Schrägaufzüge) rising from - the
+##   Möllerhalle, the burden bunker building on its concrete columns -
+##   the suspended ore monorail (Erzhängebahn) bringing ore over from the
+##   ore yard - coking plant and sinter plant (north) - the old town of
+##   Völklingen on the hill.
+##   West: the blower hall (Gebläsehalle) with the cold-blast main to
+##   the stoves; the "Paradies", the overgrown corner nature took back.
+##   East: gas holder, gas-cleaning/power house and its chimneys.
 ##
-## FPV lines by design: the gas main and the conveyor galleries are
-## hollow (fly through them), the cooling tower is open (dive it), the
-## quench tower is open-topped with big openings, halls have missing
-## wall/roof panels, the skip bridges run up to the furnace tops.
+## Sources: Weltkulturerbe Völklinger Hütte site plan and photos
+## (voelklinger-huette.org), Wikipedia "Völklinger Hütte". Distances
+## are compressed (the real furnace row is ~300 m, here 216 m) - the
+## whole works fits in ~700 x 400 m, and everything is close together.
+##
+## FPV lines by design: gaps between furnace legs, dust catchers and
+## pipes; under the Möllerhalle between its columns (6 m clearance);
+## the skip hoists to follow up to the furnace tops; the gas main and
+## hot-blast pipes are hollow (in at the open joints); the quench tower
+## and chimney tops are open to dive; the blower hall has missing
+## windows; the monorail to chase.
 
-const SITE := Rect2(-360, -210, 720, 400)
-const BF := [Vector3(-60, 0, -35), Vector3(60, 0, -35)]
-const TRACK_Z := 70.0
-const TORPEDO_Z := 0.0
+const SITE := Rect2(-340, -195, 680, 420)
+const FX: Array[float] = [-90.0, -54.0, -18.0, 18.0, 54.0, 90.0] ## furnace row
+const FZ: float = 40.0
+const IRON_Z: float = 64.0   ## iron line under the cast houses
+const STOVE_Z: float = 96.0
+const MAIN_Z: float = 170.0  ## main line (two tracks, +-4 m)
+const MOLLER := Rect2(-122, -12, 244, 26)
+const RIVER_Z: float = 240.0
+const TOWN := Rect2(-280, -335, 560, 96)
+const TOWN_Y: float = 14.0
 
 var rng := RandomNumberGenerator.new()
+var rails: Rails
+var _noise := FastNoiseLite.new()
 
 func map_env() -> Dictionary:
-	# Hazy morning: low warm sun, height fog in the valley.
-	return {"sun_rot": Vector3(-28, -60, 0), "sun_color": Color(1.0, 0.86, 0.68), "sun_energy": 1.25,
-		"sky_top": Color(0.36, 0.5, 0.68), "sky_horizon": Color(0.8, 0.78, 0.72),
-		"ground_horizon": Color(0.45, 0.47, 0.38), "ground_bottom": Color(0.2, 0.24, 0.16),
-		"ambient": Color(0.62, 0.64, 0.66), "ambient_energy": 0.8,
-		"fog_begin": 250.0, "aerial": 0.08,
-		"shadow_ground_y": 0.0, "shadow_region": Rect2(-400, -400, 800, 800)}
+	# Hazy morning over the Saar: low warm sun from the east.
+	return {"sun_rot": Vector3(-22, -75, 0), "sun_color": Color(1.0, 0.82, 0.62), "sun_energy": 1.3,
+		"sky_top": Color(0.34, 0.48, 0.68), "sky_horizon": Color(0.86, 0.8, 0.7),
+		"ambient": Color(0.64, 0.64, 0.66), "ambient_energy": 0.78,
+		"fog_begin": 260.0, "shadow_region": Rect2(-430, -380, 860, 760)}
 
 func border() -> Array:
-	return [950.0, 1050.0, 260.0, 330.0]
+	return [430.0, 520.0, 170.0, 230.0]
 
 func preview_views() -> Array:
 	return [
-		["overview", Vector3(160, 90, 260), Vector3(-20, 10, -20)],
-		["furnaces", Vector3(0, 30, 45), Vector3(0, 25, -40)],
-		["gas_main", Vector3(-70, 14.5, -110), Vector3(40, 14.5, -110)],
-		["cooling_tower", Vector3(-120, 110, 150.1), Vector3(-120, 0, 150)],
-		["rolling_mill", Vector3(256, 9, -15), Vector3(350, 6, -15)],
-		["stockyard", Vector3(-200, 25, 130), Vector3(-280, 5, 80)],
-		["coke", Vector3(-150, 20, -95), Vector3(-260, 8, -140)],
-		["carpark", Vector3(240, 8, 175), Vector3(290, 0, 135)],
-		["town", Vector3(470, 30, 110), Vector3(600, 7, -50)],
+		["overview", Vector3(180, 85, 230), Vector3(-10, 20, 20)],
+		["furnace_row", Vector3(-150, 22, 74), Vector3(100, 18, 40)],
+		["moller_under", Vector3(-100, 3.0, 7), Vector3(100, 3.0, 7)],
+		["skip_hoist", Vector3(-30, 20, 75), Vector3(-18, 34, 30)],
+		["stoves", Vector3(-130, 12, 115), Vector3(60, 14, 96)],
+		["ore_yard", Vector3(-180, 35, -30), Vector3(-300, 5, -120)],
+		["coke", Vector3(20, 30, -60), Vector3(160, 10, -130)],
+		["blower_hall", Vector3(-140, 8, 10), Vector3(-200, 6, 10)],
+		["station", Vector3(320, 12, 200), Vector3(150, 4, 170)],
+		["town", Vector3(0, 40, -170), Vector3(0, 14, -290)],
+		["horizon", Vector3(0, 60, 0), Vector3(-600, 20, 0)],
 	]
 
 func build() -> void:
-	rng.seed = 1979
+	rng.seed = 1873 # the year the Völklingen ironworks was founded
 	geo.ao_height = 6.0
 	geo.ao_min = 0.45
+	_noise.seed = 31
+	_noise.frequency = 0.005
+	_noise.fractal_octaves = 4
 	_materials()
 	_ground()
 	_rail()
-	_stockyard()
+	_roads()
+	_moller()
+	for i in range(FX.size()):
+		_blast_furnace(i)
+	_gas()
+	_stoves()
+	_blower_hall()
+	_monorail()
+	_ore_yard()
 	_coke_plant()
-	for i in range(2):
-		_blast_furnace(BF[i], i, 1.0 if i == 0 else -1.0)
-	_gas_main()
-	_bof_shop()
-	_rolling_mill()
-	_power_plant()
-	_extras()
-	_town_and_heap()
+	_sinter_plant()
+	_east_works()
+	_station()
+	_paradies()
 	_decay()
+	YardProps.scatter(geo, SITE.grow(-10.0), 0.05, 45, rng, [], true)
+	MapProps.town(geo, TOWN, _height, rng, true)
 	_forest()
 
 # --- materials ----------------------------------------------------------------
@@ -82,139 +109,395 @@ func _materials() -> void:
 	geo.add_material("concrete", Geo.tex_mat(MapTextures.get_tex("old_concrete"), Color.WHITE, 8.0))
 	geo.add_material("brick", Geo.tex_mat(MapTextures.get_tex("dark_brick"), Color.WHITE, 3.0))
 	geo.add_material("glass", Geo.flat_mat(Color(0.12, 0.14, 0.15), 0.15, 0.4))
-	geo.add_material("asphalt", Geo.ground_mat(MapTextures.get_tex("cracked_asphalt"), Color.WHITE, 8.0, 2))
 	geo.add_material("slag_ground", Geo.ground_mat(MapTextures.get_tex("slag"), Color.WHITE, 10.0, 1, 0.5))
 	geo.add_material("slag", Geo.tex_mat(MapTextures.get_tex("slag"), Color.WHITE, 10.0))
 	geo.add_material("weeds", Geo.ground_mat(MapTextures.get_tex("meadow"), Color(0.9, 0.9, 0.8), 10.0, 3, 0.4))
 	geo.add_material("ore", Geo.tex_mat(MapTextures.get_tex("slag"), Color(1.6, 0.75, 0.5), 6.0))
 	geo.add_material("coal", Geo.tex_mat(MapTextures.get_tex("slag"), Color(0.45, 0.45, 0.47), 6.0))
-	geo.add_material("lime", Geo.tex_mat(MapTextures.get_tex("slag"), Color(2.4, 2.35, 2.2), 6.0))
-	geo.add_material("sleeper", Geo.flat_mat(Color(0.25, 0.2, 0.16), 0.95))
 	geo.add_material("rail", Geo.flat_mat(Color(0.45, 0.35, 0.3), 0.5, 0.6))
 	geo.add_material("ballast", Geo.tex_mat(ProceduralTextures.gravel_texture(), Color(0.55, 0.52, 0.5), 2.0))
 	geo.add_material("yellow", Geo.flat_mat(Color(0.75, 0.55, 0.12), 0.6, 0.2))
-	var terrain_mat := Geo.tex_mat(MapTextures.get_tex("forest_floor"), Color.WHITE, 12.0)
-	geo.add_material("terrain", terrain_mat)
+	geo.add_material("water", Geo.water_mat(Color(0.16, 0.26, 0.24), 0.9))
+	geo.add_material("terrain", Geo.tex_mat(MapTextures.get_tex("forest_floor"), Color.WHITE, 12.0))
+	geo.add_material("platform", Geo.ground_mat(MapTextures.get_tex("paving_slabs"), Color.WHITE, 3.0, 2))
 
 # --- ground -------------------------------------------------------------------
 
-## Flat inside the site, rising into wooded hills around it.
-## The workers' town east of the works and the slag heap south-east sit
-## on ground levelled for them.
-const TOWN := Rect2(470, -170, 280, 240)
-const TOWN_Y: float = 7.0
-
+## The Saar valley runs east-west: a flat floor for the works, the
+## railway and the roads (all of them leave the map along it), the town
+## on a terrace up the north slope, the river along the south.
 func _height(x: float, z: float) -> float:
-	var raw: float = _raw_height(x, z)
-	var dt: float = _rect_dist(TOWN, x, z)
-	var h: float = lerpf(TOWN_Y, raw, smoothstep(0.0, 60.0, dt))
-	# Valleys for the railway (west) and the roads (south, east, the
-	# access road up to the town): a flat floor at the line's own grade,
-	# the hillsides easing back over 150 m - so the lines run on out of
-	# the map to the horizon instead of into a hill.
-	for c in _corridors():
-		var pts: Array = c[0]
-		var half: float = c[1]
-		var bx: Rect2 = c[2]
-		if not bx.has_point(Vector2(x, z)):
-			continue
-		var best: float = INF
-		var floor_y: float = 0.0
-		for i in range(pts.size() - 1):
-			var a: Vector3 = pts[i]
-			var b: Vector3 = pts[i + 1]
-			var ab := Vector2(b.x - a.x, b.z - a.z)
-			var t: float = clampf((Vector2(x - a.x, z - a.z)).dot(ab) / maxf(ab.length_squared(), 0.001), 0.0, 1.0)
-			var d: float = Vector2(x - a.x - ab.x * t, z - a.z - ab.y * t).length()
-			if d < best:
-				best = d
-				floor_y = lerpf(a.y, b.y, t)
-		h = lerpf(floor_y - 0.05, h, smoothstep(half, half + 150.0, best))
-	return h
-
-## Rail formation height: level through the works, climbing 1.2 % west.
-static func _rail_grade(x: float, _z: float = 0.0) -> float:
-	return maxf(-380.0 - x, 0.0) * 0.012
-
-static func _rect_dist(r: Rect2, x: float, z: float) -> float:
-	var ddx: float = maxf(maxf(r.position.x - x, x - r.end.x), 0.0)
-	var ddz: float = maxf(maxf(r.position.y - z, z - r.end.y), 0.0)
-	return sqrt(ddx * ddx + ddz * ddz)
-
-func _raw_height(x: float, z: float) -> float:
-	var dx: float = maxf(maxf(SITE.position.x - x, x - SITE.end.x), 0.0)
-	var dz: float = maxf(maxf(SITE.position.y - z, z - SITE.end.y), 0.0)
-	var d: float = sqrt(dx * dx + dz * dz)
-	if d <= 0.0:
-		return -0.4
-	var ramp: float = smoothstep(0.0, 90.0, d)
 	var n: float = _noise.get_noise_2d(x, z) * 0.5 + 0.5
-	return -0.4 + ramp * (8.0 + n * 38.0) + maxf(d - 250.0, 0.0) * 0.12
-
-var _corr: Array = []
-var _road_routes: Dictionary = {}
-
-## The roads leaving the works, as routes whose points carry the road's
-## own grade (the valley floor is cut to it): the old gate road south,
-## the access road up to the town, the town road out east.
-func _routes() -> Dictionary:
-	if _road_routes.is_empty():
-		var south := Route.from(Vector3(220, 0, 109.5), 90.0).straight(221.0, 8.0).arc(600.0, 9.0, 8.0).straight(290.0, 12.0).arc(600.0, -9.0, 8.0).straight(2400.0, 16.0)
-		_grade(south, 0.0, 250.0, 0.011)
-		var acc := Route.new()
-		acc.pts = Route.rounded(ACCESS_PTS, 25.0, 8)
-		var east := Route.from(Vector3(TOWN.end.x, TOWN_Y, -56), 0.0).straight(260.0, 12.0).arc(1500.0, -3.0, 16.0).straight(2200.0, 20.0)
-		_grade(east, TOWN_Y, 150.0, 0.012)
-		_road_routes = {"south": south, "access": acc, "east": east}
-	return _road_routes
-
-## Heights along a route: y0 for the first `flat` metres, then rising.
-static func _grade(r: Route, y0: float, flat: float, rate: float) -> void:
-	var d: float = 0.0
-	for i in range(r.pts.size()):
-		if i > 0:
-			d += Vector2(r.pts[i].x - r.pts[i - 1].x, r.pts[i].z - r.pts[i - 1].z).length()
-		r.pts[i].y = y0 + maxf(d - flat, 0.0) * rate
-
-func _corridors() -> Array:
-	if _corr.is_empty():
-		var rail: Array = [Vector3(-3200, _rail_grade(-3200), TRACK_Z + 11.0), Vector3(-360, 0.0, TRACK_Z + 11.0)]
-		var rr: Dictionary = _routes()
-		for c in [[rail, 30.0], [_thin(rr.south.pts), 10.0], [_thin(rr.east.pts), 10.0], [rr.access.pts, 9.0]]:
-			var bx := Rect2(Vector2(c[0][0].x, c[0][0].z), Vector2.ZERO)
-			for q: Vector3 in c[0]:
-				bx = bx.expand(Vector2(q.x, q.z))
-			_corr.append([c[0], c[1], bx.grow(c[1] + 160.0)])
-	return _corr
-
-## Every 4th point of a long route (the terrain only needs its shape).
-static func _thin(p: Array[Vector3]) -> Array:
-	var out: Array = []
-	for i in range(0, p.size(), 4):
-		out.append(p[i])
-	if out[-1] != p[-1]:
-		out.append(p[-1])
-	return out
-
-## The access road from the works road up to the town's through street.
-const ACCESS_PTS: Array = [Vector3(369.5, 0.0, 105), Vector3(410, 1.0, 100), Vector3(440, 3.0, 70), Vector3(446, 5.0, 20), Vector3(452, 6.5, -40), Vector3(470, TOWN_Y, -56)]
-
-var _noise := FastNoiseLite.new()
+	if z < -205.0:
+		var t: float = smoothstep(-205.0, -238.0, z)
+		var y: float = TOWN_Y * t
+		if z < -345.0:
+			y += smoothstep(-345.0, -420.0, z) * (10.0 + n * 40.0) + maxf(-420.0 - z, 0.0) * 0.08
+		return y
+	if z > 228.0:
+		var bank: float = -5.0 * smoothstep(228.0, 246.0, z)
+		var far: float = smoothstep(318.0, 345.0, z) * (5.0 + 3.0 * n) + smoothstep(380.0, 470.0, z) * (8.0 + n * 34.0)
+		return bank + far * (1.0 if z > 300.0 else 0.0)
+	return -0.2
 
 func _ground() -> void:
-	_noise.seed = 31
-	_noise.frequency = 0.006
-	_noise.fractal_octaves = 4
-	var tshade := func(n: Vector3, p: Vector3) -> Color: return geo.shade(n, p.y + 50.0)
-	Terrain.build(self, Rect2(-1100, -1000, 2200, 2000), 8.0, _height, geo._mats["terrain"], tshade)
-	Terrain.far_ring(self, Rect2(-1100, -1000, 2200, 2000), Rect2(-4000, -4000, 8000, 8000), 64.0, _height, geo._mats["terrain"], tshade)
-	# Site surface: slag/gravel fill, with concrete pads, roads, weeds.
+	var tshade := func(nn: Vector3, p: Vector3) -> Color: return geo.shade(nn, p.y + 50.0)
+	var inner := Rect2(-1300, -900, 2600, 1600)
+	Terrain.build(self, inner, 8.0, _height, geo._mats["terrain"], tshade)
+	Terrain.far_ring(self, inner, Rect2(-4200, -4200, 8400, 8400), 64.0, _height, geo._mats["terrain"], tshade)
+	# The works' surface: slag fill, weedy patches.
 	geo.slab(SITE, 0.0, 0.5, "slag_ground")
-	for i in range(40):
+	for i in range(55):
 		var c := Vector2(rng.randf_range(SITE.position.x, SITE.end.x), rng.randf_range(SITE.position.y, SITE.end.y))
 		geo.slab(Rect2(c, Vector2(rng.randf_range(8, 30), rng.randf_range(8, 30))), 0.12, 0.1, "weeds", false)
+	# The Saar, running on out of sight both ways.
+	geo.slab(Rect2(-4200, 236, 8400, 92), -2.2, 0.1, "water", false)
+	# Quay wall along the works bank.
+	geo.box(Vector3(0, -1.2, 230.5), Vector3(8400, 2.6, 1.0), "concrete")
 
-# --- rail -----------------------------------------------------------------------
+# --- railway ----------------------------------------------------------------------
+
+## The Saarbrücken - Trier main line: double track along the valley,
+## through Völklingen station, out of sight both ways. Off it, through
+## real turnouts: the iron line (east end, back west under the cast
+## houses to a buffer stop past the first furnace) and the ore line
+## (west end, curving north into the ore yard).
+func _rail() -> void:
+	rails = Rails.new(geo)
+	var north := Route.from(Vector3(-3200, 0, MAIN_Z - 4.0), 0.0).straight(6400.0, 12.0)
+	var south := Route.from(Vector3(-3200, 0, MAIN_Z + 4.0), 0.0).straight(6400.0, 12.0)
+	rails.track(north, 0)
+	rails.track(south, 0)
+	rails.catenary(north, -1.0, 2600.0, 3800.0)
+	rails.catenary(south, 1.0, 2600.0, 3800.0)
+	# Crossover east of the station, so either track reaches the works.
+	rails.crossover(south, south.dist_at_x(380.0), -1.0, 8.0, 1)
+	# Iron line: leaves the north track heading west at x 640, reverse
+	# curves north 102 m, then straight west under the cast houses.
+	var west := north.reversed()
+	var iron: Route = rails.turnout(west, west.dist_at_x(640.0), 1.0)
+	_s_curve(iron, 1.0, MAIN_Z - 4.0 - IRON_Z, 320.0)
+	iron.straight(absf(iron.end().x - (FX[0] - 30.0)), 12.0)
+	rails.track(iron, 1)
+	rails.buffer_stop(iron)
+	# Ore line: off the north track at x -760, one long curve (R 300) round
+	# to the north, into the ore yard.
+	var ore: Route = rails.turnout(north, north.dist_at_x(-620.0), -1.0)
+	ore.arc(300.0, -(90.0 - Rails.TURNOUT_ANGLE), 4.0)
+	ore.straight(absf(ore.end().z - (-178.0)), 12.0)
+	rails.track(ore, 1)
+	rails.buffer_stop(ore)
+	for x in [-520.0, 520.0]:
+		rails.signal_at(north, north.dist_at_x(x), false)
+	# Rolling stock where it was left: torpedo cars under the cast houses,
+	# ore hoppers in the yard, a freight train on the main line.
+	for i in [0, 2, 3, 5]:
+		rails.train(iron, iron.dist_at_x(FX[i] + 13.0), ["torpedo"], rng)
+	rails.train(iron, iron.dist_at_x(260.0), ["shunter", "torpedo", "torpedo"], rng)
+	rails.train(ore, ore.length() - 120.0, ["hopper", "hopper", "hopper", "hopper", "hopper", "hopper", "hopper", "hopper"], rng)
+	rails.train(south, south.dist_at_x(-420.0), ["loco", "hopper", "hopper", "hopper", "hopper", "hopper", "hopper", "hopper", "hopper", "hopper", "hopper"], rng)
+	rails.train(north, north.dist_at_x(150.0), ["loco", "coach", "coach", "coach"], rng)
+
+## Reverse curves taking `r` sideways by `off` metres back to the old
+## heading (a turnout's diverging route continues from there).
+func _s_curve(t: Route, side: float, off: float, r: float) -> void:
+	var a0: float = deg_to_rad(Rails.TURNOUT_ANGLE)
+	var gained: float = Rails.TURNOUT_R * (1.0 - cos(a0))
+	var cos_a: float = clampf((gained + r * cos(a0) + r - off) / (2.0 * r), -1.0, 1.0)
+	var a: float = rad_to_deg(acos(cos_a))
+	t.arc(r, side * (a - Rails.TURNOUT_ANGLE), 3.0)
+	t.arc(r, -side * a, 3.0)
+
+## Völklingen station: a side platform on each track, shelters, the
+## station building on the riverside road, a footbridge between.
+func _station() -> void:
+	var x0: float = 150.0
+	var x1: float = 330.0
+	for side in [-1.0, 1.0]:
+		var z: float = MAIN_Z + side * 8.6
+		geo.box(Vector3((x0 + x1) * 0.5, 0.45, z), Vector3(x1 - x0, 0.9, 5.0), "concrete")
+		geo.slab(Rect2(x0, z - 2.5, x1 - x0, 5.0), 0.92, 0.05, "platform", false)
+		for k in range(4):
+			var sx: float = x0 + 30.0 + k * 40.0
+			for dx in [-6.0, 6.0]:
+				geo.box(Vector3(sx + dx, 2.6, z + side * 1.2), Vector3(0.25, 3.4, 0.25), "paint")
+			geo.box(Vector3(sx, 4.4, z + side * 0.6), Vector3(14.0, 0.25, 3.4), "corrugated")
+	# Footbridge over both tracks.
+	var fx: float = 240.0
+	for z in [MAIN_Z - 14.0, MAIN_Z + 14.0]:
+		geo.box(Vector3(fx, 4.0, z), Vector3(4.0, 8.0, 4.0), "brick")
+	geo.box(Vector3(fx, 8.3, MAIN_Z), Vector3(3.2, 0.4, 32.0), "concrete")
+	for s in [-1.5, 1.5]:
+		geo.box(Vector3(fx + s, 9.2, MAIN_Z), Vector3(0.15, 1.4, 32.0), "paint")
+	geo.box(Vector3(fx, 10.4, MAIN_Z), Vector3(3.4, 0.2, 32.0), "corrugated")
+	# Station building between platform and road.
+	_hall(Vector3(205, 0, 194), Vector3(40, 10, 12), "brick", {"n": [[0.0, 4.0, 4.0]], "s": [[0.0, 4.0, 4.0]]}, 0.05)
+
+# --- roads ----------------------------------------------------------------------
+
+## The riverside road and the valley road north of the works run the
+## length of the valley out of sight; the town's main street runs on
+## along the hillside terrace both ways; the works road from the valley
+## road down past the gas holder, over the iron line, to the visitors'
+## car park.
+func _roads() -> void:
+	var roads := Roads.new(geo, rng, fleet)
+	var river := Route.from(Vector3(-3000, 0, 214), 0.0).straight(6000.0, 12.0)
+	roads.road(river, 8.0, {"detail": 2400.0, "lamps": true})
+	roads.traffic(river, 8.0, 1, 10.0)
+	var valley := Route.from(Vector3(-3000, 0, -200), 0.0).straight(6000.0, 12.0)
+	roads.road(valley, 8.0, {"old": true, "detail": 2400.0})
+	roads.junction(Vector3(135, 0, -200), Vector2(8, 8), [], 0.0, true)
+	var works := Route.from(Vector3(135, 0, -196), 90.0).straight(196.0 + 80.0, 12.0)
+	roads.road(works, 7.0, {"old": true, "centre": "none"})
+	for x0 in [TOWN.end.x, TOWN.position.x]:
+		var dir: float = 0.0 if x0 > 0.0 else 180.0
+		roads.road(Route.from(Vector3(x0, TOWN_Y, -255), dir).straight(2600.0, 12.0), 7.0, {"old": true, "detail": 500.0})
+	# Visitors' car park at the end of the works road.
+	var cp := Rect2(139, 82, 56, 34)
+	geo.slab(cp, 0.06, 0.1, "rd_asphalt_old", false)
+	for row in range(2):
+		for k in range(9):
+			if rng.randf() < 0.7:
+				fleet.car(Vector3(cp.position.x + 4.0 + k * 5.6, 0.1, cp.position.y + 5.0 + row * 24.0), PI if row == 0 else 0.0, Fleet.random_paint(rng), ["sedan", "hatch", "estate", "suv", "van"][rng.randi() % 5])
+
+# --- Möllerhalle -------------------------------------------------------------------
+
+## The burden bunker building: a 244 m long row of concrete bunkers on
+## columns (ore, coke and limestone dropped from above, drawn off below
+## into the skips). 7 m of clear height underneath, columns every 8 m -
+## a 244 m slalom. Deck on top with a roofed shed (panels missing).
+func _moller() -> void:
+	var m: Rect2 = MOLLER
+	var x: float = m.position.x
+	while x <= m.end.x + 0.1:
+		for z in [m.position.y + 1.0, m.get_center().y, m.end.y - 1.0]:
+			geo.box(Vector3(x, 3.5, z), Vector3(1.2, 7.0, 1.2), "concrete")
+		x += 8.0
+	# Hoppers: one per bay and half-width, narrowing down to the gate.
+	var bx: float = m.position.x + 4.0
+	while bx < m.end.x:
+		for zc in [m.position.y + 6.5, m.end.y - 6.5]:
+			geo.frustum(Transform3D(Basis(), Vector3(bx, 9.5, zc)), Vector3(2.2, 5.0, 2.6), 7.4, 11.4, 0.0, "concrete")
+			geo.box(Vector3(bx, 6.8, zc), Vector3(1.4, 0.4, 1.8), "rust_dark")
+		bx += 8.0
+	geo.box(Vector3(m.get_center().x, 13.5, m.get_center().y), Vector3(m.size.x + 1.2, 3.0, m.size.y), "concrete")
+	geo.box(Vector3(m.get_center().x, 15.2, m.get_center().y), Vector3(m.size.x + 3.0, 0.4, m.size.y + 3.0), "concrete")
+	# The shed on the deck: posts, roof panels, a third of them gone.
+	x = m.position.x
+	while x <= m.end.x + 0.1:
+		for z in [m.position.y - 1.0, m.end.y + 1.0]:
+			geo.box(Vector3(x, 18.6, z), Vector3(0.5, 6.8, 0.5), "paint")
+		x += 16.0
+	x = m.position.x
+	while x < m.end.x - 1.0:
+		if rng.randf() > 0.3:
+			geo.box(Vector3(x + 8.0, 22.1, m.get_center().y), Vector3(15.6, 0.25, m.size.y + 3.0), "corrugated")
+		geo.beam(Vector3(x, 21.8, m.position.y - 1.0), Vector3(x, 21.8, m.end.y + 1.0), Vector2(0.4, 0.6), "rust_dark")
+		x += 16.0
+	# Skip pits on the furnace side.
+	for fx in FX:
+		geo.box(Vector3(fx, 1.0, m.end.y + 3.5), Vector3(6.0, 2.0, 5.0), "concrete")
+
+# --- blast furnaces ------------------------------------------------------------
+
+## One furnace of the row: shell (hearth, bosh, stack, throat), a
+## framework of four legs with catwalk rings, the bustle pipe ringing
+## it, the top with its uptakes and bleeders, the downcomer to its dust
+## catcher (south-east), its skip hoist up from the Möllerhalle, and its
+## cast house over the iron line.
+func _blast_furnace(i: int) -> void:
+	var o := Vector3(FX[i], 0, FZ)
+	geo.lathe(o, [Vector2(6.5, 0), Vector2(6.5, 7), Vector2(7.8, 12), Vector2(7.4, 15), Vector2(4.8, 32), Vector2(4.2, 35)], "rust", 24)
+	geo.box(o + Vector3(0, 35.5, 0), Vector3(16, 0.8, 16), "paint")
+	geo.cone(o + Vector3(0, 36, 0), o + Vector3(0, 41, 0), 4.0, 2.6, "rust_dark", 16)
+	geo.box(o + Vector3(-5.5, 43, 5.5), Vector3(5, 4, 5), "corrugated") # top house
+	for k in range(4):
+		var a: float = TAU * k / 4.0 + PI * 0.25
+		geo.cylinder(o + Vector3(cos(a) * 2.6, 40, sin(a) * 2.6), o + Vector3(cos(a) * 2.2, 48, sin(a) * 2.2), 0.7, "rust", 10)
+	geo.box(o + Vector3(0, 48.6, 0), Vector3(6, 1.2, 6), "rust_dark")
+	for s in [-1.0, 1.0]:
+		geo.cylinder(o + Vector3(s * 1.6, 49, 0), o + Vector3(s * 1.6, 55, 0), 0.4, "rust", 8)
+	# Framework: four legs, X-bracing on the east and west faces only
+	# (the north and south faces stay open - the way through).
+	var legs: Array[Vector3] = []
+	for k in range(4):
+		var a: float = TAU * k / 4.0 + PI * 0.25
+		legs.append(o + Vector3(cos(a) * 10.5, 0, sin(a) * 10.5))
+		geo.beam(legs[k], o + Vector3(cos(a) * 9.0, 35.2, sin(a) * 9.0), Vector2(0.9, 0.9), "paint")
+	for pair in [[0, 3], [1, 2]]:
+		var a: Vector3 = legs[pair[0]]
+		var b: Vector3 = legs[pair[1]]
+		for band in [[0.0, 17.0], [17.0, 34.0]]:
+			var t0: float = band[0] / 35.2
+			var t1: float = band[1] / 35.2
+			var pa0: Vector3 = a.lerp(o + (a - o) * 0.857 + Vector3(0, 35.2, 0), t0)
+			var pa1: Vector3 = a.lerp(o + (a - o) * 0.857 + Vector3(0, 35.2, 0), t1)
+			var pb0: Vector3 = b.lerp(o + (b - o) * 0.857 + Vector3(0, 35.2, 0), t0)
+			var pb1: Vector3 = b.lerp(o + (b - o) * 0.857 + Vector3(0, 35.2, 0), t1)
+			geo.beam(pa0, pb1, Vector2(0.35, 0.35), "rust_dark")
+			geo.beam(pb0, pa1, Vector2(0.35, 0.35), "rust_dark")
+	for y in [12.0, 24.0]:
+		geo.lathe(o + Vector3(0, y, 0), [Vector2(10.2, 0), Vector2(10.2, 0.3)], "rust_dark", 24, 1.6)
+	# Bustle pipe and tuyere stocks.
+	geo.lathe(o + Vector3(0, 13.4, 0), [Vector2(9.4, 0), Vector2(9.4, 1.3)], "rust", 24, 1.3)
+	for k in range(10):
+		var a: float = TAU * k / 10.0
+		geo.beam(o + Vector3(cos(a) * 8.6, 13.6, sin(a) * 8.6), o + Vector3(cos(a) * 7.0, 9.5, sin(a) * 7.0), Vector2(0.35, 0.35), "rust_dark")
+	_stair_tower(o + Vector3(-12.5, 0, 6.0), 35.0)
+	# Downcomer to the dust catcher south-east.
+	var dc := Vector3(FX[i] + 18.0, 0, FZ + 12.0)
+	geo.cylinder(o + Vector3(2.0, 48.6, 1.0), dc + Vector3(0, 27.0, 0), 1.0, "rust", 12)
+	geo.cylinder(dc + Vector3(0, 12, 0), dc + Vector3(0, 24, 0), 4.0, "rust", 18)
+	geo.cone(dc + Vector3(0, 12, 0), dc + Vector3(0, 6, 0), 4.0, 0.7, "rust_dark", 18)
+	geo.cone(dc + Vector3(0, 24, 0), dc + Vector3(0, 27, 0), 4.0, 1.1, "rust_dark", 18)
+	for k in range(4):
+		var a: float = TAU * k / 4.0
+		geo.beam(dc + Vector3(cos(a) * 3.4, 0, sin(a) * 3.4), dc + Vector3(cos(a) * 3.4, 14, sin(a) * 3.4), Vector2(0.6, 0.6), "paint")
+	# Skip hoist: the inclined truss from the pit up to the top.
+	_truss(Vector3(FX[i], 2.5, MOLLER.end.y + 3.5), o + Vector3(0, 41.5, -4.5), 3.2, 2.6, "paint")
+	# Cast house over the iron line: an open shed, the tapping runner
+	# from the furnace out to the ladle cars.
+	var ch := Vector3(FX[i], 0, IRON_Z)
+	for dx in [-9.0, 9.0]:
+		for dz in [-7.0, 7.0]:
+			geo.box(ch + Vector3(dx, 5.0, dz), Vector3(0.7, 10.0, 0.7), "paint")
+	geo.box(ch + Vector3(0, 10.3, 0), Vector3(19.0, 0.4, 15.0), "corrugated")
+	geo.box(ch + Vector3(0, 11.4, 0), Vector3(6.0, 2.0, 15.0), "corrugated") # roof lantern
+	geo.box(Vector3(FX[i] - 4.0, 1.0, FZ + 13.0), Vector3(1.6, 2.0, 9.0), "concrete")
+
+func _stair_tower(o: Vector3, h: float) -> void:
+	for dx in [-1.5, 1.5]:
+		for dz in [-1.5, 1.5]:
+			geo.box(o + Vector3(dx, h * 0.5, dz), Vector3(0.3, h, 0.3), "paint")
+	for y in range(4, int(h), 4):
+		geo.box(o + Vector3(0, y, 0), Vector3(3.3, 0.15, 3.3), "rust_dark", 0.0, true, false)
+
+# --- gas and blast ------------------------------------------------------------------
+
+## The clean-gas main: from every dust catcher up to a 2.8 m main on
+## trestles 30 m up along the row, then north-east to the gas holder.
+## Hollow, with open joints between sections - fly in.
+func _gas() -> void:
+	var y: float = 30.0
+	var z: float = FZ + 12.0
+	for i in range(FX.size()):
+		geo.cylinder(Vector3(FX[i] + 18.0, 27.0, z), Vector3(FX[i] + 18.0, y - 1.2, z), 0.9, "rust", 10)
+	var posts: Array[float] = []
+	for fx in FX:
+		posts.append(fx + 9.0)
+	posts.append(150.0)
+	geo.box(Vector3(FX[0] + 18.0, y, z), Vector3(1.0, 1.0, 1.0), "rust_dark")
+	var xs: Array[float] = [FX[0] + 15.0]
+	xs.append_array(posts)
+	for k in range(xs.size() - 1):
+		geo.pipe(Vector3(xs[k] + 0.9, y, z), Vector3(xs[k + 1] - 0.9, y, z), 1.4, 0.15, "rust", 16)
+	for px in posts:
+		geo.box(Vector3(px, (y - 1.5) * 0.5, z), Vector3(0.8, y - 1.5, 0.8), "paint")
+		geo.box(Vector3(px, y - 1.6, z), Vector3(1.2, 0.3, 4.0), "paint", 0.0, true, false)
+	var tail := Route.new()
+	tail.pts = Route.rounded([Vector3(150.0, y, z), Vector3(156.0, y, z), Vector3(156.0, y, -20.0), Vector3(186.0, y, -20.0), Vector3(186.0, y, -40.0)], 5.0, 6)
+	geo.pipe_path(tail.pts, 1.4, "rust", 0.15, 16)
+	for q in [Vector3(156, 0, 20), Vector3(156, 0, -12), Vector3(176, 0, -20)]:
+		geo.box(Vector3(q.x, (y - 1.5) * 0.5, q.z), Vector3(0.8, y - 1.5, 0.8), "paint")
+	# Gas holder: a 36 m drum in its guide frame.
+	var gh := Vector3(205, 0, -48)
+	geo.lathe(gh, [Vector2(17, 0), Vector2(17, 34), Vector2(14, 37), Vector2(0.2, 39)], "paint", 32)
+	for k in range(14):
+		var a: float = TAU * k / 14.0
+		geo.beam(gh + Vector3(cos(a) * 18.5, 0, sin(a) * 18.5), gh + Vector3(cos(a) * 18.5, 41, sin(a) * 18.5), Vector2(0.7, 0.7), "rust_dark")
+	for y2 in [13.0, 26.0, 39.0]:
+		geo.lathe(gh + Vector3(0, y2, 0), [Vector2(19.2, 0), Vector2(19.2, 0.9)], "rust_dark", 32, 1.1)
+
+## Cowper stoves: three domed towers per furnace in one long row south
+## of the iron line; the hot-blast main along them, a hot-blast pipe from
+## each group north over the cast house to its furnace's bustle pipe;
+## the cold-blast main from the blower hall along the back.
+func _stoves() -> void:
+	for i in range(FX.size()):
+		for k in [-1, 0, 1]:
+			var s := Vector3(FX[i] + k * 11.0, 0, STOVE_Z)
+			geo.lathe(s, [Vector2(4.2, 0), Vector2(4.2, 28), Vector2(3.6, 31), Vector2(2.2, 33), Vector2(0.1, 33.8)], "paint", 20)
+			geo.lathe(s + Vector3(0, 28, 0), [Vector2(5.0, 0), Vector2(5.0, 0.3)], "rust_dark", 20, 1.0)
+			geo.cylinder(s + Vector3(0, 15, -4.0), s + Vector3(0, 15, -6.0), 0.8, "rust", 10)
+		geo.pipe(Vector3(FX[i] - 13.0, 15, STOVE_Z - 6.4), Vector3(FX[i] + 13.0, 15, STOVE_Z - 6.4), 1.1, 0.12, "rust", 14)
+		var hb := Route.new()
+		hb.pts = Route.rounded([Vector3(FX[i] + 6.0, 15, STOVE_Z - 6.4), Vector3(FX[i] + 6.0, 15, FZ + 11.5), Vector3(FX[i] + 4.0, 14.0, FZ + 8.6)], 3.0, 6)
+		geo.pipe_path(hb.pts, 1.1, "rust", 0.12, 14)
+		geo.box(Vector3(FX[i] + 6.0, 7.2, STOVE_Z - 12.0), Vector3(0.6, 14.4, 0.6), "paint")
+	var cold := Route.new()
+	cold.pts = Route.rounded([Vector3(-200, 9, 26), Vector3(-200, 9, 113), Vector3(FX[5] + 14.0, 9, 113)], 6.0, 6)
+	geo.pipe_path(cold.pts, 1.3, "rust", 0.14, 14)
+	var d: float = 12.0
+	while d < cold.length() - 4.0:
+		var q: Vector3 = cold.sample(d)[0]
+		geo.box(Vector3(q.x, 3.9, q.z), Vector3(0.6, 7.8, 0.6), "paint")
+		d += 20.0
+
+## The blower hall (Gebläsehalle): a long brick hall of gas-engine
+## blowers - huge flywheels in a row - big windows, many broken.
+func _blower_hall() -> void:
+	var c := Vector3(-200, 0, 10)
+	_hall(c, Vector3(70, 18, 30), "brick", {"e": [[0.0, 10.0, 9.0]], "w": [[0.0, 8.0, 8.0]], "s": [[0.0, 6.0, 6.0]]}, 0.35)
+	for k in range(5):
+		var x: float = c.x - 26.0 + k * 13.0
+		geo.box(Vector3(x, 1.5, c.z + 4.0), Vector3(9.0, 3.0, 4.0), "concrete")
+		geo.cylinder(Vector3(x, 6.0, c.z - 6.2), Vector3(x, 6.0, c.z - 4.8), 5.0, "rust_dark", 20)
+		geo.box(Vector3(x, 4.2, c.z - 1.0), Vector3(2.4, 2.4, 10.0), "paint")
+	for dz in [-13.0, 13.0]:
+		geo.beam(Vector3(c.x - 35, 15, c.z + dz), Vector3(c.x + 35, 15, c.z + dz), Vector2(0.7, 1.2), "paint")
+	geo.box(Vector3(c.x + 10, 16.4, c.z), Vector3(4, 2.0, 26.5), "yellow") # travelling crane
+
+# --- ore monorail and ore yard ---------------------------------------------------------
+
+## The suspended ore monorail (Erzhängebahn): an I-beam track on
+## A-frames from the ore yard round to the Möllerhalle and along its
+## deck, buckets hanging where they stopped. Chase it at 24 m.
+func _monorail() -> void:
+	var r := Route.new()
+	r.pts = Route.rounded([Vector3(-300, 26, -160), Vector3(-300, 26, -52), Vector3(-152, 26, -52), Vector3(-128, 26, 1), Vector3(118, 26, 1)], 18.0, 10)
+	geo.sweep(r.pts, [Vector2(0.25, -0.5), Vector2(0.25, 0.4), Vector2(-0.25, 0.4), Vector2(-0.25, -0.5)], "rust_dark", true)
+	var d: float = 6.0
+	var L: float = r.length()
+	while d < L - 3.0:
+		var q: Array = r.sample(d)
+		var p: Vector3 = q[0]
+		var t: Vector3 = q[1]
+		var side := Vector3(-t.z, 0, t.x).normalized()
+		var foot_y: float = 22.3 if MOLLER.grow(2.0).has_point(Vector2(p.x, p.z)) else 0.0
+		for s in [-1.0, 1.0]:
+			geo.beam(p + side * s * 4.0 + Vector3(0, foot_y - p.y, 0), p + Vector3(0, 0.4, 0), Vector2(0.45, 0.45), "paint")
+		geo.beam(p + side * 4.3 + Vector3(0, 0.6, 0), p - side * 4.3 + Vector3(0, 0.6, 0), Vector2(0.4, 0.4), "paint")
+		d += 24.0
+	d = 15.0
+	while d < L - 8.0:
+		var p2: Vector3 = r.sample(d)[0]
+		geo.beam(p2 + Vector3(0, -0.5, 0), p2 + Vector3(0, -2.4, 0), Vector2(0.12, 0.12), "rust_dark", false)
+		geo.frustum(Transform3D(Basis(Vector3.UP, rng.randf()), p2 + Vector3(0, -3.3, 0)), Vector3(1.0, 1.6, 1.0), 1.7, 1.7, 0.0, "rust")
+		d += rng.randf_range(22.0, 40.0)
+
+func _pile(c: Vector3, r: float, h: float, mat: String) -> void:
+	var prof: Array[Vector2] = [Vector2(r, 0.0), Vector2(r * 0.7, h * 0.55), Vector2(r * 0.3, h * 0.92), Vector2(0.05, h)]
+	geo.lathe(c, prof, mat, 16)
+
+## The ore yard by the ore line: long piles of ore and coal between the
+## ore bridge's runway rails, the bridge parked over them.
+func _ore_yard() -> void:
+	for k in range(3):
+		_pile(Vector3(-292 + k * 30, 0, -150), 13, 8, "ore")
+		_pile(Vector3(-280 + k * 30, 0, -108), 11, 7, "coal" if k != 1 else "ore")
+	_pile(Vector3(-205, 0, -95), 9, 5, "ore")
+	var bz: float = -128.0
+	for x in [-318.0, -186.0]:
+		_track(Vector3(x, 0, -176), Vector3(x, 0, -72))
+		for dz in [-6.0, 6.0]:
+			geo.beam(Vector3(x, 0.5, bz + dz), Vector3(x, 32, bz), Vector2(1.2, 1.2), "paint")
+	# (High enough for the monorail to pass underneath.)
+	_truss(Vector3(-322, 34, bz), Vector3(-182, 34, bz), 4.0, 5.0, "paint")
+	geo.box(Vector3(-262, 37.5, bz), Vector3(8, 3, 6), "paint")
+	for dx in [-1.0, 1.0]:
+		geo.beam(Vector3(-262 + dx, 36, bz), Vector3(-262 + dx, 15, bz), Vector2(0.08, 0.08), "rail", false)
+	geo.cone(Vector3(-262, 15, bz), Vector3(-262, 12.5, bz), 1.8, 0.4, "rust_dark", 8)
 
 ## Crane runway track (the ore bridge's rails - they end at stops,
 ## like real crane runways).
@@ -228,121 +511,100 @@ func _track(a: Vector3, b: Vector3) -> void:
 	for e in [a, b]:
 		geo.box(e + Vector3(0, 0.9, 0), Vector3(1.2, 1.2, 3.4) if absf(d.x) > absf(d.z) else Vector3(3.4, 1.2, 1.2), "yellow")
 
-## The works railway: the single-track branch comes in from the west
-## along its valley (and runs on to the horizon), ends at a buffer stop
-## by the rolling mill. Off it through real turnouts: the stockyard
-## siding, the torpedo line through both cast houses into the steel
-## shop, and the finished-goods siding along the mill.
-var rails: Rails
+# --- coking, sinter, east works -----------------------------------------------------
 
-## A siding that leaves `main` at x through a turnout to `side` and runs
-## parallel `off` metres away (reverse curves of radius r), to x_end.
-func _siding(main: Route, x: float, side: float, off: float, r: float, x_end: float, layer: int = 1) -> Route:
-	var t: Route = rails.turnout(main, main.dist_at_x(x), side)
-	var a0: float = deg_to_rad(Rails.TURNOUT_ANGLE)
-	var gained: float = Rails.TURNOUT_R * (1.0 - cos(a0))
-	var cos_a: float = clampf((gained + r * cos(a0) + r - off) / (2.0 * r), -1.0, 1.0)
-	var a: float = rad_to_deg(acos(cos_a))
-	t.arc(r, side * (a - Rails.TURNOUT_ANGLE), 3.0)
-	t.arc(r, -side * a, 3.0)
-	t.straight(absf(x_end - t.end().x), 12.0)
-	rails.track(t, layer)
-	rails.buffer_stop(t)
-	return t
+func _coke_plant() -> void:
+	var c := Vector3(220, 0, -140)
+	geo.box(c + Vector3(0, 6, 0), Vector3(110, 12, 14), "brick")
+	geo.box(c + Vector3(0, 12.3, 0), Vector3(112, 0.6, 16), "concrete")
+	for k in range(28):
+		var x: float = c.x - 52 + k * 3.8
+		geo.cylinder(Vector3(x, 12.6, c.z - 5.5), Vector3(x, 16.5, c.z - 5.5), 0.35, "rust", 8)
+		geo.box(Vector3(x, 6, c.z + 7.1), Vector3(1.4, 10, 0.3), "rust_dark")
+	geo.beam(c + Vector3(-55, 16.8, -5.5), c + Vector3(55, 16.8, -5.5), Vector2(1.2, 1.2), "rust")
+	geo.box(c + Vector3(20, 15, 0), Vector3(8, 4, 6), "yellow") # larry car
+	geo.box(Vector3(292, 17, -140), Vector3(14, 34, 14), "concrete") # coal tower
+	_gallery(Vector3(292, 30, -130), Vector3(310, 4, -60), 3.4)
+	_open_tower(Vector3(178, 0, -102), Vector2(12, 12), 34.0, "concrete") # quench tower
+	_chimney(Vector3(230, 0, -178), 75.0, 4.5, "brick")
 
-func _rail() -> void:
-	rails = Rails.new(geo)
-	var main := Route.from(Vector3(-3200, 0, TRACK_Z), 0.0, _rail_grade).straight(3200.0 + 330.0, 12.0)
-	rails.track(main, 0)
-	rails.buffer_stop(main)
-	var stock: Route = _siding(main, -560.0, 1.0, 22.0, 190.0, -150.0)
-	var torp: Route = _siding(main, -250.0, -1.0, TRACK_Z - TORPEDO_Z, 120.0, 170.0)
-	var goods: Route = _siding(main, 40.0, -1.0, 25.0, 150.0, 345.0)
-	for x in [-900.0, -420.0]:
-		rails.signal_at(main, main.dist_at_x(x), false)
-	# Wagons where they were left: hoppers at the stockyard with a
-	# shunter, torpedo cars under the cast houses and in the steel shop,
-	# flats by the mill, a rake of hoppers on the branch.
-	var hoppers: Array = []
-	for i in range(8):
-		hoppers.append("hopper")
-	rails.train(stock, stock.dist_at_x(-300.0), hoppers + ["shunter"], rng)
-	for x in [BF[0].x - 13.0, BF[1].x - 13.0, 125.0]:
-		rails.train(torp, torp.dist_at_x(x), ["torpedo"], rng)
-	rails.train(goods, goods.dist_at_x(190.0), ["flat_empty", "flat_empty", "flat_empty", "flat_empty", "flat_empty", "flat_empty"], rng)
-	rails.train(main, main.dist_at_x(-120.0), ["hopper", "hopper", "hopper", "hopper"], rng)
-	# Slabs on the flats (the last load that never left).
-	for k in range(6):
-		var q: Array = goods.sample(goods.dist_at_x(190.0) + 10.0 + k * 20.5)
-		for j in range(3):
-			geo.box(q[0] + Vector3(-6.0 + j * 6.0, Rails.RAIL_TOP + 1.6 + (j % 2) * 0.12, 0), Vector3(5.2, 0.25 + (j % 2) * 0.25, 2.0), "rust")
+func _sinter_plant() -> void:
+	var c := Vector3(-50, 0, -146)
+	_hall(c, Vector3(110, 26, 40), "corrugated", {"s": [[-30.0, 12.0, 10.0], [30.0, 12.0, 10.0]], "e": [[0.0, 10.0, 9.0]]}, 0.3)
+	_chimney(Vector3(-118, 0, -170), 62.0, 3.5, "concrete")
+	# Sinter to the Möllerhalle deck: two enclosed conveyor galleries.
+	for x in [-80.0, -20.0]:
+		_gallery(Vector3(x, 22, -126), Vector3(x + 10.0, 17.5, -14), 3.4)
 
-func _hopper(o: Vector3, coal: bool) -> void:
-	_bogies(o, 12.0)
-	geo.box(o + Vector3(0, 1.4, 0), Vector3(12.5, 0.4, 2.9), "rust_dark")
-	# Sloped hopper body: tapered cones along the wagon look like the
-	# discharge chutes; a box on top is the open load space.
-	geo.box(o + Vector3(0, 3.0, 0), Vector3(12.0, 2.4, 3.0), "rust")
-	for dx in [-3.5, 0.0, 3.5]:
-		geo.cone(o + Vector3(dx, 1.8, 0), o + Vector3(dx, 0.9, 0), 1.3, 0.4, "rust_dark", 4)
-	geo.box(o + Vector3(0, 4.15, 0), Vector3(11.4, 0.1, 2.5), "coal" if coal else "ore", 0.0, false, false)
+## Gas cleaning and power house with its chimneys, next to the holder.
+func _east_works() -> void:
+	_hall(Vector3(195, 0, 22), Vector3(56, 20, 28), "brick", {"w": [[0.0, 8.0, 8.0]], "n": [[10.0, 8.0, 8.0]]}, 0.25)
+	_chimney(Vector3(238, 0, 8), 70.0, 4.0, "brick")
+	_chimney(Vector3(238, 0, 34), 58.0, 3.5, "concrete")
 
-func _torpedo(o: Vector3) -> void:
-	_bogies(o, 18.0)
-	geo.box(o + Vector3(0, 1.4, 0), Vector3(19, 0.5, 2.8), "rust_dark")
-	# The torpedo: a fat refractory-lined vessel with tapered ends and a
-	# charging mouth on top.
-	geo.cylinder(o + Vector3(-5, 3.2, 0), o + Vector3(5, 3.2, 0), 1.9, "rust", 16)
-	geo.cone(o + Vector3(-5, 3.2, 0), o + Vector3(-9, 3.2, 0), 1.9, 0.9, "rust", 16)
-	geo.cone(o + Vector3(5, 3.2, 0), o + Vector3(9, 3.2, 0), 1.9, 0.9, "rust", 16)
-	geo.cylinder(o + Vector3(0, 4.8, 0), o + Vector3(0, 5.6, 0), 0.9, "rust_dark", 10)
+# --- the Paradies, decay, forest -------------------------------------------------------
 
-func _flat_wagon(o: Vector3, loaded: bool) -> void:
-	_bogies(o, 12.0)
-	geo.box(o + Vector3(0, 1.45, 0), Vector3(13, 0.4, 2.9), "rust_dark")
-	if loaded:
-		for i in range(3):
-			geo.box(o + Vector3(-4 + i * 4, 1.9 + (i % 2) * 0.25, 0), Vector3(3.6, 0.25 + (i % 2) * 0.25, 2.2), "rust")
+## The south-west corner where the works were left to nature: roofless
+## concrete ruins, an old bunker frame to fly through, birch woods.
+func _paradies() -> void:
+	var trees: Array = []
+	for k in range(90):
+		var p := Vector3(rng.randf_range(-330, -220), 0.05, rng.randf_range(40, 150))
+		trees.append([p, 1, rng.randf_range(0.6, 1.0)])
+	for k in range(5):
+		var c := Vector3(-300 + k * 22, 0, 60 + (k % 2) * 50)
+		var w: float = rng.randf_range(10, 16)
+		for s in [-1.0, 1.0]:
+			geo.box(c + Vector3(s * w * 0.5, 2.5, 0), Vector3(0.5, rng.randf_range(2.0, 6.0), w), "concrete")
+		geo.box(c + Vector3(0, 1.5, -w * 0.5), Vector3(w, 3.0, 0.5), "concrete")
+	# The old coal bunker: a concrete frame on legs, open all round.
+	var b := Vector3(-262, 0, 118)
+	for dx in [-8.0, 8.0]:
+		for dz in [-6.0, 6.0]:
+			geo.box(b + Vector3(dx, 5, dz), Vector3(1.2, 10, 1.2), "concrete")
+	for y in [10.0, 15.0]:
+		for s in [-1.0, 1.0]:
+			geo.box(b + Vector3(0, y, s * 6.0), Vector3(17.2, 1.0, 1.0), "concrete")
+			geo.box(b + Vector3(s * 8.0, y, 0), Vector3(1.0, 1.0, 13.2), "concrete")
+	Forest.plant(self, trees)
 
-func _locomotive(o: Vector3) -> void:
-	_bogies(o, 13.0)
-	geo.box(o + Vector3(0, 1.45, 0), Vector3(15, 0.5, 3.0), "rust_dark")
-	geo.box(o + Vector3(1.5, 3.0, 0), Vector3(11, 2.6, 2.4), "yellow")
-	geo.box(o + Vector3(-5.2, 3.4, 0), Vector3(3.2, 3.4, 3.0), "yellow")
-	geo.box(o + Vector3(-5.2, 4.2, 0), Vector3(3.3, 1.0, 3.1), "glass", 0.0, false, false)
+func _decay() -> void:
+	Vehicles.ensure_materials(geo)
+	Vehicles.semi(geo, Vector3(-130, 0.1, 150), 0.2, "veh_rust", "rust")
+	Vehicles.semi(geo, Vector3(265, 0.1, -60), 1.4, "veh_rust", "rust")
+	for k in range(26):
+		var q := Vector3(rng.randf_range(-320, 320), 0.1, rng.randf_range(-185, 150))
+		var sc: float = rng.randf_range(2, 5)
+		if geo.blocked(Vector2(q.x, q.z), sc, 0.3, 4.0) or geo.on_lane(Vector2(q.x, q.z), sc + 1.0):
+			continue
+		geo.lathe(q, [Vector2(sc, 0), Vector2(sc * 0.5, sc * 0.4), Vector2(0.1, sc * 0.55)], ["slag", "rust_dark", "concrete"][rng.randi() % 3], 7)
+		for k2 in range(rng.randi_range(0, 4)):
+			geo.cylinder(q + Vector3(sc + k2 * 0.7, 0, 1.0), q + Vector3(sc + k2 * 0.7, 0.9, 1.0), 0.3, "rust", 8)
+	# Young trees inside the works, wherever they found ground.
+	var trees: Array = []
+	for k in range(160):
+		trees.append([Vector3(rng.randf_range(-330, 330), 0.05, rng.randf_range(-190, 205)), 1, rng.randf_range(0.5, 0.8)])
+	Forest.plant(self, trees)
 
-func _bogies(o: Vector3, spacing: float) -> void:
-	for dx in [-spacing * 0.5 + 1.2, spacing * 0.5 - 1.2]:
-		geo.box(o + Vector3(dx, 0.85, 0), Vector3(2.6, 0.7, 2.2), "rust_dark")
-		for w in [-0.8, 0.8]:
-			for s in [-0.72, 0.72]:
-				geo.cylinder(o + Vector3(dx + w, 0.95, s - 0.06), o + Vector3(dx + w, 0.95, s + 0.06), 0.46, "rail", 10, false)
+func _forest() -> void:
+	var trees: Array = []
+	var frng := RandomNumberGenerator.new()
+	frng.seed = 4
+	var attempts: int = 0
+	while trees.size() < 4500 and attempts < 30000:
+		attempts += 1
+		var x: float = frng.randf_range(-1250, 1250)
+		var z: float = frng.randf_range(-880, 680)
+		if SITE.grow(10.0).has_point(Vector2(x, z)) or TOWN.grow(12.0).has_point(Vector2(x, z)):
+			continue
+		if z > 232.0 and z < 335.0:
+			continue # the river
+		if absf(z + 255.0) < 8.0 or absf(z - MAIN_Z) < 14.0 or absf(z - 214.0) < 8.0 or absf(z + 200.0) < 8.0:
+			continue # town street, railway, roads
+		trees.append([Vector3(x, _height(x, z) - 0.2, z), 0 if frng.randf() < 0.55 else 1, frng.randf_range(0.9, 1.5)])
+	Forest.plant(self, trees)
 
-# --- stockyard ------------------------------------------------------------------
-
-func _pile(c: Vector3, r: float, h: float, mat: String) -> void:
-	var prof: Array[Vector2] = [Vector2(r, 0.0), Vector2(r * 0.7, h * 0.55), Vector2(r * 0.3, h * 0.92), Vector2(0.05, h)]
-	geo.lathe(c, prof, mat, 16)
-
-func _stockyard() -> void:
-	# Long piles between the ore-bridge rails: ore, coal, limestone.
-	for i in range(3):
-		var x: float = -310 + i * 40
-		_pile(Vector3(x, 0, 135), 16, 9, "ore")
-		_pile(Vector3(x + 18, 0, 150), 12, 7, "coal")
-	_pile(Vector3(-190, 0, 150), 11, 6, "lime")
-	# Ore bridge: a 70 m gantry on rails either side of the piles, parked
-	# over the yard, with its trolley and hanging grab.
-	var bx: float = -290.0
-	for z in [110.0, 175.0]:
-		_track(Vector3(-340, 0, z), Vector3(-160, 0, z))
-		for dx in [-6.0, 6.0]:
-			geo.beam(Vector3(bx + dx, 0.5, z), Vector3(bx, 28, z), Vector2(1.2, 1.2), "paint")
-	_truss(Vector3(bx, 30, 105), Vector3(bx, 30, 180), 4.0, 5.0, "paint")
-	geo.box(Vector3(bx, 33.5, 140), Vector3(6, 3, 8), "paint")
-	for dz in [-1.0, 1.0]:
-		geo.beam(Vector3(bx, 32, 140 + dz), Vector3(bx, 16, 140 + dz), Vector2(0.08, 0.08), "rail", false)
-	geo.cone(Vector3(bx, 16, 140), Vector3(bx, 13.5, 140), 1.8, 0.4, "rust_dark", 8)
+# --- shared builders ------------------------------------------------------------
 
 ## A box-lattice truss between a and b: 4 chords and diagonal bracing.
 func _truss(a: Vector3, b: Vector3, w: float, h: float, mat: String) -> void:
@@ -359,32 +621,6 @@ func _truss(a: Vector3, b: Vector3, w: float, h: float, mat: String) -> void:
 			geo.beam(p0 + s - up, p1 + s + up, Vector2(0.25, 0.25), mat)
 		geo.beam(p0 - side - up, p0 + side - up, Vector2(0.25, 0.25), mat)
 		geo.beam(p0 - side + up, p0 + side + up, Vector2(0.25, 0.25), mat)
-
-# --- coke plant -----------------------------------------------------------------
-
-func _coke_plant() -> void:
-	# The battery: a long brick block of ~50 ovens, charging deck on top
-	# with the larry car's rails, standpipes along the back.
-	var c := Vector3(-245, 0, -140)
-	geo.box(c + Vector3(0, 6, 0), Vector3(110, 12, 14), "brick")
-	geo.box(c + Vector3(0, 12.3, 0), Vector3(112, 0.6, 16), "concrete")
-	for i in range(28):
-		var x: float = c.x - 52 + i * 3.8
-		geo.cylinder(Vector3(x, 12.6, c.z - 5.5), Vector3(x, 16.5, c.z - 5.5), 0.35, "rust", 8)
-		geo.box(Vector3(x, 6, c.z + 7.1), Vector3(1.4, 10, 0.3), "rust_dark") # oven doors
-	geo.beam(c + Vector3(-55, 16.8, -5.5), c + Vector3(55, 16.8, -5.5), Vector2(1.2, 1.2), "rust") # collecting main
-	for dz in [-2.0, 2.0]:
-		geo.beam(c + Vector3(-55, 12.8, dz), c + Vector3(55, 12.8, dz), Vector2(0.2, 0.2), "rail", false)
-	geo.box(c + Vector3(20, 15, 0), Vector3(8, 4, 6), "yellow") # larry car
-	# Coal tower at the east end; the coal gallery feeds it.
-	geo.box(Vector3(-176, 17, -140), Vector3(14, 34, 14), "concrete")
-	_gallery(Vector3(-260, 3, 120), Vector3(-176, 30, -130), 3.4)
-	# Quench tower: open-topped, big openings on two sides - dive in.
-	_open_tower(Vector3(-315, 0, -110), Vector2(12, 12), 36.0, "concrete")
-	_track(Vector3(-315, 0, -140), Vector3(-315, 0, -100))
-	# Battery chimney: 80 m of brick.
-	_chimney(Vector3(-245, 0, -175), 80.0, 4.5, "brick")
-	_hall(Vector3(-205, 0, -85), Vector3(40, 14, 24), "corrugated", {"s": [[0.0, 10.0, 8.0]]}) # by-product plant
 
 ## A tall hollow shaft: four walls with big openings, no roof.
 func _open_tower(c: Vector3, fp: Vector2, h: float, mat: String) -> void:
@@ -411,6 +647,9 @@ func _chimney(base: Vector3, h: float, r: float, mat: String) -> void:
 
 ## Enclosed conveyor gallery on trestles, hollow inside (3.4 m square),
 ## with some side panels missing.
+
+## Enclosed conveyor gallery on trestles, hollow inside (3.4 m square),
+## with some side panels missing.
 func _gallery(a: Vector3, b: Vector3, s: float) -> void:
 	var d: Vector3 = b - a
 	var basis := Basis.looking_at(d.normalized(), Vector3.UP)
@@ -430,134 +669,6 @@ func _gallery(a: Vector3, b: Vector3, s: float) -> void:
 			for sx in [-1.0, 1.0]:
 				var top: Vector3 = p0 + basis * Vector3(sx * s * 0.5, -s * 0.5, 0)
 				geo.beam(Vector3(top.x, 0, top.z), top, Vector2(0.4, 0.4), "paint")
-
-# --- blast furnaces -------------------------------------------------------------
-
-## side: +1 = skip bridge and stock house toward +x (the middle, for
-## the west furnace), dust catcher toward -x; -1 mirrors it.
-func _blast_furnace(o: Vector3, idx: int, side: float) -> void:
-	# Furnace shell: hearth, bosh, stack narrowing to the throat, then the
-	# top with its uptakes. ~12 m hearth, ~45 m to the top platform.
-	var prof: Array[Vector2] = [Vector2(7.5, 0), Vector2(7.5, 8), Vector2(9.0, 14), Vector2(8.5, 18), Vector2(6.5, 36), Vector2(5.0, 40)]
-	geo.lathe(o, prof, "rust", 24)
-	geo.box(o + Vector3(0, 40.5, 0), Vector3(16, 1.0, 16), "paint")          # top platform
-	geo.cone(o + Vector3(0, 41, 0), o + Vector3(0, 46, 0), 4.5, 3.0, "rust_dark", 16)
-	# Four uptakes rising from the top, joined into the downcomer.
-	for i in range(4):
-		var a: float = TAU * i / 4.0 + PI * 0.25
-		var foot: Vector3 = o + Vector3(cos(a) * 3.2, 44, sin(a) * 3.2)
-		geo.cylinder(foot, o + Vector3(cos(a) * 3.0, 54, sin(a) * 3.0), 0.9, "rust", 10)
-	geo.box(o + Vector3(0, 54.5, 0), Vector3(8, 1.5, 8), "rust_dark")
-	# Downcomer to the dust catcher on the outer side.
-	var dc := o + Vector3(-24 * side, 0, 0)
-	geo.cylinder(o + Vector3(-2 * side, 54.5, 0), dc + Vector3(0, 31, 0), 1.3, "rust", 12)
-	geo.cylinder(dc + Vector3(0, 16, 0), dc + Vector3(0, 30, 0), 5.0, "rust", 18)
-	geo.cone(dc + Vector3(0, 16, 0), dc + Vector3(0, 9, 0), 5.0, 0.8, "rust_dark", 18)
-	geo.cone(dc + Vector3(0, 30, 0), dc + Vector3(0, 33, 0), 5.0, 1.2, "rust_dark", 18)
-	for i in range(4):
-		var a: float = TAU * i / 4.0
-		geo.beam(dc + Vector3(cos(a) * 4.0, 0, sin(a) * 4.0), dc + Vector3(cos(a) * 4.0, 18, sin(a) * 4.0), Vector2(0.7, 0.7), "paint")
-	# Hot stoves: three domed towers north of the furnace, the hot blast
-	# main back to the bustle pipe ringing the furnace.
-	for i in range(3):
-		var s := o + Vector3(-14 + i * 14, 0, -40)
-		geo.lathe(s, [Vector2(5.0, 0), Vector2(5.0, 34), Vector2(4.2, 38), Vector2(2.5, 40.5), Vector2(0.1, 41.2)], "paint", 20)
-		geo.cylinder(s + Vector3(0, 10, 5.0), s + Vector3(0, 10, 8.0), 1.0, "rust", 10)
-	geo.pipe(o + Vector3(-18, 10, -32), o + Vector3(18, 10, -32), 1.6, 0.2, "rust", 16)
-	geo.pipe(o + Vector3(0, 10, -32), o + Vector3(0, 12, -11), 1.6, 0.2, "rust", 16)
-	var ring: Array[Vector2] = [Vector2(11.2, 0), Vector2(11.2, 1.6)]
-	geo.lathe(o + Vector3(0, 11.2, 0), ring, "rust_dark", 24, 1.6)
-	# Skip bridge: inclined truss from the stock house up to the top.
-	var skip_foot := o + Vector3(42 * side, 2, 0)
-	_truss(skip_foot, o + Vector3(6 * side, 44, 0), 3.5, 3.0, "paint")
-	_hall(o + Vector3(48 * side, 0, 0), Vector3(12, 12, 20), "corrugated", {("w" if side > 0 else "e"): [[0.0, 8.0, 7.0]]}) # stock house
-	_gallery(Vector3(-150 + idx * 20, 3, 118), o + Vector3(48 * side, 13, 8), 3.4)
-	# Cast house over the torpedo line, south of the furnace (the line
-	# runs 5 m south of the hall's centre).
-	_hall(o + Vector3(0, 0, 30), Vector3(36, 16, 26), "corrugated", {"w": [[5.0, 8.0, 7.0]], "e": [[5.0, 8.0, 7.0]], "n": [[0.0, 14.0, 12.0]]})
-	# Furnace columns and a stair tower to the top.
-	for i in range(4):
-		var a: float = TAU * i / 4.0 + PI * 0.25
-		geo.beam(o + Vector3(cos(a) * 11, 0, sin(a) * 11), o + Vector3(cos(a) * 8, 40, sin(a) * 8), Vector2(1.0, 1.0), "paint")
-	_stair_tower(o + Vector3(11, 0, -11), 40.0)
-
-func _stair_tower(o: Vector3, h: float) -> void:
-	for dx in [-1.5, 1.5]:
-		for dz in [-1.5, 1.5]:
-			geo.box(o + Vector3(dx, h * 0.5, dz), Vector3(0.3, h, 0.3), "paint")
-	for y in range(4, int(h), 4):
-		geo.box(o + Vector3(0, y, 0), Vector3(3.3, 0.15, 3.3), "rust_dark", 0.0, true, false)
-
-# --- gas main -------------------------------------------------------------------
-
-## Blast-furnace gas from both dust catchers to the gas holder: a 3 m
-## diameter main on trestles, 14 m up - hollow, fly through it (the
-## joints are open, so you can get in and out along the way).
-func _gas_main() -> void:
-	var y: float = 14.5
-	var main: Array[Vector3] = Route.rounded([Vector3(BF[0].x - 24, 31, -35), Vector3(BF[0].x - 24, y, -35), Vector3(BF[0].x - 24, y, -110), Vector3(250, y, -110), Vector3(250, y, -128)], 6.0, 8)
-	var branch: Array[Vector3] = Route.rounded([Vector3(BF[1].x + 24, 31, -35), Vector3(BF[1].x + 24, y, -35), Vector3(BF[1].x + 24, y, -108.4)], 6.0, 8)
-	for path in [main, branch]:
-		var r := Route.new()
-		r.pts = path
-		var L: float = r.length()
-		# 24 m sections with a short open gap at each joint - the way in.
-		var d: float = 0.0
-		while d < L - 0.5:
-			var e: float = minf(d + 22.0, L)
-			geo.pipe_path(r.slice(d, e), 1.5, "rust", 0.15, 18)
-			var q: Array = r.sample(d + 1.0)
-			var p0: Vector3 = q[0]
-			if p0.y < y + 1.0:
-				var t: Vector3 = q[1]
-				geo.box(Vector3(p0.x, (y - 1.6) * 0.5, p0.z), Vector3(0.8, y - 1.6, 0.8), "paint")
-				geo.box(Vector3(p0.x, y - 1.7, p0.z), Vector3(4.0, 0.3, 1.0) if absf(t.z) > absf(t.x) else Vector3(1.0, 0.3, 4.0), "paint", 0.0, true, false)
-			d = e + 1.6
-	# Gas holder: a 45 m drum with its external guide frame.
-	var gh := Vector3(250, 0, -150)
-	geo.lathe(gh, [Vector2(22, 0), Vector2(22, 44), Vector2(18, 48), Vector2(0.2, 50)], "paint", 32)
-	for i in range(16):
-		var a: float = TAU * i / 16.0
-		geo.beam(gh + Vector3(cos(a) * 23.5, 0, sin(a) * 23.5), gh + Vector3(cos(a) * 23.5, 52, sin(a) * 23.5), Vector2(0.8, 0.8), "rust_dark")
-	for y2 in [15.0, 30.0, 45.0]:
-		geo.lathe(gh + Vector3(0, y2, 0), [Vector2(24.2, 0), Vector2(24.2, 1.0)], "rust_dark", 32, 1.2)
-
-# --- steel shop and rolling mill ------------------------------------------------
-
-func _bof_shop() -> void:
-	var c := Vector3(145, 0, -15)
-	_hall(c, Vector3(70, 42, 90), "corrugated", {"w": [[TORPEDO_Z + 15.0, 10.0, 9.0]], "e": [[0.0, 20.0, 16.0]], "s": [[-20.0, 12.0, 10.0]]}, 0.3)
-	# Converters: pear-shaped vessels on trunnions, ~8 m across.
-	for dz in [-25.0, 0.0]:
-		var v := c + Vector3(-5, 8, dz)
-		geo.lathe(v, [Vector2(1.5, 0), Vector2(4.2, 2.0), Vector2(4.2, 7.0), Vector2(2.2, 10.5), Vector2(1.8, 11.2)], "rust", 18, 0.4)
-		geo.box(v + Vector3(0, 4.5, 0), Vector3(1.2, 1.2, 11), "rust_dark")
-		for sz in [-5.8, 5.8]:
-			geo.box(Vector3(v.x, 6, v.z + sz), Vector3(2, 12, 1.2), "concrete")
-	# Overhead ladle crane.
-	for dx in [-30.0, 30.0]:
-		geo.beam(c + Vector3(dx, 34, -44), c + Vector3(dx, 34, 44), Vector2(1.2, 2.0), "paint")
-	geo.box(c + Vector3(0, 35.5, 10), Vector3(62, 3, 6), "yellow")
-	# Continuous caster: the tall bay on the east side.
-	_hall(c + Vector3(55, 0, -15), Vector3(40, 30, 40), "corrugated", {"w": [[0.0, 14.0, 12.0]], "e": [[0.0, 10.0, 8.0]]}, 0.35)
-
-func _rolling_mill() -> void:
-	var c := Vector3(293, 0, -15)
-	_hall(c, Vector3(126, 20, 44), "corrugated", {"w": [[0.0, 12.0, 10.0]], "e": [[0.0, 12.0, 10.0]]}, 0.3)
-	# Reheating furnace at the west end, then roll stands along a roller
-	# table - a straight 120 m run down the hall.
-	geo.box(c + Vector3(-52, 4, 0), Vector3(14, 8, 14), "brick")
-	geo.box(c + Vector3(0, 0.7, 0), Vector3(110, 1.0, 3.0), "rust_dark")
-	for i in range(6):
-		var x: float = c.x - 35 + i * 12
-		for dz in [-3.2, 3.2]:
-			geo.box(Vector3(x, 4.5, c.z + dz), Vector3(3.0, 9.0, 1.4), "paint")
-		geo.box(Vector3(x, 8.6, c.z), Vector3(3.0, 1.2, 7.8), "paint")
-		geo.cylinder(Vector3(x, 2.6, c.z - 2.5), Vector3(x, 2.6, c.z + 2.5), 0.8, "rust", 12)
-	# Crane runway and a stopped crane.
-	for dz in [-19.0, 19.0]:
-		geo.beam(c + Vector3(-62, 15, dz), c + Vector3(62, 15, dz), Vector2(0.8, 1.4), "paint")
-	geo.box(c + Vector3(30, 16.2, 0), Vector3(5, 2.4, 39), "yellow")
 
 ## An abandoned industrial hall around a floor centre `o`, size (x, h, z).
 ## Built from 8 m bays: a brick base course, corrugated sheeting above
@@ -623,130 +734,3 @@ func _in_door(list: Array, along: float, bay: float, y0: float) -> bool:
 		if absf(along - d[0]) < (d[1] + bay) * 0.5 - 0.5 and y0 < d[2]:
 			return true
 	return false
-
-# --- power plant, south ----------------------------------------------------------
-
-func _power_plant() -> void:
-	_hall(Vector3(30, 0, 150), Vector3(60, 26, 36), "brick", {"n": [[0.0, 10.0, 9.0]]}, 0.2)
-	_chimney(Vector3(15, 0, 180), 95.0, 5.0, "brick")
-	_chimney(Vector3(45, 0, 180), 90.0, 4.5, "concrete")
-	# Hyperbolic cooling tower, 90 m: open at the top, gaps between the
-	# support legs at the bottom - fly in low, climb out the top.
-	var ct := Vector3(-120, 0, 150)
-	var prof: Array[Vector2] = []
-	for i in range(13):
-		var t: float = i / 12.0
-		var y: float = 8.0 + t * 82.0
-		var r: float = 24.0 + 14.0 * pow(absf(t - 0.72) / 0.72, 2.0) if t < 0.72 else 24.0 + 6.0 * pow((t - 0.72) / 0.28, 2.0)
-		prof.append(Vector2(r, y))
-	geo.lathe(ct, prof, "concrete", 40, 0.8)
-	for i in range(24):
-		var a: float = TAU * i / 24.0
-		var r0: float = prof[0].x
-		geo.beam(ct + Vector3(cos(a) * r0, 0, sin(a) * r0), ct + Vector3(cos(a + 0.12) * r0, 8.2, sin(a + 0.12) * r0), Vector2(0.9, 0.9), "concrete")
-	# Water tower.
-	var wt := Vector3(-60, 0, 172)
-	for i in range(4):
-		var a: float = TAU * i / 4.0 + PI * 0.25
-		geo.beam(wt + Vector3(cos(a) * 5, 0, sin(a) * 5), wt + Vector3(cos(a) * 3, 24, sin(a) * 3), Vector2(0.5, 0.5), "paint")
-	geo.lathe(wt + Vector3(0, 24, 0), [Vector2(1.5, 0), Vector2(5.5, 3), Vector2(5.5, 9), Vector2(0.2, 11)], "paint", 18)
-
-func _extras() -> void:
-	# Gatehouse and office by the south entrance road.
-	_hall(Vector3(245, 0, 150), Vector3(24, 8, 12), "brick", {"w": [[0.0, 3.0, 3.0]]}, 0.1)
-	geo.box(Vector3(213, 1.5, 186), Vector3(0.5, 3, 0.5), "paint")
-	geo.beam(Vector3(213, 1.2, 186), Vector3(226, 1.2, 186), Vector2(0.2, 0.2), "yellow")
-	# Overgrowth: young trees inside the site, in the weedy patches.
-	var trees: Array = []
-	for i in range(120):
-		var p := Vector3(rng.randf_range(-350, 350), 0.1, rng.randf_range(-200, 185))
-		if _clear_of_buildings(p):
-			trees.append([p, 1, rng.randf_range(0.5, 0.85)])
-	Forest.plant(self, trees, self)
-
-func _clear_of_buildings(p: Vector3) -> bool:
-	var keep_out: Array[Rect2] = [Rect2(-110, -95, 220, 130), Rect2(80, -70, 300, 110), Rect2(-340, -190, 180, 120),
-		Rect2(-340, 60, 200, 130), Rect2(-170, 110, 250, 90), Rect2(-790, 60, 1150, 22), Rect2(-100, -125, 380, 30), Rect2(220, -180, 60, 60),
-		Rect2(250, 115, 80, 50), Rect2(365, -160, 20, 290), Rect2(50, 110, 330, 20)]
-	for r in keep_out:
-		if r.has_point(Vector2(p.x, p.z)):
-			return false
-	return true
-
-## Workers' town (brick terraces, church) on the levelled ground east
-## of the works, a road to the gate, and the slag heap: decades of
-## furnace slag tipped into a terraced hill south-east of the site.
-## Life after the works closed: wrecks in the old staff car park by
-## the gate, abandoned lorries, rubble heaps and oil drums; and the gas
-## pipe that fed blast-furnace gas from the holder to the power plant's
-## boilers (the plant burned the works' own gas), routed round the
-## rolling mill on its own trestles.
-func _decay() -> void:
-	Vehicles.ensure_materials(geo)
-	geo.slab(Rect2(255, 120, 70, 40), 0.08, 0.1, "asphalt")
-	for i in range(18):
-		if rng.randf() < 0.75:
-			Vehicles.car(geo, Vector3(260 + (i % 9) * 7.2, 0.1, 128 + (i / 9) * 22), PI * 0.5 * (1 if i < 9 else -1) + rng.randf_range(-0.2, 0.2), "veh_rust", ["sedan", "hatch", "van"][rng.randi() % 3], true)
-	for p2 in [Vector3(-120, 0.1, 60), Vector3(150, 0.1, 80), Vector3(-280, 0.1, -40)]:
-		Vehicles.semi(geo, p2, rng.randf() * TAU, "veh_rust", "rust")
-	for i in range(30):
-		var q := Vector3(rng.randf_range(-340, 340), 0.1, rng.randf_range(-190, 180))
-		if _clear_of_buildings(q):
-			var sc: float = rng.randf_range(2, 6)
-			geo.lathe(q, [Vector2(sc, 0), Vector2(sc * 0.5, sc * 0.4), Vector2(0.1, sc * 0.55)], ["slag", "rust_dark", "concrete"][rng.randi() % 3], 7)
-			for k in range(rng.randi_range(0, 4)):
-				geo.cylinder(q + Vector3(sc + k * 0.7, 0, 1.0), q + Vector3(sc + k * 0.7, 0.9, 1.0), 0.3, "rust", 8)
-	var y: float = 12.0
-	var gp := Route.new()
-	gp.pts = Route.rounded([Vector3(272, y, -150), Vector3(375, y, -150), Vector3(375, y, 120), Vector3(60, y, 120), Vector3(60, y, 128), Vector3(60, 8.0, 132)], 4.0, 6)
-	geo.pipe_path(gp.pts, 0.9, "rust", 0.1, 12)
-	var dd: float = 10.0
-	while dd < gp.length() - 10.0:
-		var q: Vector3 = gp.sample(dd)[0]
-		geo.box(Vector3(q.x, (y - 1.0) * 0.5, q.z), Vector3(0.6, y - 1.0, 0.6), "paint")
-		dd += 20.0
-
-func _town_and_heap() -> void:
-	MapProps.town(geo, TOWN, _height, rng, true)
-	_roads()
-	var heap := Vector3(470, 0, 330)
-	var hy: float = _height(heap.x, heap.z)
-	geo.lathe(heap + Vector3(0, hy - 2.0, 0), [Vector2(110, 0), Vector2(95, 12), Vector2(80, 14), Vector2(62, 28), Vector2(48, 30), Vector2(26, 44), Vector2(4, 46)], "slag", 28)
-
-## The works road network: the main road through the site (z 105), the
-## old gate road south (out of the map along its valley), the west
-## service road, the access road up to the town, through the town and
-## out east. Every road ends at a junction, a gate or the map's edge.
-func _roads() -> void:
-	var roads := Roads.new(geo, rng, fleet)
-	for j in [Vector3(-195, 0, 105), Vector3(220, 0, 105), Vector3(365, 0, 105)]:
-		roads.junction(j, Vector2(9, 9), [], 0.0, true)
-	var old := {"old": true, "centre": "none"}
-	roads.road(Route.from(Vector3(-190.5, 0, 105), 0.0).straight(215.5 + 190.5, 12.0), 9.0, old)
-	roads.road(Route.from(Vector3(224.5, 0, 105), 0.0).straight(360.5 - 224.5, 12.0), 9.0, old)
-	roads.road(Route.from(Vector3(-195, 0, 100.5), -90.0).straight(160.0, 12.0), 8.0, old) # to the by-product plant
-	var rr: Dictionary = _routes()
-	roads.road(rr.south, 8.0, {"old": true, "detail": 400.0})
-	roads.road(rr.access, 8.0, {"old": true})
-	roads.road(rr.east, 8.0, {"old": true, "detail": 400.0})
-	for d in [300.0, 520.0]:
-		var q: Array = rr.east.sample(d)
-		fleet.car(q[0] + Vector3(0, 0.05, 2.2), PI * 0.5, Fleet.random_paint(rng), "hatch")
-
-func _forest() -> void:
-	var trees: Array = []
-	var frng := RandomNumberGenerator.new()
-	frng.seed = 4
-	var attempts: int = 0
-	while trees.size() < 7000 and attempts < 40000:
-		attempts += 1
-		var x: float = frng.randf_range(-1080, 1080)
-		var z: float = frng.randf_range(-980, 980)
-		if SITE.grow(6.0).has_point(Vector2(x, z)) or TOWN.grow(15.0).has_point(Vector2(x, z)) or Vector2(x - 470, z - 330).length() < 115.0:
-			continue
-		var y0: float = _height(x, z)
-		if absf(y0 - _raw_height(x, z)) > 1.5 and _rect_dist(TOWN, x, z) > 60.0:
-			continue # valley floors: the railway and the roads
-		var y: float = _height(x, z)
-		trees.append([Vector3(x, y - 0.2, z), 0 if frng.randf() < 0.65 else 1, frng.randf_range(0.9, 1.6)])
-	Forest.plant(self, trees)
