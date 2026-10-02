@@ -372,6 +372,16 @@ size = Vector3(70, 0.2, 50)
 [sub_resource type="BoxMesh" id="BoxMesh_v_57_field2"]
 size = Vector3(60, 0.2, 70)
 
+
+[sub_resource type="BoxMesh" id="BoxMesh_loop_stand"]
+size = Vector3(0.3, 1.7, 0.3)
+
+[sub_resource type="BoxMesh" id="BoxMesh_loop_foot"]
+size = Vector3(2.4, 0.15, 0.8)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_loop_stand"]
+size = Vector3(0.3, 1.7, 0.3)
+
 [node name="Main" type="Node3D" unique_id=1537932311]
 script = ExtResource("1")
 
@@ -2007,3 +2017,18 @@ surface_material_override/0 = SubResource("StandardMaterial3D_v_3")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 0)
 
 [node name="UI" parent="." unique_id=1858223638 instance=ExtResource("3")]
+
+[node name="Loop1Stand" type="MeshInstance3D" parent="."]
+position = Vector3(20, 1.35, 40)
+mesh = SubResource("BoxMesh_loop_stand")
+surface_material_override/0 = SubResource("StandardMaterial3D_loop")
+
+[node name="Loop1Foot" type="MeshInstance3D" parent="."]
+position = Vector3(20, 0.57, 40)
+mesh = SubResource("BoxMesh_loop_foot")
+surface_material_override/0 = SubResource("StandardMaterial3D_loop")
+
+[node name="Loop1StandBody" type="StaticBody3D" parent="Loop1Stand"]
+
+[node name="Shape" type="CollisionShape3D" parent="Loop1Stand/Loop1StandBody"]
+shape = SubResource("BoxShape3D_loop_stand")

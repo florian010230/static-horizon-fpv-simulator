@@ -80,6 +80,9 @@ func build() -> void:
 	course.gate(geo, Vector3(-12, 0.02, -22), W, 2, 0.0, 0, "led_orange")
 	course.hurdle(geo, Vector3(-38, 0.02, -12), S, "led_green")
 	course.gate(geo, Vector3(-50, 0.02, 6), S, 1, 0.0, 0, "led_pink")
+	# Last: a gate hung from the roof between two trusses - left turn out
+	# of the pink gate, climb through it, drop back down to START.
+	course.hanging_gate(geo, Vector3(-42, 3.4, 20), E, 18.2, "led_blue")
 
 func after_build() -> void:
 	course.setup("race_arena", drone, ui)

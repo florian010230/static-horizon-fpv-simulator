@@ -12,16 +12,28 @@ Read `README.md` first for how the project actually works right now
 raw material for a blog, and it should get a new entry after any future
 multi-part session, same style as the existing entries.
 
-## Current state (as of 2026-10-01)
+## Current state (as of 2026-10-02)
 
-All work through DEVLOG Act XIII is committed (Act XIII: WorldShading
-shadows + fog, no glow, render distance, five-species trees, overlap
-filtering, the Völklingen steel mill, sunsets, visible border, Settings
-in five tabs, Betaflight rates in scripts/rates.gd).
-Only commit when the user asks.
+All work through DEVLOG Act XVI is committed. Only commit when the
+user asks. Act XIV: Freestyle/Race
+menu modes, personal bests, a rendered preview picture per map card,
+rebuilt freestyle/whoop drone models, the visible border covering the
+whole boundary, pilot aids (stick overlay, Betaflight throttle
+MID/EXPO, fisheye, line-of-sight view), the "nothing floats" check.
+Act XV: Race mode rebuilt (3-lap races, live gate splits, missed-gate
+warning, results card with a per-track-layout top 5, timing beeps,
+numbered gates), MultiGP-style gate visuals plus a roof-hung gate, all
+three race tracks redesigned, a sky shader with sun/clouds (`BuiltMap.cloud_sky()`),
+motor sound rebuilt as two layers (tone + prop-wash noise), map cards
+that size to their content. Act XVI: the whoop became the "Static
+Whoop", modelled on a current 75 mm brushless ducted whoop (75 mm,
+32 g, 0802 motors, 1S 480 mAh, ~7:1 thrust-to-weight, 70 km/h estimate)
+with a redone ducted-frame model; motor sound rebalanced from flight
+feedback (quieter prop-wash punch, louder/brighter idle so armed
+motors are audible at 0% throttle).
 TODO.md is the roadmap: Phases 1 and 3 are done (12 maps), Phase 2
 mostly (open: replay, bindings), then Phase 4.
-`--selftest`: run it after changes; see the count it prints.
+`--selftest`: 488 checks, all passing.
 
 InputManager is a *scene* autoload: the editor can't see its return
 types, so never write `var x := InputManager.foo()` - type it
@@ -79,6 +91,16 @@ The user's standing requirements for maps (2026-09-30), all built in:
   there are more than a handful - and keep materials shared, or every
   car becomes its own draw call. Check `SH_PERF=1` draw calls after
   big additions (aim < ~600 at spawn).
+- **Nothing floats**: every solid piece must touch the ground or
+  another piece - the self-test checks it (`BuiltMap.floating_pieces()`,
+  backed by `Geo.floating()`, which also counts non-colliding primitives
+  and route-sweep segments as support, and a rectangle-overlap test
+  rather than a circle, to avoid false positives on roofs/cornices and
+  long thin parts). `SH_FLOAT=1` prints flagged pieces while a map
+  builds. `--dev-preview floatcheck` runs the equivalent check by mesh
+  bounding box for the hand-made scene maps (village/factory/school).
+- **Race tracks**: when you change a track layout, bump its
+  `MapCatalog` `"track"` number (fresh records).
 
 ## Hard rules (from direct user feedback)
 
@@ -190,7 +212,9 @@ The user's standing requirements for maps (2026-09-30), all built in:
   in `_ready()` and calls `WorldBorder.check()` in `_process()`.
 - Display names: the `"seeker3"` profile is shown as **Static Three** (renamed from Static One on 2026-09-27; the
   user's choice - it's modelled on a Seeker3 but isn't one); the id
-  stays `"seeker3"` internally.
+  stays `"seeker3"` internally. The `"whoop"` profile is shown as
+  **Static Whoop** since 2026-10-02 (modelled on a current 75 mm
+  brushless ducted whoop); the id stays `"whoop"` internally.
 - `Settings.graphics_quality` (Low/Medium/High) -> render scale, per-object
   draw distances, view distance; applied by `Settings.apply_graphics_settings()`
   in every map's `_ready()`.
@@ -261,6 +285,14 @@ godot --path . -- --dev-preview [menu] [village] [factory] [school]
 # every map with the drone just outside its flight area: prints
 # "BORDER ok/FAIL" per map (the border must show on all of them)
 godot --path . -- --dev-preview borders
+# render one map's menu-card preview picture (images/maps/<id>.jpg) -
+# one map per run: a long run over every map sometimes rendered later
+# maps half-empty
+godot --path . -- --dev-preview thumbs <map id>
+# check the hand-made scene maps (village/factory/school) for solid
+# pieces floating above the ground, by mesh bounding box (generated
+# maps get the equivalent check for free in --selftest)
+godot --path . -- --dev-preview floatcheck
 # the first run after new materials can show ~1 FPS stale frames
 # (shader compilation) - just run it again
 ```

@@ -103,6 +103,15 @@ func _build_osd() -> void:
 	_video.material = vm
 	_root.add_child(_video)
 	_root.move_child(_video, 0)
+	# Stick overlay: both gimbals at the bottom centre, as the radio reads
+	# them (Mode 2: throttle/yaw left, pitch/roll right).
+	_sticks = Control.new()
+	_sticks.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_sticks.custom_minimum_size = Vector2(300, 130)
+	_sticks.position = Vector2(-150, -150)
+	_sticks.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sticks.draw.connect(_draw_sticks)
+	_root.add_child(_sticks)
 	_osd = Control.new()
 	_osd.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_osd.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -121,8 +130,16 @@ func _update_osd(delta: float) -> void:
 	if _osd == null:
 		_build_osd()
 	var vs: float = Settings.VIDEO_EFFECT_STRENGTH[clampi(Settings.video_effect, 0, 2)]
-	_video.visible = vs > 0.0
-	(_video.material as ShaderMaterial).set_shader_parameter("strength", vs)
+	var fish: float = [0.0, 0.22, 0.5][clampi(Settings.lens_fisheye, 0, 2)] if _los_cam == null else 0.0
+	_video.visible = vs > 0.0 or fish > 0.0
+	var vm := _video.material as ShaderMaterial
+	vm.set_shader_parameter("strength", vs)
+	vm.set_shader_parameter("fisheye", fish)
+	var vsz: Vector2 = get_viewport().get_visible_rect().size
+	vm.set_shader_parameter("aspect", vsz.x / maxf(vsz.y, 1.0))
+	_sticks.visible = Settings.stick_overlay and _drone != null
+	if _sticks.visible:
+		_sticks.queue_redraw()
 	_osd.visible = _drone != null
 	if not _osd.visible:
 		return
@@ -146,6 +163,48 @@ func _update_osd(delta: float) -> void:
 	_osd_labels.warn.modulate.a = 0.35 + 0.65 * absf(sin(_osd_warn_t * 5.0))
 	_osd_labels.bat.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3) if b.is_low() else Color.WHITE)
 
+var _sticks: Control
+
+func _draw_sticks() -> void:
+	var box: float = 120.0
+	var gimbals: Array = [[Vector2(0, 0), InputManager.get_yaw(), InputManager.get_throttle() * 2.0 - 1.0],
+		[Vector2(180, 0), InputManager.get_roll(), InputManager.get_pitch()]]
+	for g in gimbals:
+		var o: Vector2 = g[0]
+		_sticks.draw_rect(Rect2(o, Vector2(box, box)), Color(0, 0, 0, 0.35))
+		_sticks.draw_rect(Rect2(o, Vector2(box, box)), Color(1, 1, 1, 0.55), false, 2.0)
+		_sticks.draw_line(o + Vector2(box * 0.5, 6), o + Vector2(box * 0.5, box - 6), Color(1, 1, 1, 0.25), 1.0)
+		_sticks.draw_line(o + Vector2(6, box * 0.5), o + Vector2(box - 6, box * 0.5), Color(1, 1, 1, 0.25), 1.0)
+		var dot: Vector2 = o + Vector2(box * 0.5 + clampf(g[1], -1.0, 1.0) * (box * 0.5 - 8.0), box * 0.5 - clampf(g[2], -1.0, 1.0) * (box * 0.5 - 8.0))
+		_sticks.draw_circle(dot, 8.0, Color(1.0, 0.55, 0.2))
+
+## Line-of-sight view (V): the camera stands where the pilot would - at
+## the spawn point, eye height - and follows the quad, like flying LOS
+## at the field. V again back to FPV.
+var _los_cam: Camera3D
+var _los_key_down: bool = false
+
+func _update_los() -> void:
+	var down: bool = Input.is_key_pressed(KEY_V)
+	if down and not _los_key_down and _drone:
+		toggle_los()
+	_los_key_down = down
+	if _los_cam and _drone and _los_cam.global_position.distance_to(_drone.global_position) > 0.5:
+		_los_cam.look_at(_drone.global_position, Vector3.UP)
+
+func toggle_los() -> void:
+		if _los_cam == null:
+			_los_cam = Camera3D.new()
+			_los_cam.fov = 60.0
+			_los_cam.far = Settings.view_distance
+			_drone.get_parent().add_child(_los_cam)
+			_los_cam.global_position = _drone._spawn_transform.origin + Vector3(0, 1.7, 0) + _drone._spawn_transform.basis.z * 3.0
+			_los_cam.current = true
+		else:
+			_los_cam.queue_free()
+			_los_cam = null
+			_drone.get_node("CameraMount/Camera3D").current = true
+
 func _exit_tree() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -165,13 +224,14 @@ func _process(delta: float) -> void:
 	if Input.mouse_mode != want:
 		Input.mouse_mode = want
 	_update_hud()
+	_update_los()
 	_update_osd(delta)
 	if _tuning_panel:
 		_tuning_panel.visible = _panel_visible
 	_debug_label.visible = _panel_visible
 	if _panel_visible:
 		_debug_label.text = InputManager.raw_axes_debug_text()
-	_crosshair.visible = Settings.crosshair_enabled
+	_crosshair.visible = Settings.crosshair_enabled and _los_cam == null
 	if _border_label.visible:
 		_border_blink_t += delta
 		_border_label.modulate.a = 0.4 + 0.6 * absf(sin(_border_blink_t * 6.0))
@@ -180,8 +240,31 @@ func set_border_warning(active: bool) -> void:
 	_border_label.visible = active
 
 ## Race maps: lap/timer readout, top centre (see RaceCourse). "" hides it.
+## A short message in the middle of the screen (fades after 2.5 s).
+var _flash: Label
+func flash_message(text: String) -> void:
+	if _flash == null:
+		_flash = Label.new()
+		_flash.set_anchors_preset(Control.PRESET_CENTER)
+		_flash.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_flash.grow_vertical = Control.GROW_DIRECTION_BOTH
+		_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_flash.add_theme_font_override("font", UIKit.oswald())
+		_flash.add_theme_font_size_override("font_size", 40)
+		_flash.add_theme_color_override("font_color", Color(1.0, 0.45, 0.2))
+		_flash.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		_flash.add_theme_constant_override("outline_size", 8)
+		_root.add_child(_flash)
+	_flash.text = text
+	_flash.modulate.a = 1.0
+	_flash.visible = true
+	var tw := create_tween()
+	tw.tween_interval(1.6)
+	tw.tween_property(_flash, "modulate:a", 0.0, 0.9)
+
 var _race_label: Label
-func set_race_info(text: String) -> void:
+## good/bad tint the line (split ahead of / behind the best lap, missed gate).
+func set_race_info(text: String, good: bool = false, bad: bool = false) -> void:
 	if _race_label == null:
 		_race_label = Label.new()
 		_race_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -195,6 +278,42 @@ func set_race_info(text: String) -> void:
 		_root.add_child(_race_label)
 	_race_label.text = text
 	_race_label.visible = text != ""
+	_race_label.add_theme_color_override("font_color", Color(0.45, 1.0, 0.5) if good else (Color(1.0, 0.42, 0.35) if bad else Color.WHITE))
+
+## The race's results card (RaceCourse._finish): title and lines, shown
+## for a few seconds over the flight view.
+var _results: PanelContainer
+func show_race_results(title: String, lines: Array[String]) -> void:
+	if _results:
+		_results.queue_free()
+	_results = PanelContainer.new()
+	_results.theme = UIKit.theme()
+	_results.theme_type_variation = "Card"
+	_results.set_anchors_preset(Control.PRESET_CENTER)
+	_results.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_results.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_results.custom_minimum_size = Vector2(460, 0)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	_results.add_child(box)
+	var t := Label.new()
+	t.text = title
+	t.theme_type_variation = "Title"
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(t)
+	for l in lines:
+		var lb := Label.new()
+		lb.text = l
+		lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		if l.begins_with("TOTAL") or l.begins_with("NEW TRACK"):
+			lb.add_theme_color_override("font_color", UIKit.ACCENT)
+			lb.add_theme_font_size_override("font_size", 26)
+		box.add_child(lb)
+	_root.add_child(_results)
+	var tw := create_tween()
+	tw.tween_interval(9.0)
+	tw.tween_property(_results, "modulate:a", 0.0, 1.0)
+	tw.tween_callback(_results.queue_free)
 
 func _draw_crosshair() -> void:
 	var center: Vector2 = _crosshair.size / 2.0

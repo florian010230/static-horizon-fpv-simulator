@@ -44,6 +44,11 @@ func _run() -> void:
 	var quick: float = Rates.rate_deg(Rates.QUICK, [1.0, 670.0, 0.0], 1.0)
 	var kiss: float = Rates.rate_deg(Rates.KISS, [1.0, 0.7, 0.0], 1.0)
 	_check(absf(bf - 666.7) < 1.0 and absf(quick - 670.0) < 1.0 and absf(kiss - 666.7) < 1.0 and absf(Rates.rate_deg(Rates.QUICK, [1.0, 670.0, 0.0], 0.05) - 10.0) < 1.0, "rates: Betaflight, Quick and KISS formulas", "BF %.1f Quick %.1f KISS %.1f" % [bf, quick, kiss])
+	_check(is_equal_approx(Settings.throttle_curve(0.3), 0.3), "throttle: MID 0.5 / EXPO 0 leaves the throttle alone")
+	Settings.throttle_expo = 1.0
+	var te: float = Settings.throttle_curve(0.75)
+	Settings.throttle_expo = 0.0
+	_check(absf(te - 0.5625) < 0.001, "throttle: Betaflight EXPO curve", "%.4f" % te)
 	await _test_menu_flow()
 	await _test_calibration_and_arm_switch()
 	var cases: Array = [
@@ -147,6 +152,18 @@ func _test_menu_flow() -> void:
 	if play:
 		play.pressed.emit()
 	await _wait(0.2)
+	_check(menu._screens["mode"].visible, "menu: Play asks for the mode first")
+	_find_button(menu._screens["mode"], "Race").pressed.emit()
+	await _wait(0.2)
+	var race_cards: int = 0
+	for c in menu._map_grid.get_children():
+		if c.visible:
+			race_cards += 1
+	_check(race_cards == 3, "menu: Race mode lists the race tracks only", "%d cards" % race_cards)
+	await _tap(KEY_ESCAPE)
+	await _wait(0.2)
+	_find_button(menu._screens["mode"], "Freestyle").pressed.emit()
+	await _wait(0.2)
 	var village: Button = _find_button(menu, "Village")
 	if village:
 		village.pressed.emit()
@@ -156,6 +173,8 @@ func _test_menu_flow() -> void:
 	var scene: Node = get_tree().current_scene
 	_check(scene != null and scene.scene_file_path == "res://scenes/Main.tscn", "menu: Play -> Village loads the map")
 	_check(Engine.max_fps == Settings.max_fps, "menu: FPS cap restored in game", "max_fps=%d" % Engine.max_fps)
+
+var _float_checked: Dictionary = {}
 
 func _test_map(map: String, drone_id: String, perf: bool) -> void:
 	var tag: String = "%s/%s%s" % [map.get_file().get_basename(), drone_id, " [performance]" if perf else ""]
@@ -168,6 +187,11 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 	if d == null:
 		_check(false, tag + ": map loads with a drone")
 		return
+	var sc: Node = get_tree().current_scene
+	if sc is BuiltMap and not _float_checked.has(map):
+		_float_checked[map] = true
+		var fl: Array = (sc as BuiltMap).floating_pieces()
+		_check(fl.is_empty(), tag + ": nothing floats in the air", str(fl.slice(0, 3)))
 	var forced: String = MapCatalog.forced_drone(map)
 	var expected_profile: String = forced if forced != "" else drone_id
 	_check(Settings.selected_drone == expected_profile, tag + ": right drone profile", Settings.selected_drone)
@@ -202,7 +226,11 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		# steering test takes it past the 170 m altitude reset.
 		# (The office has a 3 m ceiling: the usual climb pins the whoop
 		# against it and W can't move it.)
+		# The Static Whoop has ~7:1 thrust-to-weight too (since 2026-10-02):
+		# indoors it'd go straight into the ceiling (school gym 8.5 m).
 		var hold: float = 0.75 if Settings.selected_drone == "five" else (0.95 if map.ends_with("Office.tscn") else 1.4)
+		if Settings.selected_drone == "whoop" and (map.ends_with("Office.tscn") or map.ends_with("Main3.tscn")):
+			hold = 0.7 if map.ends_with("Office.tscn") else 0.6
 		await _wait(hold)
 		_key(KEY_SHIFT, false)
 		await _wait(1.2)
@@ -501,7 +529,10 @@ func _test_race() -> void:
 	var backup: String = FileAccess.get_file_as_string(rec) if FileAccess.file_exists(rec) else ""
 	var gh: String = RaceCourse.GHOST_PATH
 	var gh_backup: String = FileAccess.get_file_as_string(gh) if FileAccess.file_exists(gh) else ""
+	var bd: String = RaceCourse.BOARD_PATH
+	var bd_backup: String = FileAccess.get_file_as_string(bd) if FileAccess.file_exists(bd) else ""
 	Settings.selected_drone = "five"
+	Settings.game_mode = Settings.MODE_RACE
 	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
 	await _wait(2.0)
 	var d: Drone = _drone()
@@ -520,7 +551,23 @@ func _test_race() -> void:
 	await get_tree().physics_frame
 	_check(course._lap == 2 and course._last_lap > 0.0, "race: a full lap through all %d gates is timed" % course._gates.size(), "lap %d, last %.2f s" % [course._lap, course._last_lap])
 	_check(course._ghost_pos.size() > 3, "race: best lap recorded as a ghost", "%d samples" % course._ghost_pos.size())
-	# Skipping a gate must not count: straight from gate 1 back to start.
+	# Two more laps finish the 3-lap race: results, a top-5 entry.
+	for _l in range(RaceCourse.LAPS - 1):
+		for p in pts.slice(2):
+			while pos.distance_to(p) > 0.01:
+				pos = pos.move_toward(p, 2.5)
+				d.global_position = pos
+				await get_tree().physics_frame
+	await get_tree().physics_frame
+	var b5: Dictionary = RaceCourse.boards("race_field")
+	_check(b5.has("five") and not b5.five.is_empty() and course._lap == 0, "race: %d laps finish the race and enter the top 5" % RaceCourse.LAPS, str(b5.get("five", [])))
+	# Skipping a gate must not count: through START (a new race starts),
+	# gate 1, then straight back to START.
+	for p in [course._gates[0].xf * Vector3(0, 0, 2.0), course._gates[0].xf * Vector3(0, 0, -2.0)]:
+		while pos.distance_to(p) > 0.01:
+			pos = pos.move_toward(p, 2.5)
+			d.global_position = pos
+			await get_tree().physics_frame
 	var lap_before: int = course._lap
 	for p in [course._gates[1].xf * Vector3(0, 0, 2.0), course._gates[1].xf * Vector3(0, 0, -2.0), course._gates[0].xf * Vector3(0, 0, 2.0), course._gates[0].xf * Vector3(0, 0, -2.0)]:
 		while pos.distance_to(p) > 0.01:
@@ -528,6 +575,7 @@ func _test_race() -> void:
 			d.global_position = pos
 			await get_tree().physics_frame
 	_check(course._lap == lap_before, "race: cutting the course doesn't complete a lap")
+	_check(RaceCourse.records("race_field").has("five"), "race: the personal best is saved for the menu")
 	d.freeze = false
 	if backup != "":
 		var f := FileAccess.open(rec, FileAccess.WRITE)
@@ -541,3 +589,23 @@ func _test_race() -> void:
 		g.close()
 	else:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(gh))
+	if bd_backup != "":
+		var bf := FileAccess.open(bd, FileAccess.WRITE)
+		bf.store_string(bd_backup)
+		bf.close()
+	else:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(bd))
+	# Freestyle: the same map, no timing at all.
+	Settings.game_mode = Settings.MODE_FREESTYLE
+	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
+	await _wait(2.0)
+	var fc: RaceCourse = get_tree().current_scene.course
+	_check(not fc.is_physics_processing() and fc._marker == null, "freestyle: race maps fly without the timer")
+	# Past the reset line: back to spawn at once, no map reload.
+	Settings.game_mode = Settings.MODE_FREESTYLE
+	var map_before: Node = get_tree().current_scene
+	var rd: Drone = _drone()
+	rd.global_position = Vector3(500, 5, 0)
+	await get_tree().physics_frame
+	await _wait(0.3)
+	_check(get_tree().current_scene == map_before and _drone().global_position.distance_to(_drone()._spawn_transform.origin) < 1.0, "border: out of range resets the drone instantly (no reload)")

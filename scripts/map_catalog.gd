@@ -29,14 +29,14 @@ const MAPS: Array[Dictionary] = [
 	 "text": "After the Völklinger Hütte: six blast furnaces in a row, skip hoists to the tops, a column slalom under the bunker hall, hollow gas mains, the ore monorail."},
 	{"id": "playground", "name": "Playground", "scene": "res://scenes/maps/Playground.tscn", "tier": "Low", "drone": "whoop",
 	 "color": Color("#e0a526"),
-	 "text": "Slides, swings, a climbing frame and a tunnel tube - a Tiny Whoop playground."},
-	{"id": "race_field", "name": "Race Field", "scene": "res://scenes/maps/RaceField.tscn", "tier": "Low", "drone": "any",
+	 "text": "Slides, swings, a climbing frame and a tunnel tube - a whoop playground."},
+	{"id": "race_field", "race": true, "track": 2, "name": "Race Field", "scene": "res://scenes/maps/RaceField.tscn", "tier": "Low", "drone": "any",
 	 "color": Color("#1f6fe0"),
-	 "text": "A MultiGP-style race course: standard 5 ft gates, ladder, tower and dive gates, flags, lap timer."},
-	{"id": "race_arena", "indoor": true, "name": "Race Arena", "scene": "res://scenes/maps/RaceArena.tscn", "tier": "Medium", "drone": "any",
+	 "text": "A 12-gate MultiGP lap round the whole field: a climb through the ladder, two dive gates, a tower gate, hurdles and turn flags."},
+	{"id": "race_arena", "race": true, "track": 2, "indoor": true, "name": "Race Arena", "scene": "res://scenes/maps/RaceArena.tscn", "tier": "Medium", "drone": "any",
 	 "color": Color("#c03fd0"),
-	 "text": "League night indoors: glowing LED gates in a dark hall, a tunnel, a ladder, a dive gate and a gate on a scaffold tower."},
-	{"id": "office", "indoor": true, "name": "Office Whoop Race", "scene": "res://scenes/maps/Office.tscn", "tier": "Low", "drone": "whoop",
+	 "text": "League night indoors: glowing LED gates in a dark hall, a tunnel, a ladder, a dive, a scaffold tower gate and a gate hung from the roof."},
+	{"id": "office", "race": true, "track": 2, "indoor": true, "name": "Office Whoop Race", "scene": "res://scenes/maps/Office.tscn", "tier": "Low", "drone": "whoop",
 	 "color": Color("#6c7a89"),
 	 "text": "After hours on the 5th floor: whoop gates between the desks, a glass meeting room, the kitchen - and the city below the windows."},
 	{"id": "garage", "name": "Parking Garage", "scene": "res://scenes/maps/ParkingGarage.tscn", "tier": "Medium", "drone": "any",
@@ -52,6 +52,11 @@ const MAPS: Array[Dictionary] = [
 	 "color": Color("#3a9a8a"),
 	 "text": "An alpine lake in the evening alpenglow: surf the ridges, skim the water, dive the dam, chase the waterfall and the cable car."},
 ]
+
+## Race maps (a timed course): the only maps in Race mode; in Freestyle
+## they're flown without the timer like any other map.
+static func is_race(m: Dictionary) -> bool:
+	return m.get("race", false)
 
 ## Maps whose scene exists in this build.
 static func available() -> Array[Dictionary]:

@@ -23,7 +23,7 @@ func _ready() -> void:
 ## when iterating on one map. No names = everything.
 func _wants(section: String) -> bool:
 	var args := OS.get_cmdline_user_args()
-	var sections: Array = ["menu", "village", "factory", "school", "borders"]
+	var sections: Array = ["menu", "village", "factory", "school", "borders", "thumbs"]
 	for m in MapCatalog.MAPS:
 		sections.append(m.id)
 	# ("shadows" is a modifier, not a section.)
@@ -81,10 +81,107 @@ func _border_shots() -> void:
 		print("BORDER %s %s: %s" % ["ok" if ok else "FAIL", sc.get_file(), "visible" if ok else ("missing" if fb == null else "strength %.2f visible %s" % [fb.get_meta("strength", 0.0), fb.visible])])
 		_shot("preview_border_%s.png" % sc.get_file().get_basename().to_lower())
 
+## The map choice's preview pictures (images/maps/<id>.jpg): one wide
+## aerial view per map showing all of it, rendered on High without the
+## HUD. `-- --dev-preview thumbs <map id>` - one map per run: in one
+## long run over all maps, later maps sometimes rendered half-empty.
+const HERO := {
+	"village": [Vector3(-75, 42, 135), Vector3(25, 0, 55)],
+	"factory": [Vector3(-55, 38, 80), Vector3(25, 0, -15)],
+	"school": [Vector3(-19, 3.5, 9), Vector3(10, 1.5, -2)],
+	"steelmill": [Vector3(-330, 125, 230), Vector3(10, 10, 10)],
+	"playground": [Vector3(-40, 26, 48), Vector3(0, 0, -2)],
+	"race_field": [Vector3(22, 9, 46), Vector3(-18, 1, -12)],
+	"race_arena": [Vector3(-54, 12, 25), Vector3(15, 0, -5)],
+	"office": [Vector3(-17, 2.75, 10.5), Vector3(5, 0.5, -6)],
+	"garage": [Vector3(-60, 40, 70), Vector3(0, 6, 0)],
+	"construction": [Vector3(220, 140, 230), Vector3(20, 20, -20)],
+	"harbour": [Vector3(-480, 260, 300), Vector3(-120, 0, -380)],
+	"mountain_lake": [Vector3(0, 160, 420), Vector3(0, 20, -100)],
+}
+
+func _thumb_shots() -> void:
+	Settings.graphics_quality = 2
+	Settings.view_distance = 2400.0
+	Settings.osd_enabled = false
+	Settings.crosshair_enabled = false
+	Settings.camera_angle_deg = 0.0 # aim the camera where the drone looks
+	WorldBorder.disabled = true
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://images/maps"))
+	var args := OS.get_cmdline_user_args()
+	for m in MapCatalog.MAPS:
+		if not HERO.has(m.id) or (args.size() > 2 and not args.has(m.id)):
+			continue
+		get_tree().change_scene_to_file(m.scene)
+		await get_tree().create_timer(3.0).timeout
+		var root: Node = get_tree().current_scene
+		var drone := root.find_child("Drone", true, false) as RigidBody3D
+		var ui := root.find_child("UI", true, false) as CanvasLayer
+		if ui:
+			ui.visible = false
+		drone.freeze = true
+		drone.global_position = HERO[m.id][0]
+		drone.look_at(HERO[m.id][1], Vector3.UP)
+		drone.reset_physics_interpolation()
+		# Clearer air for an aerial view: the haze starts further out.
+		var we := root.get_node_or_null("WorldEnvironment") as WorldEnvironment
+		if we and we.environment and we.environment.has_meta("depth_fog"):
+			we.environment.set_meta("depth_fog", maxf(we.environment.get_meta("depth_fog"), 700.0))
+			WorldShading.fit_fog(we.environment, get_viewport().get_camera_3d().far)
+		await get_tree().create_timer(1.5).timeout
+		var img := get_viewport().get_texture().get_image()
+		var w: int = img.get_width()
+		var h: int = int(w / 2.0)
+		img = img.get_region(Rect2i(0, (img.get_height() - h) / 2, w, h))
+		img.resize(1024, 512, Image.INTERPOLATE_LANCZOS)
+		img.save_jpg(ProjectSettings.globalize_path("res://images/maps/%s.jpg" % m.id), 0.9)
+		print("THUMB ", m.id)
+
+## `-- --dev-preview floatcheck`: the hand-made maps (scene files, not
+## Geo): every mesh whose box starts above the ground and touches no
+## other mesh's box is listed - something floating in the air.
+func _float_check() -> void:
+	for sc in ["res://scenes/Main.tscn", "res://scenes/Main2.tscn", "res://scenes/Main3.tscn"]:
+		get_tree().change_scene_to_file(sc)
+		await get_tree().create_timer(1.5).timeout
+		var boxes: Array = []
+		_collect_boxes(get_tree().current_scene, boxes)
+		var n: int = 0
+		for i in range(boxes.size()):
+			var a: AABB = boxes[i][0]
+			if a.position.y < 0.9 or a.size.length() < 0.05:
+				continue
+			var touch: bool = false
+			for j in range(boxes.size()):
+				if i != j and a.grow(0.12).intersects(boxes[j][0]):
+					touch = true
+					break
+			if not touch:
+				n += 1
+				print("  floating %s %s y=%.2f" % [sc.get_file(), boxes[i][1], a.position.y])
+		print("FLOATCHECK %s: %d" % [sc.get_file(), n])
+
+func _collect_boxes(n: Node, out: Array) -> void:
+	if n is Drone or n is CanvasLayer:
+		return
+	if n is MeshInstance3D and (n as MeshInstance3D).mesh and (n as Node3D).is_visible_in_tree():
+		var mi := n as MeshInstance3D
+		out.append([mi.global_transform * mi.get_aabb(), mi.get_path()])
+	for c in n.get_children():
+		_collect_boxes(c, out)
+
 func _go() -> void:
 	# `-- --dev-preview shadows ...` renders everything with shadows on.
 	if OS.get_cmdline_user_args().has("shadows"):
 		Settings.shadows_enabled = true
+	if OS.get_cmdline_user_args().has("floatcheck"):
+		await _float_check()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("thumbs"):
+		await _thumb_shots()
+		get_tree().quit()
+		return
 	if OS.get_cmdline_user_args().has("borders"):
 		await _border_shots()
 		get_tree().quit()
@@ -226,6 +323,14 @@ func _menu_shots() -> void:
 	if play_btn:
 		play_btn.pressed.emit()
 	await get_tree().create_timer(0.3).timeout
+	_shot("preview_mode_choice.png")
+	var menu_node: Node = get_tree().current_scene
+	_find_button(menu_node._screens["mode"], "Race").pressed.emit()
+	await get_tree().create_timer(0.4).timeout
+	_shot("preview_map_choice_race.png")
+	Settings.game_mode = Settings.MODE_FREESTYLE
+	menu_node._show("map")
+	await get_tree().create_timer(0.4).timeout
 	_shot("preview_map_choice.png")
 	SceneLoader.goto("res://scenes/Main2.tscn", "Factory")
 	await get_tree().process_frame
@@ -240,6 +345,8 @@ func _menu_shots() -> void:
 ## grabs another. Aiming with look_at() rather than hand-typed rotation
 ## angles - the FPV camera itself adds its own upward tilt on top.
 func _map_shots(scene: String, prefix: String, views: Array, pause_shots: bool = true) -> void:
+	# Race tracks are shown in Race mode (gate numbers, next-gate marker).
+	Settings.game_mode = Settings.MODE_RACE if MapCatalog.is_race(MapCatalog.for_scene(scene)) else Settings.MODE_FREESTYLE
 	get_tree().change_scene_to_file(scene)
 	await get_tree().create_timer(2.0).timeout
 	_shot("preview_%s_spawn.png" % prefix)
@@ -273,6 +380,21 @@ func _map_shots(scene: String, prefix: String, views: Array, pause_shots: bool =
 		drone.reset_physics_interpolation()
 		await get_tree().create_timer(0.4).timeout
 		_shot("preview_%s_%s.png" % [prefix, v[0]])
+	# Pilot aids on one view: stick overlay and strong fisheye; then the
+	# line-of-sight camera.
+	if prefix == "race_field" and ui:
+		Settings.stick_overlay = true
+		Settings.lens_fisheye = 2
+		await get_tree().create_timer(0.5).timeout
+		_shot("preview_%s_aids.png" % prefix)
+		Settings.stick_overlay = false
+		Settings.lens_fisheye = 0
+		drone.global_position = drone._spawn_transform.origin + Vector3(6, 4, -12)
+		drone.reset_physics_interpolation()
+		ui.toggle_los()
+		await get_tree().create_timer(0.5).timeout
+		_shot("preview_%s_los.png" % prefix)
+		ui.toggle_los()
 	# The flight-area border, which shows while the HUD warns.
 	var sc: Node = get_tree().current_scene
 	if sc.has_method("border") and not sc.has_method("check_border_box"):

@@ -1,4 +1,4 @@
-[gd_scene load_steps=41 format=3]
+[gd_scene load_steps=42 format=3]
 
 [ext_resource type="Script" path="res://scripts/main2.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/Drone.tscn" id="2"]
@@ -467,6 +467,10 @@ size = Vector3(9, 0.3, 13)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_f_10_gateaccesseast"]
 size = Vector3(9, 0.3, 13)
+
+
+[sub_resource type="BoxMesh" id="BoxMesh_sign_strap"]
+size = Vector3(0.08, 0.5, 0.08)
 
 [node name="Main2" type="Node3D"]
 script = ExtResource("1")
@@ -2308,3 +2312,13 @@ surface_material_override/0 = SubResource("StandardMaterial3D_sleeper")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 65, 0.08, -21.2)
 mesh = SubResource("BoxMesh_sleeper")
 surface_material_override/0 = SubResource("StandardMaterial3D_sleeper")
+
+[node name="EntranceSignStrapA" type="MeshInstance3D" parent="."]
+position = Vector3(-2.2, 5.5, 42.33)
+mesh = SubResource("BoxMesh_sign_strap")
+surface_material_override/0 = SubResource("StandardMaterial3D_gate")
+
+[node name="EntranceSignStrapB" type="MeshInstance3D" parent="."]
+position = Vector3(2.2, 5.5, 42.33)
+mesh = SubResource("BoxMesh_sign_strap")
+surface_material_override/0 = SubResource("StandardMaterial3D_gate")

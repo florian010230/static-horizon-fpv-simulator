@@ -24,7 +24,7 @@ const MENU_FPS: int = 30
 ## The maps themselves live in MapCatalog (scripts/map_catalog.gd).
 
 ## Where Back / Esc goes from each screen.
-const BACK_TARGET := {"map": "main", "about": "main"}
+const BACK_TARGET := {"mode": "main", "map": "mode", "about": "main"}
 const WEBSITE := "https://statichorizonfpv.com/"
 
 var _settings: SettingsScreens
@@ -67,6 +67,7 @@ func _ready() -> void:
 	add_child(root)
 
 	_screens["main"] = _build_main_screen(root)
+	_screens["mode"] = _build_mode_screen(root)
 	_screens["map"] = _build_map_screen(root)
 	_screens["about"] = _build_about_screen(root)
 	# Settings is a shared component (also opened from the in-game pause
@@ -93,6 +94,8 @@ func _show(screen: String) -> void:
 	_current = screen
 	if screen == "settings":
 		_settings.open()
+	if screen == "map":
+		_refresh_maps()
 	# Keyboard / gamepad: something is always focused, so arrows + Enter
 	# work everywhere without the mouse.
 	var first: Control = _first_focusable(_screens.get(screen))
@@ -177,7 +180,7 @@ func _build_main_screen(root: Control) -> Control:
 	brand.add_child(heading)
 
 	var subtitle := Label.new()
-	subtitle.text = "Fly real-world quads with your own radio: freestyle a derelict steelworks, race league gates, dive cranes in a port city."
+	subtitle.text = "Practise FPV with your own radio and your own Betaflight rates. Freestyle through a derelict steelworks, chase cranes in a port city, race league gates against your best lap."
 	subtitle.theme_type_variation = "Muted"
 	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	subtitle.custom_minimum_size = Vector2(560, 0)
@@ -185,7 +188,7 @@ func _build_main_screen(root: Control) -> Control:
 
 	UIKit.gap(left, 18)
 	var play := UIKit.button("Play", "PrimaryButton", 68)
-	play.pressed.connect(func(): _show("map"))
+	play.pressed.connect(func(): _show("mode"))
 	play.set_meta("default_focus", true)
 	left.add_child(play)
 	var settings := UIKit.button("Settings", "", 60)
@@ -332,7 +335,7 @@ func _build_drone_preview(parent: Control) -> void:
 	# middle of the card. (It used to hang from a little wall hook, but
 	# at this size the hook read as a gray thing floating above it.)
 	var cam := Camera3D.new()
-	cam.position = Vector3(0, 0.13, 0.38)
+	cam.position = Vector3(0, 0.2, 0.34) # from above-front: the frame's plates and arms read
 	cam.fov = 40.0
 	cam.current = true
 	scene_root.add_child(cam)
@@ -395,6 +398,7 @@ func _option_card(title: String, tags: String, text: String, stripe: Color, acti
 	b.theme_type_variation = "CardButton"
 	b.custom_minimum_size = Vector2(0, 330)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.set_meta("find_text", title)
 	var box := VBoxContainer.new()
 	box.set_anchors_preset(Control.PRESET_FULL_RECT)
 	box.offset_left = 28
@@ -460,7 +464,7 @@ func _build_about_screen(root: Control) -> Control:
 	name_box.add_child(version)
 
 	var intro := Label.new()
-	intro.text = "A free FPV drone simulator that runs on weak hardware and flies with a real radio over USB. Three real-world-sized maps, three drones, a flight controller modelled on Betaflight."
+	intro.text = "A free FPV drone simulator that runs on weak hardware and flies with your radio over USB. Twelve maps for freestyle and racing, three quads whose mass, thrust and drag are taken from real ones, and a flight controller modelled on Betaflight - a simulation, so close but never quite the real thing."
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	content.add_child(intro)
 
@@ -503,16 +507,44 @@ func _about_section(parent: Control, title: String, lines: Array) -> void:
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		parent.add_child(l)
 
+## Freestyle or Race - the first choice after Play.
+func _build_mode_screen(root: Control) -> Control:
+	var parts: Array = UIKit.screen_card(root, "Choose a Mode", "", 500, func(): _show("main"))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 24)
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	parts[1].add_child(row)
+	var free := _option_card("Freestyle", "EVERY MAP  ·  NO TIMER", "Fly where you like: a derelict steelworks, a port city at sunset, a construction site, mountains, a car park. The race tracks are open too - without the clock.", UIKit.LOGO_GROUND, "Choose a map")
+	free.set_meta("default_focus", true)
+	free.pressed.connect(func():
+		Settings.game_mode = Settings.MODE_FREESTYLE
+		_show("map"))
+	row.add_child(free)
+	var race := _option_card("Race", "RACE TRACKS  ·  LAP TIMER  ·  PERSONAL BESTS", "Timed laps through the gates, a ghost of your best lap to chase, and your personal best per track and drone - saved, so it's waiting next time.", UIKit.LOGO_SKY, "Choose a track")
+	race.pressed.connect(func():
+		Settings.game_mode = Settings.MODE_RACE
+		_show("map"))
+	row.add_child(race)
+	return parts[0]
+
+var _map_grid: GridContainer
+var _map_title: Label
+var _map_tier: String = "All"
+var _map_filters: HBoxContainer
+
 func _build_map_screen(root: Control) -> Control:
-	var parts: Array = UIKit.screen_card(root, "Choose a Map", "", 800, func(): _show("main"))
+	var parts: Array = UIKit.screen_card(root, "Choose a Map", "", 860, func(): _show("mode"), 1480)
+	_map_title = _find_label(parts[0], "Choose a Map")
 	var content: VBoxContainer = parts[1]
 	# Filter by performance tier - so a pilot on a weak laptop can see at
 	# a glance what will run well.
 	var filters := HBoxContainer.new()
+	_map_filters = filters
 	filters.add_theme_constant_override("separation", 8)
 	content.add_child(filters)
 	var group := ButtonGroup.new()
 	var grid := GridContainer.new()
+	_map_grid = grid
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 16)
 	grid.add_theme_constant_override("v_separation", 16)
@@ -525,8 +557,8 @@ func _build_map_screen(root: Control) -> Control:
 		b.add_theme_color_override("font_pressed_color", Color.WHITE)
 		var tier: String = f
 		b.pressed.connect(func():
-			for card in grid.get_children():
-				card.visible = tier == "All" or card.get_meta("tier") == tier)
+			_map_tier = tier
+			_refresh_maps())
 		filters.add_child(b)
 	var hint := Label.new()
 	hint.theme_type_variation = "Small"
@@ -538,46 +570,107 @@ func _build_map_screen(root: Control) -> Control:
 	content.add_child(grid)
 	for m in MapCatalog.available():
 		var card := _map_card(m)
-		if grid.get_child_count() == 0:
-			card.set_meta("default_focus", true)
 		grid.add_child(card)
 		var scene: String = m.scene
 		var map_name: String = m.name
 		card.pressed.connect(func(): SceneLoader.goto(scene, map_name))
 	return parts[0]
 
-## One map: colour stripe, name, tier badge + drone restriction, text.
+## Shows the maps of the current mode (Race: race tracks only, with the
+## pilot's personal bests) and tier filter.
+func _refresh_maps() -> void:
+	var race: bool = Settings.game_mode == Settings.MODE_RACE
+	if _map_title:
+		_map_title.text = "Race - Choose a Track" if race else "Freestyle - Choose a Map"
+	var first: bool = true
+	for card in _map_grid.get_children():
+		var m: Dictionary = card.get_meta("map")
+		card.visible = (not race or MapCatalog.is_race(m)) and (_map_tier == "All" or m.tier == _map_tier)
+		card.remove_meta("default_focus")
+		if card.visible and first:
+			card.set_meta("default_focus", true)
+			first = false
+		var rec: Label = card.get_meta("record_label")
+		rec.visible = race
+		if race:
+			rec.text = _records_text(m.id)
+
+func _records_text(map_id: String) -> String:
+	var r: Dictionary = RaceCourse.records(map_id)
+	var bd: Dictionary = RaceCourse.boards(map_id)
+	if r.is_empty() and bd.is_empty():
+		return "No lap yet - set your first personal best"
+	var lines: Array[String] = ["Personal best  (lap / 3-lap race)"]
+	for id in ["whoop", "seeker3", "five"]:
+		if r.has(id) or bd.has(id):
+			var lap: String = RaceCourse._fmt(r[id][0]) if r.has(id) else "--"
+			var race: String = RaceCourse._fmt(bd[id][0][0]) if bd.has(id) and not bd[id].is_empty() else "--"
+			lines.append("%s   %s  /  %s" % [Drone.PROFILES[id].display.name, lap, race])
+	return "\n".join(lines)
+
+func _find_label(n: Node, text: String) -> Label:
+	if n is Label and (n as Label).text == text:
+		return n
+	for c in n.get_children():
+		var f: Label = _find_label(c, text)
+		if f:
+			return f
+	return null
+
+## One map: its preview picture, name, tier badge + tags, text, and (in
+## Race mode) the pilot's personal bests.
 func _map_card(m: Dictionary) -> Button:
 	var b := Button.new()
 	b.theme_type_variation = "CardButton"
-	b.custom_minimum_size = Vector2(340, 236)
-	b.clip_contents = true
+	b.custom_minimum_size = Vector2(440, 380)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.set_meta("find_text", m.name)
 	b.set_meta("tier", m.tier)
+	b.set_meta("map", m)
 	var box := VBoxContainer.new()
 	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	box.offset_left = 22
-	box.offset_top = 18
-	box.offset_right = -22
-	box.offset_bottom = -18
+	box.offset_left = 2
+	box.offset_top = 2
+	box.offset_right = -2
+	box.offset_bottom = -16
 	box.add_theme_constant_override("separation", 8)
 	b.add_child(box)
+	var pic := TextureRect.new()
+	pic.custom_minimum_size = Vector2(0, 210)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	var path: String = "res://images/maps/%s.jpg" % m.id
+	if ResourceLoader.exists(path):
+		pic.texture = load(path)
+	box.add_child(pic)
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", 6)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 20)
+	pad.add_theme_constant_override("margin_right", 20)
+	pad.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	pad.add_child(inner)
+	box.add_child(pad)
 	var bar := ColorRect.new()
 	bar.color = m.color
-	bar.custom_minimum_size = Vector2(0, 5)
+	bar.custom_minimum_size = Vector2(0, 4)
 	box.add_child(bar)
+	box.move_child(bar, 1)
 	var t := Label.new()
 	t.text = m.name
 	t.theme_type_variation = "Title"
 	t.add_theme_font_size_override("font_size", 26)
-	box.add_child(t)
-	var tags := HBoxContainer.new()
-	tags.add_theme_constant_override("separation", 8)
-	box.add_child(tags)
+	inner.add_child(t)
+	# Tags wrap onto a second line rather than run off the card's edge.
+	var tags := HFlowContainer.new()
+	tags.add_theme_constant_override("h_separation", 8)
+	tags.add_theme_constant_override("v_separation", 6)
+	inner.add_child(tags)
 	var tier_color: Color = MapCatalog.TIER_COLORS[m.tier]
 	tags.add_child(_pill(m.tier + " performance", tier_color))
 	tags.add_child(_pill("Indoor" if m.get("indoor", false) else "Outdoor", UIKit.MUTED_LIGHT))
+	if MapCatalog.is_race(m):
+		tags.add_child(_pill("Race track", UIKit.LINK))
 	if m.drone != "any":
 		tags.add_child(_pill(Drone.PROFILES[m.drone].display.name + " only", UIKit.MUTED_LIGHT))
 	var d := Label.new()
@@ -585,9 +678,23 @@ func _map_card(m: Dictionary) -> Button:
 	d.theme_type_variation = "Small"
 	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	d.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(d)
-	for c in [box, bar, t, tags, d]:
+	inner.add_child(d)
+	var rec := Label.new()
+	rec.add_theme_color_override("font_color", UIKit.ACCENT)
+	rec.add_theme_font_size_override("font_size", 16)
+	rec.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inner.add_child(rec)
+	b.set_meta("record_label", rec)
+	for c in [box, pic, pad, inner, bar, t, tags, d, rec]:
 		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# A Button doesn't grow with its children: size the card to whatever
+	# its content needs (wrapped text, the personal-best lines), so
+	# nothing is ever cut off at the bottom - the grid row then takes the
+	# tallest card's height.
+	var fit := func() -> void:
+		b.custom_minimum_size.y = maxf(380.0, box.get_combined_minimum_size().y + 20.0)
+	box.minimum_size_changed.connect(fit)
+	box.resized.connect(fit)
 	return b
 
 func _pill(text: String, color: Color) -> Control:

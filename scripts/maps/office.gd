@@ -78,6 +78,9 @@ func build() -> void:
 	course.gate_sized(geo, Vector3(0, 0.02, -3.5), E, w, w, bar, 1.0, "gate_a")
 	course.gate_sized(geo, Vector3(7, 0.02, 0.5), S, w, w, bar, 0.3, "gate_b")
 	course.gate_sized(geo, Vector3(2, 0.02, 8.5), W, w, w, bar, 1.4, "gate_a")
+	# Up under the ceiling between the high gate and the desk gate: a gate
+	# hung from the ceiling on two wires.
+	course.hanging_gate(geo, Vector3(-2, 2.2, 8.5), W, 2.98, "gate_b", 0.6, w)
 	geo.box(Vector3(-6, 0.37, 8.5), Vector3(1.2, 0.74, 0.8), "desk")
 	course.gate_sized(geo, Vector3(-6, 0.76, 8.5), W, w, w, bar, 0.0, "gate_b")
 	course.gate_sized(geo, Vector3(-13, 0.02, 2), 0.0, w, w, bar, 0.3, "gate_a")

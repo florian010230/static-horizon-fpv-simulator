@@ -279,7 +279,7 @@ static func slider(parent: Control, label_text: String, min_v: float, max_v: flo
 ## whatever the content grows to - the old Settings screen was a plain
 ## column taller than the window, with its Back button below the edge.
 ## Returns [screen root, content box].
-static func screen_card(root: Control, title: String, subtitle: String, height: float, on_back: Callable, width: float = CARD_WIDTH) -> Array:
+static func screen_card(root: Control, title: String, subtitle: String, height: float, on_back: Callable, width: float = CARD_WIDTH, back_text: String = "‹  Back", esc_text: String = "Esc to go back") -> Array:
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(center)
@@ -295,7 +295,7 @@ static func screen_card(root: Control, title: String, subtitle: String, height: 
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", 16)
 	outer.add_child(header)
-	var back := button("‹  Back", "GhostButton", 48)
+	var back := button(back_text, "GhostButton", 48)
 	back.custom_minimum_size = Vector2(130, 48)
 	back.pressed.connect(on_back)
 	header.add_child(back)
@@ -305,7 +305,7 @@ static func screen_card(root: Control, title: String, subtitle: String, height: 
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(t)
 	var esc := Label.new()
-	esc.text = "Esc to go back"
+	esc.text = esc_text
 	esc.theme_type_variation = "Small"
 	header.add_child(esc)
 

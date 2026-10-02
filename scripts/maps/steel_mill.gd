@@ -522,7 +522,7 @@ func _coke_plant() -> void:
 		geo.cylinder(Vector3(x, 12.6, c.z - 5.5), Vector3(x, 16.5, c.z - 5.5), 0.35, "rust", 8)
 		geo.box(Vector3(x, 6, c.z + 7.1), Vector3(1.4, 10, 0.3), "rust_dark")
 	geo.beam(c + Vector3(-55, 16.8, -5.5), c + Vector3(55, 16.8, -5.5), Vector2(1.2, 1.2), "rust")
-	geo.box(c + Vector3(20, 15, 0), Vector3(8, 4, 6), "yellow") # larry car
+	geo.box(c + Vector3(20, 14.6, 0), Vector3(8, 4, 6), "yellow") # larry car, on the deck
 	geo.box(Vector3(292, 17, -140), Vector3(14, 34, 14), "concrete") # coal tower
 	_gallery(Vector3(292, 30, -130), Vector3(310, 4, -60), 3.4)
 	_open_tower(Vector3(178, 0, -102), Vector2(12, 12), 34.0, "concrete") # quench tower

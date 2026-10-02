@@ -32,6 +32,11 @@ func queue_trees(trees: Array) -> bool:
 	_queued_trees.append_array(trees)
 	return true
 
+## Solid pieces touching nothing (Geo.floating) - the self-test wants none.
+func floating_pieces() -> Array:
+	var g: Callable = Callable(self, "_height") if has_method("_height") else func(_x: float, _z: float) -> float: return 0.0
+	return geo.floating(g)
+
 func _plant_trees() -> void:
 	var kept: Array = []
 	for t in _queued_trees:
@@ -67,6 +72,11 @@ func _ready() -> void:
 	# or (trees) on a road or track are dropped (Geo's footprints).
 	fleet.commit(self)
 	_plant_trees()
+	if OS.has_environment("SH_FLOAT"):
+		var f: Array = floating_pieces()
+		print("FLOATING %s: %d" % [name, f.size()])
+		for k in range(mini(f.size(), 60)):
+			print("  float ", f[k])
 	geo.commit(self)
 	if ui.has_method("set_drone"):
 		ui.set_drone(drone)
@@ -109,6 +119,44 @@ static func apply_depth_fog(env: Environment, begin: float = 280.0) -> void:
 	env.fog_depth_end = 1500.0
 	env.fog_sky_affect = 0.0
 	env.set_meta("depth_fog", begin)
+
+static var _cloud_tex: ImageTexture
+
+## Swaps the plain gradient sky for shaders/sky_clouds.gdshader: the same
+## colours, plus clouds lit by the sun and the sun's glow. Map env key
+## "clouds": cover threshold (lower = more clouds, 1.2 = clear sky).
+func _cloud_sky(sky: Sky, base: ProceduralSkyMaterial, e: Dictionary) -> void:
+	cloud_sky(sky, base, sun, e.get("clouds", 0.55 if e.get("fog", true) else 1.2), get_node_or_null("WorldEnvironment"))
+
+## Same for any scene's sky (the hand-made maps call it via Settings).
+static func cloud_sky(sky: Sky, base: ProceduralSkyMaterial, sun_light: DirectionalLight3D, coverage: float, we: WorldEnvironment) -> void:
+	if _cloud_tex == null:
+		var n := FastNoiseLite.new()
+		n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		n.seed = 7
+		n.frequency = 0.012
+		n.fractal_octaves = 5
+		n.fractal_gain = 0.55
+		var img: Image = n.get_seamless_image(512, 512)
+		img.convert(Image.FORMAT_L8)
+		img.generate_mipmaps()
+		_cloud_tex = ImageTexture.create_from_image(img)
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/sky_clouds.gdshader")
+	m.set_shader_parameter("top_color", base.sky_top_color)
+	m.set_shader_parameter("horizon_color", base.sky_horizon_color)
+	m.set_shader_parameter("ground_color", base.ground_horizon_color)
+	m.set_shader_parameter("sun_dir", sun_light.global_transform.basis.z)
+	m.set_shader_parameter("sun_color", sun_light.light_color)
+	m.set_shader_parameter("clouds", _cloud_tex)
+	m.set_shader_parameter("coverage", coverage)
+	sky.sky_material = m
+	# Nothing reads the sky's reflections (unshaded materials) - don't
+	# have the renderer keep them up to date.
+	sky.radiance_size = Sky.RADIANCE_SIZE_32
+	sky.process_mode = Sky.PROCESS_MODE_QUALITY
+	if we:
+		we.environment.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 
 func _make_environment(e: Dictionary) -> void:
 	var sky_mat := ProceduralSkyMaterial.new()
@@ -171,6 +219,7 @@ func _make_environment(e: Dictionary) -> void:
 	sun.light_energy = e.get("sun_energy", 1.1)
 	if not sun.is_inside_tree():
 		add_child(sun)
+	_cloud_sky(sky, sky_mat, e)
 	# The light is baked into Geo's vertex colors (see Geo's header).
 	geo.sun_dir = -sun.global_transform.basis.z
 	geo.sun = 0.5 * sun.light_energy

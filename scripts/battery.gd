@@ -6,13 +6,13 @@ extends RefCounted
 ## and the loaded voltage sags by current x internal resistance - the
 ## number a pilot watches in the OSD to know when to land.
 ##
-## Packs are typical real ones for each frame class: a 1S 300 mAh for
+## Packs are typical real ones for each frame class: a 1S 480 mAh for
 ## the whoop, 4S 850 mAh for the 3-inch (the Seeker3 class flies 4S
 ## 650-850), 6S 1300 mAh for the 5-inch. Max current and per-cell
 ## resistance are round typical values for those packs, not one brand.
 
 const PACKS := {
-	"whoop": {"cells": 1, "mah": 300.0, "max_a": 14.0, "r_cell": 0.06},
+	"whoop": {"cells": 1, "mah": 480.0, "max_a": 12.0, "r_cell": 0.05}, # 1S 480 mAh, 12 A ESC
 	"seeker3": {"cells": 4, "mah": 850.0, "max_a": 70.0, "r_cell": 0.014},
 	"five": {"cells": 6, "mah": 1300.0, "max_a": 130.0, "r_cell": 0.009},
 }

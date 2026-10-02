@@ -223,24 +223,39 @@ const PROFILES: Dictionary = {
 			"frame_color": Color(0.95, 0.45, 0.08),
 		},
 	},
+	# Static Whoop (2026-10-02): modelled on a current 75 mm brushless
+	# ducted whoop (sources: the maker's product page - 75 mm wheelbase,
+	# 20.2-21.3 g dry, 0802 motors 22000-28000 KV, GF 1614 3-blade props,
+	# 1S 480 mAh BT2.0, ~7 min; oscarliang.com's review of the previous
+	# generation - "incredibly nimble", hovers well under half throttle).
+	# Numbers: all-up weight 32 g (21 g + a ~11.5 g 1S 480 mAh pack -
+	# estimate, no source states it); thrust-to-weight ~7:1 (one secondary
+	# source) -> 0.55 N per motor; motor offset 75 / 2 / sqrt(2) = 26.5 mm;
+	# props 41 mm. No measured top speed exists anywhere - 70 km/h is an
+	# ESTIMATE for a light 75 mm brushless whoop; drag_coefficient from the
+	# same formula as the others: (sqrt(T^2 - (mg)^2) - 0.4 * m * v) / v^2
+	# with T = 2.2 N, m = 0.032 kg, v = 19.4 m/s. Inertia: four ~2.3 g
+	# motors at 26.5 mm plus ducts/frame (~8 g at ~30 mm) and the pack.
 	"whoop": {
-		"mass": 0.025,
-		"arm_length": 0.023,
-		"max_motor_thrust_n": 0.184,
-		"drag_coefficient": 0.00459,
-		"inertia": Vector3(1.3e-5, 2.2e-5, 1.3e-5),
+		"mass": 0.032,
+		"arm_length": 0.0265,
+		"max_motor_thrust_n": 0.55,
+		"drag_coefficient": 0.00489,
+		"inertia": Vector3(1.05e-5, 2.0e-5, 1.05e-5),
 		"yaw_torque_per_newton": 0.012,
-		"collision_radius": 0.032,
+		"collision_radius": 0.034,
 		"camera_near": 0.012, "camera_far": 400.0,
-		"display": {"name": "Tiny Whoop", "tags": ["1.6 inch", "40 km/h", "25 g"],
-			"text": "Palm-sized micro with prop guards, made to fly indoors."},
+		"display": {"name": "Static Whoop", "tags": ["75 mm", "70 km/h", "32 g"],
+			"text": "75 mm brushless ducted whoop - light and snappy, seven times more thrust than weight."},
 		"visual": {
 			"body_radius": 0.013, "body_height": 0.009,
-			"arm_thickness": 0.005,
-			"motor_radius": 0.006, "motor_height": 0.01,
-			"prop_radius": 0.02,
+			"arm_thickness": 0.004,
+			"motor_radius": 0.005, "motor_height": 0.008,
+			"prop_radius": 0.0205,
 			"has_prop_guards": true,
-			"frame_color": Color(0.55, 0.35, 0.95),
+			"frame_color": Color(0.11, 0.11, 0.12),
+			"prop_color": Color(1.0, 0.45, 0.1, 0.8),
+			"bell_color": Color(0.85, 0.15, 0.12),
 		},
 	},
 }
@@ -517,7 +532,7 @@ func _physics_process(delta: float) -> void:
 	var roll_in: float = InputManager.get_roll()
 	var pitch_in: float = InputManager.get_pitch()
 	var yaw_in: float = InputManager.get_yaw()
-	var throttle_in: float = InputManager.get_throttle()
+	var throttle_in: float = Settings.throttle_curve(InputManager.get_throttle())
 
 	var desired_roll_rate: float
 	var desired_pitch_rate: float

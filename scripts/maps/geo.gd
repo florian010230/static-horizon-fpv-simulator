@@ -33,7 +33,7 @@ var cell: float = CELL
 ## Materials of small details (markings, lamps, rails, vehicles...):
 ## their batches stop drawing past DETAIL_RANGE - sub-pixel out there,
 ## and thousands of draw calls saved.
-var detail_prefixes: Array[String] = ["rd_line", "rd_steel", "rd_lamp", "rd_kerb", "rd_barrier", "veh_", "train_", "rw_rail", "rw_steel", "rw_black", "rw_yellow", "rw_red", "rw_green", "rw_white", "rw_mast", "groove", "cty_metal", "cty_cornice", "boat_", "site_"]
+var detail_prefixes: Array[String] = ["rd_line", "rd_steel", "rd_lamp", "rd_kerb", "rd_barrier", "veh_", "train_", "rw_rail", "rw_steel", "rw_black", "rw_yellow", "rw_red", "rw_green", "rw_white", "rw_mast", "groove", "cty_metal", "cty_cornice", "boat_", "site_", "yard_"]
 const DETAIL_RANGE: float = 450.0
 ## Long, cheap surfaces (roads, pavements, track beds, far ground) and
 ## small details batch in 256 m cells: a road running 2 km out of the
@@ -170,16 +170,18 @@ var _obs_grid: Dictionary = {}
 var _lanes: Array = [] # [a: Vector2, b: Vector2, half width]
 var _lane_grid: Dictionary = {}
 
-func _obstacle(c: Vector2, ax: Vector2, half: Vector2, y0: float, y1: float) -> void:
-	if y1 - y0 < 0.3:
+func _obstacle(c: Vector2, ax: Vector2, half: Vector2, y0: float, y1: float, collide: bool = true) -> void:
+	_support.append([c, ax.normalized(), half, y0, y1])
+	_grid_add(_sup_grid, c, minf(half.length(), 400.0), _support.size() - 1)
+	if not collide or y1 - y0 < 0.3:
 		return # flat: paving, kerbs, markings
 	var r: float = half.length()
 	if r > 120.0:
 		return # whole ground slabs
-	_obs.append([c, ax.normalized(), half, y0, y1])
+	_obs.append([c, ax.normalized(), half, y0, y1, _cell_key.get_slice("|", 0)])
 	_grid_add(_obs_grid, c, r, _obs.size() - 1)
 
-func _obstacle_box(o: Vector3, hx: Vector3, hz: Vector3, corners: Array) -> void:
+func _obstacle_box(o: Vector3, hx: Vector3, hz: Vector3, corners: Array, collide: bool = true) -> void:
 	var y0: float = INF
 	var y1: float = -INF
 	for p: Vector3 in corners:
@@ -187,9 +189,9 @@ func _obstacle_box(o: Vector3, hx: Vector3, hz: Vector3, corners: Array) -> void
 		y1 = maxf(y1, p.y)
 	var ax := Vector2(hx.x, hx.z)
 	var az := Vector2(hz.x, hz.z)
-	_obstacle(Vector2(o.x, o.z), ax if ax.length() > 0.001 else Vector2(1, 0), Vector2(ax.length(), az.length()), y0, y1)
+	_obstacle(Vector2(o.x, o.z), ax if ax.length() > 0.001 else Vector2(1, 0), Vector2(ax.length(), az.length()), y0, y1, collide)
 
-func _obstacle_points(pts: Array) -> void:
+func _obstacle_points(pts: Array, collide: bool = true) -> void:
 	var mn := Vector3(INF, INF, INF)
 	var mx := Vector3(-INF, -INF, -INF)
 	for p: Vector3 in pts:
@@ -197,7 +199,7 @@ func _obstacle_points(pts: Array) -> void:
 		mx = mx.max(p)
 	if (mx.x - mn.x) * (mx.z - mn.z) > 600.0:
 		return # a long diagonal brace: its box would cover far too much
-	_obstacle(Vector2(mn.x + mx.x, mn.z + mx.z) * 0.5, Vector2(1, 0), Vector2(mx.x - mn.x, mx.z - mn.z) * 0.5, mn.y, mx.y)
+	_obstacle(Vector2(mn.x + mx.x, mn.z + mx.z) * 0.5, Vector2(1, 0), Vector2(mx.x - mn.x, mx.z - mn.z) * 0.5, mn.y, mx.y, collide)
 
 func _lane(a: Vector2, b: Vector2, half: float) -> void:
 	_lanes.append([a, b, half])
@@ -234,6 +236,55 @@ func on_lane(p: Vector2, margin: float) -> bool:
 			return true
 	return false
 
+## Everything solid, flat or not (for the floating-object check).
+var _support: Array = []
+var _sup_grid: Dictionary = {}
+
+func _overlaps(a: Array, b: Array) -> bool:
+	# a's footprint rectangle against b's: separating-axis test on both
+	# rectangles' axes, with 0.15 m slack (a support only has to touch).
+	for r in [a, b]:
+		var ax: Vector2 = r[1]
+		for axis in [ax, Vector2(-ax.y, ax.x)]:
+			var ca: float = (a[0] as Vector2).dot(axis)
+			var cb: float = (b[0] as Vector2).dot(axis)
+			var ea: float = absf(axis.dot(a[1])) * a[2].x + absf(axis.dot(Vector2(-a[1].y, a[1].x))) * a[2].y
+			var eb: float = absf(axis.dot(b[1])) * b[2].x + absf(axis.dot(Vector2(-b[1].y, b[1].x))) * b[2].y
+			if absf(ca - cb) > ea + eb + 0.15:
+				return false
+	return true
+
+## Dev check (SH_FLOAT=1): solid pieces above the ground that touch
+## nothing at all - no other piece within 0.35 m of their height range
+## where their footprints meet (hanging from above counts as attached).
+## ground: Callable(x, z) -> ground height.
+func floating(ground: Callable) -> Array:
+	var out: Array = []
+	for i in range(_obs.size()):
+		var o: Array = _obs[i]
+		var c: Vector2 = o[0]
+		var g: float = ground.call(c.x, c.y)
+		if o[3] < g + 0.35:
+			continue
+		var held: bool = false
+		var rr: float = (o[2] as Vector2).length() + 1.0
+		for gx in range(floori((c.x - rr) / OBS_CELL), floori((c.x + rr) / OBS_CELL) + 1):
+			for gz in range(floori((c.y - rr) / OBS_CELL), floori((c.y + rr) / OBS_CELL) + 1):
+				for j in _sup_grid.get(Vector2i(gx, gz), []):
+					var q: Array = _support[j]
+					if q[0] == o[0] and q[3] == o[3] and q[4] == o[4]:
+						continue
+					if q[3] - 0.35 <= o[4] and o[3] <= q[4] + 0.35 and _overlaps(o, q):
+						held = true
+						break
+				if held:
+					break
+			if held:
+				break
+		if not held:
+			out.append([Vector3(c.x, o[3], c.y), o[5], o[2]])
+	return out
+
 ## Marks an area as taken (parked cars, so trees and other cars avoid them).
 func reserve(c: Vector2, ax: Vector2, half: Vector2, y0: float, y1: float) -> void:
 	_obstacle(c, ax, half, y0, y1)
@@ -252,11 +303,10 @@ func box_xf(xf: Transform3D, size: Vector3, mat: String, collide: bool = true, s
 		c.append(xf * Vector3(h.x if i & 1 else -h.x, h.y if i & 2 else -h.y, h.z if i & 4 else -h.z))
 	_begin(mat, xf.origin, collide)
 	var b: Basis = xf.basis
-	if collide:
-		if absf(b.y.normalized().y) > 0.9:
-			_obstacle_box(xf.origin, b.x * h.x, b.z * h.z, c)
-		else:
-			_obstacle_points(c)
+	if absf(b.y.normalized().y) > 0.9:
+		_obstacle_box(xf.origin, b.x * h.x, b.z * h.z, c, collide)
+	else:
+		_obstacle_points(c, collide)
 	# (corner bit 0 = +x, bit 1 = +y, bit 2 = +z)
 	_quad(c[1], c[3], c[7], c[5], b.x, collide)
 	_quad(c[0], c[4], c[6], c[2], -b.x, collide)
@@ -277,8 +327,7 @@ func hexa(c: Array, mat: String, collide: bool = true, shadow: bool = true) -> v
 		centre += p
 	centre /= 8.0
 	_begin(mat, centre, collide)
-	if collide:
-		_obstacle_points(c)
+	_obstacle_points(c, collide)
 	for f in [[1, 3, 7, 5], [0, 4, 6, 2], [2, 6, 7, 3], [0, 1, 5, 4], [4, 5, 7, 6], [0, 2, 3, 1]]:
 		var a: Vector3 = c[f[0]]
 		var b: Vector3 = c[f[1]]
@@ -333,11 +382,11 @@ func cone(a: Vector3, b: Vector3, r0: float, r1: float, mat: String, sides: int 
 ## it a shell with an inside surface too (cooling tower, open hopper).
 func lathe(base: Vector3, profile: Array, mat: String, sides: int = 24, wall: float = 0.0, collide: bool = true, shadow: bool = true) -> void:
 	_begin(mat, base, collide)
-	if collide and profile.size() > 1:
+	if profile.size() > 1:
 		var rmax: float = 0.0
 		for q: Vector2 in profile:
 			rmax = maxf(rmax, q.x)
-		_obstacle(Vector2(base.x, base.z), Vector2(1, 0), Vector2(rmax, rmax), base.y + profile[0].y, base.y + profile[profile.size() - 1].y)
+		_obstacle(Vector2(base.x, base.z), Vector2(1, 0), Vector2(rmax, rmax), base.y + profile[0].y, base.y + profile[profile.size() - 1].y, collide)
 	var pts := PackedVector3Array()
 	for layer in ([0.0, wall] if wall > 0.0 else [0.0]):
 		var inward: bool = layer > 0.0
@@ -392,6 +441,23 @@ func sweep(path: Array[Vector3], profile: Array, mat: String, closed: bool = fal
 	var m: int = profile.size()
 	if n < 2 or m < 2:
 		return
+	# Every sweep segment counts as support (bridge decks, gallery
+	# floors, rails) for the floating check.
+	var pmin: float = INF
+	var pmax: float = -INF
+	var pw: float = 0.0
+	for q: Vector2 in profile:
+		pmin = minf(pmin, q.y)
+		pmax = maxf(pmax, q.y)
+		pw = maxf(pw, absf(q.x))
+	for i in range(n - 1):
+		var a2 := Vector2(path[i].x, path[i].z)
+		var b2 := Vector2(path[i + 1].x, path[i + 1].z)
+		var ax2: Vector2 = (b2 - a2).normalized() if a2.distance_to(b2) > 0.001 else Vector2(1, 0)
+		var yl: float = minf(path[i].y, path[i + 1].y) + pmin
+		var yh: float = maxf(path[i].y, path[i + 1].y) + pmax
+		_support.append([(a2 + b2) * 0.5, ax2, Vector2(a2.distance_to(b2) * 0.5 + 0.2, pw), yl, yh])
+		_grid_add(_sup_grid, (a2 + b2) * 0.5, a2.distance_to(b2) * 0.5 + pw, _support.size() - 1)
 	if mat.begins_with("rd_asphalt") or mat.begins_with("rw_ballast"):
 		var half: float = 0.0
 		for q: Vector2 in profile:
@@ -478,12 +544,12 @@ func sweep(path: Array[Vector3], profile: Array, mat: String, closed: bool = fal
 ## x = -width/2 to +width/2, both sides capped. This is what gives cars,
 ## lorries and locomotives their real outline instead of stacked boxes.
 func prism(xf: Transform3D, profile: Array, width: float, mat: String, collide: bool = true, shadow: bool = true) -> void:
-	if collide:
+	if true:
 		var pts: Array = []
 		for q: Vector2 in profile:
 			pts.append(xf * Vector3(-width * 0.5, q.y, q.x))
 			pts.append(xf * Vector3(width * 0.5, q.y, q.x))
-		_obstacle_points(pts)
+		_obstacle_points(pts, collide)
 	var poly := PackedVector2Array(profile)
 	var m: int = poly.size()
 	var area: float = 0.0
@@ -543,17 +609,17 @@ func _tube(a: Vector3, b: Vector3, r0: float, r1: float, wall: float, mat: Strin
 	var up: Vector3 = Vector3.UP if absf(d.normalized().y) < 0.99 else Vector3.RIGHT
 	var basis := Basis.looking_at(d / length, up) # local -Z runs a -> b
 	_begin(mat, (a + b) * 0.5, collide)
-	if collide:
+	if true:
 		var rr: float = maxf(r0, r1)
 		var flat := Vector3(d.x, 0, d.z)
 		var lo: float = minf(a.y, b.y) - (rr if absf(d.y) < length * 0.7 else 0.0)
 		var hi: float = maxf(a.y, b.y) + (rr if absf(d.y) < length * 0.7 else 0.0)
 		if flat.length() < 0.01:
-			_obstacle(Vector2(a.x, a.z), Vector2(1, 0), Vector2(rr, rr), lo, hi)
+			_obstacle(Vector2(a.x, a.z), Vector2(1, 0), Vector2(rr, rr), lo, hi, collide)
 		else:
 			var ax := Vector2(flat.x, flat.z).normalized()
 			var mid: Vector3 = (a + b) * 0.5
-			_obstacle(Vector2(mid.x, mid.z), ax, Vector2(flat.length() * 0.5 + rr, rr), lo, hi)
+			_obstacle(Vector2(mid.x, mid.z), ax, Vector2(flat.length() * 0.5 + rr, rr), lo, hi, collide)
 	var pts := PackedVector3Array()
 	var layers: Array = [[r0, r1, false]]
 	if wall > 0.0:

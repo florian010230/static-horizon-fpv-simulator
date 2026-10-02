@@ -126,6 +126,9 @@ func build() -> void:
 	_breakwater()
 	for p in [Vector3(120, 0, 90), Vector3(-150, 0, 70)]:
 		_tug(p)
+	# Port clutter in the terminal wherever there's room: cabins, reels,
+	# pallets, barriers, skips.
+	YardProps.scatter(geo, Rect2(-40, -300, 510, 300), 0.0, 60, rng)
 	Forest.plant(self, city.trees, self)
 
 # --- land ------------------------------------------------------------------------
@@ -487,7 +490,13 @@ func _straddle(p: Vector3) -> void:
 	geo.box(p + Vector3(0, 13.4, 0), Vector3(6.2, 1.4, 9.4), "yellow")
 	geo.box(p + Vector3(2.8, 12, -4.6), Vector3(1.4, 2, 1.6), "glass")
 	if rng.randf() < 0.6:
+		# The container hangs from the spreader, the spreader on four
+		# ropes from the top frame.
 		geo.box(p + Vector3(0, 4.0, 0), Vector3(2.44, 2.59, 12.2), _colors[rng.randi() % _colors.size()])
+		geo.box(p + Vector3(0, 5.5, 0), Vector3(2.6, 0.4, 12.4), "yellow")
+		for dz in [-4.5, 4.5]:
+			for dx in [-1.0, 1.0]:
+				geo.beam(p + Vector3(dx, 5.7, dz), p + Vector3(dx, 12.7, dz), Vector2(0.06, 0.06), "steel", false, false)
 
 ## A floodlight tower: a 30 m mast with a lamp head.
 func _floodlight(p: Vector3) -> void:
@@ -528,7 +537,7 @@ func _sts_crane(o: Vector3, boom_up: bool) -> void:
 	geo.beam(o + Vector3(0, 60, 0), boom_end, Vector2(0.3, 0.3), "steel")
 	geo.beam(o + Vector3(0, 60, 0), o + Vector3(0, 42, -35), Vector2(0.3, 0.3), "steel")
 	geo.box(o + Vector3(0, 45, -25), Vector3(10, 6, 12), "white")
-	geo.box(o + Vector3(0, 40.5, 8), Vector3(4, 3, 4), "crane_red")
+	geo.box(o + Vector3(0, 40.5, 8), Vector3(6.2, 3, 4), "crane_red") # between the boom girders
 	if not boom_up:
 		geo.beam(o + Vector3(0, 40, 30), o + Vector3(0, 22, 30), Vector2(0.1, 0.1), "steel", false)
 		geo.box(o + Vector3(0, 21.5, 30), Vector3(12.4, 0.8, 2.6), "yellow")
@@ -543,7 +552,7 @@ func _ship(o: Vector3) -> void:
 	var bridge := o + Vector3(-L * 0.5 + 34, 8, 0)
 	geo.box(bridge + Vector3(0, 12, 0), Vector3(14, 24, B - 4), "white")
 	geo.box(bridge + Vector3(0, 22, 0), Vector3(14.2, 3, B + 6), "glass")
-	geo.box(bridge + Vector3(-12, 14, 0), Vector3(6, 18, 6), "hull_red")
+	geo.box(bridge + Vector3(-9.5, 11, 0), Vector3(5, 22, 6), "hull_red") # funnel, on deck against the superstructure
 	for bay in range(12):
 		var x: float = o.x - L * 0.5 + 58 + bay * 17
 		for row in range(15):
@@ -659,11 +668,13 @@ func _tank_farm() -> void:
 	rr.pts = run
 	while d < rr.length():
 		var q: Vector3 = rr.sample(d)[0]
-		geo.box(Vector3(q.x, 3.2, q.z), Vector3(3.2, 0.4, 0.6), "steel")
+		var t: Vector3 = rr.sample(d)[1]
+		var side := Vector3(-t.z, 0, t.x).normalized()
 		for s2 in [-1.4, 1.4]:
-			var t: Vector3 = rr.sample(d)[1]
-			var side := Vector3(-t.z, 0, t.x)
 			geo.box(Vector3(q.x, 3.3, q.z) + side * s2, Vector3(0.4, 6.6, 0.4), "steel")
+		# Crossbeams between the posts: one mid-height, one the pipes rest on.
+		for yb in [3.2, 6.45]:
+			geo.beam(Vector3(q.x, yb, q.z) - side * 1.6, Vector3(q.x, yb, q.z) + side * 1.6, Vector2(0.4, 0.4), "steel")
 		d += 16.0
 	geo.box(Vector3(690, 1.2, 60), Vector3(10, 2.4, 240), "quay") # jetty
 	geo.box(Vector3(690, 8, 170), Vector3(12, 12, 12), "yellow")

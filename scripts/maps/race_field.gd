@@ -1,11 +1,15 @@
 extends BuiltMap
 
 ## Race Field - a club race day on a mown field (Low performance).
-## Course (fly order, north = -z), all MultiGP standard obstacles:
-##   START (0,25) north -> gate (0,0) -> ladder, top opening (0,-30)
-##   -> turn flag -> dive gate (-25,-45) -> tower gate (-45,-22) south
-##   -> hurdle (-45,2) -> double gate, upper opening (-26,34) east
-##   -> turn flag (8,46) -> back through START.
+## Course (fly order, north = -z), all MultiGP standard obstacles, a
+## clockwise lap round the whole field (redesigned 2026-10-02 for flow:
+## every straight ends in a different kind of obstacle, two dives, a
+## climb through the ladder's top, turn flags at the corners):
+##   START (0,30) east -> gate (25,30) -> left: gate (45,8) north ->
+##   ladder, top opening (45,-20) -> dive gate (35,-45) -> left: hurdle
+##   (10,-55) west -> double gate, upper (-15,-52) -> tower gate
+##   (-45,-50) -> left: gate (-62,-20) south -> dive gate (-60,5) ->
+##   left: hurdle (-40,28) east -> gate (-20,30) -> START.
 ## South of the course: safety net, pilot stand, pit tents, car park.
 
 var course: RaceCourse
@@ -19,9 +23,9 @@ func border() -> Array:
 func preview_views() -> Array:
 	return [
 		["overview", Vector3(30, 28, 70), Vector3(-15, 0, -5)],
-		["start", Vector3(0, 1.3, 33), Vector3(0, 1.3, 0)],
-		["ladder", Vector3(0, 3.5, -12), Vector3(0, 4.0, -30)],
-		["dive", Vector3(-12, 7, -45), Vector3(-25, 3, -45)],
+		["start", Vector3(-8, 1.3, 30), Vector3(25, 1.3, 30)],
+		["ladder", Vector3(45, 3.5, -2), Vector3(45, 4.2, -20)],
+		["dive", Vector3(35, 9, -32), Vector3(35, 4, -45)],
 		["pits", Vector3(-10, 3, 45), Vector3(10, 1, 62)],
 	]
 
@@ -49,16 +53,23 @@ func build() -> void:
 	course = RaceCourse.new()
 	course.name = "RaceCourse"
 	add_child(course)
-	course.start_gate(geo, Vector3(0, 0.05, 25), 0.0)
-	course.gate(geo, Vector3(0, 0.05, 0), 0.0)
-	course.gate(geo, Vector3(0, 0.05, -30), 0.0, 3, 0.0, 2, "gate_b") # ladder, top opening
-	course.flag(geo, Vector3(1, 0.05, -52), "gate_b")
-	course.dive_gate(geo, Vector3(-25, 0.05, -45), 0.0, 4.0)
-	course.gate(geo, Vector3(-45, 0.05, -22), PI, 1, 1.52)            # tower gate, flown south
-	course.hurdle(geo, Vector3(-45, 0.05, 2), PI)
-	course.gate(geo, Vector3(-26, 0.05, 34), -PI * 0.5, 2, 0.0, 1)   # double gate, upper
-	course.flag(geo, Vector3(8, 0.05, 46))
-	for p in [Vector3(-60, 0.05, -40), Vector3(-15, 0.05, -60), Vector3(30, 0.05, 10)]:
+	var E: float = -PI * 0.5
+	var W: float = PI * 0.5
+	var S: float = PI
+	course.start_gate(geo, Vector3(0, 0.05, 30), E)
+	course.gate(geo, Vector3(25, 0.05, 30), E)
+	course.gate(geo, Vector3(45, 0.05, 8), 0.0, 1, 0.0, 0, "gate_b")
+	course.gate(geo, Vector3(45, 0.05, -20), 0.0, 3, 0.0, 2)           # ladder, top opening
+	course.dive_gate(geo, Vector3(35, 0.05, -45), 0.0, 5.0)
+	course.hurdle(geo, Vector3(10, 0.05, -55), W, "gate_a")
+	course.gate(geo, Vector3(-15, 0.05, -52), W, 2, 0.0, 1, "gate_b")  # double gate, upper
+	course.gate(geo, Vector3(-45, 0.05, -50), W, 1, 1.52)              # tower gate
+	course.gate(geo, Vector3(-62, 0.05, -20), S, 1, 0.0, 0, "gate_b")
+	course.dive_gate(geo, Vector3(-60, 0.05, 5), 0.0, 4.0, "gate_a")
+	course.hurdle(geo, Vector3(-40, 0.05, 28), E)
+	course.gate(geo, Vector3(-20, 0.05, 30), E, 1, 0.0, 0, "gate_b")
+	# Turn flags at the corners.
+	for p in [Vector3(56, 0.05, 40), Vector3(52, 0.05, -58), Vector3(-68, 0.05, -60), Vector3(-70, 0.05, 36)]:
 		course.flag(geo, p, "gate_b")
 
 	_safety_net(52.0, -60.0, 50.0)

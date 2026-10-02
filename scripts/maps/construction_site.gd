@@ -345,6 +345,10 @@ func _tower_crane(base: Vector3, height: float, jib: float, yaw_deg: float) -> v
 	geo.beam(trolley, Vector3(trolley.x, hook_y, trolley.z), Vector2(0.04, 0.04), "dark", false, false)
 	geo.box(Vector3(trolley.x, hook_y - 0.3, trolley.z), Vector3(0.5, 0.6, 0.3), "crane_red", 0.0, false, false)
 	geo.box(Vector3(trolley.x, hook_y - 2.8, trolley.z), Vector3(2.2, 1.3, 1.6), "rebar")
+	# Four slings from the hook down to the load's corners.
+	for cx in [-1.0, 1.0]:
+		for cz in [-0.7, 0.7]:
+			geo.beam(Vector3(trolley.x, hook_y - 0.6, trolley.z), Vector3(trolley.x + cx, hook_y - 2.15, trolley.z + cz), Vector2(0.03, 0.03), "dark", false, false)
 
 # --- the pit ---------------------------------------------------------------------------
 

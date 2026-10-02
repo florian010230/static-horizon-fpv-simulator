@@ -102,6 +102,28 @@ const VIDEO_EFFECT_STRENGTH: Array[float] = [0.0, 0.45, 0.9]
 ## Wind on outdoor maps: 0 off, 1 light (~3 m/s), 2 gusty (~7 m/s with gusts).
 var wind_level: int = 0
 
+## Pilot aids from the sim research (Liftoff / Velocidrone have them):
+## live stick overlay in the OSD (optional, off by default), Betaflight's
+## throttle MID/EXPO, a fisheye camera lens (0 off, 1 light, 2 strong).
+## (No turtle mode: a quad on its back rights itself after 2 s anyway.)
+var stick_overlay: bool = false
+var throttle_mid: float = 0.5
+var throttle_expo: float = 0.0
+var lens_fisheye: int = 0
+
+## Betaflight's throttle curve (rc.c, thrMid/thrExpo): identity at MID
+## 0.5 / EXPO 0, flatter around MID with expo.
+func throttle_curve(t: float) -> float:
+	var t2: float = t - throttle_mid
+	var y: float = (1.0 - throttle_mid) if t2 > 0.0 else (throttle_mid if t2 < 0.0 else 1.0)
+	return clampf(throttle_mid + t2 * (1.0 - throttle_expo + throttle_expo * t2 * t2 / maxf(y * y, 0.0001)), 0.0, 1.0)
+
+## Freestyle (every map, race maps without timing) or Race (race maps
+## only: lap timer, ghost, personal bests). Picked in the menu.
+const MODE_FREESTYLE: int = 0
+const MODE_RACE: int = 1
+var game_mode: int = MODE_FREESTYLE
+
 ## Which real frame Drone.apply_profile() should spawn as - "seeker3" or
 ## "whoop" (see drone.gd's PROFILES). Set by the menu's drone-choice panel.
 var selected_drone: String = "seeker3"
@@ -115,7 +137,8 @@ var selected_drone: String = "seeker3"
 const SETTINGS_PATH: String = "user://settings.cfg"
 const SAVED_FIELDS: Array[String] = ["crosshair_enabled", "shadows_enabled", "graphics_quality", "performance_mode",
 	"max_fps", "camera_angle_deg", "camera_fov_deg", "view_distance", "rates_type", "rates_roll", "rates_pitch", "rates_yaw",
-	"selected_drone", "osd_enabled", "battery_enabled", "video_effect", "wind_level", "units"]
+	"selected_drone", "game_mode", "osd_enabled", "battery_enabled", "video_effect", "wind_level", "units",
+	"stick_overlay", "throttle_mid", "throttle_expo", "lens_fisheye"]
 var _persist: bool = true
 var _last_saved: String = ""
 var _save_timer: float = 0.0
@@ -251,6 +274,10 @@ func apply_shadow_setting() -> void:
 		return
 	var we := scene.get_node_or_null("WorldEnvironment") as WorldEnvironment
 	WorldShading.setup(scene, we.environment if we else null)
+	# Hand-made maps: their gradient sky gets the clouds too (BuiltMap does
+	# its own).
+	if we and sun and not (scene is BuiltMap) and we.environment.sky and we.environment.sky.sky_material is ProceduralSkyMaterial:
+		BuiltMap.cloud_sky(we.environment.sky, we.environment.sky.sky_material, sun, 0.6, we)
 	var region: Rect2 = scene.get_meta("shadow_region", SHADOW_REGIONS.get(scene.name, Rect2()))
 	if sun:
 		sun.shadow_enabled = false # engine shadow maps: see WorldShading

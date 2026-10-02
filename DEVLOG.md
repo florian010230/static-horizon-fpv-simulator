@@ -1060,6 +1060,360 @@ preview, presets, and "pitch follows roll". Switching type converts
 the numbers so the feel stays close. Old saved settings migrate.
 
 
+### Act XIV — Two modes, real quads, and nothing in the air (2026-10-01)
+
+The list this time: a proper way to choose between casual flying and
+timed racing instead of lumping them together; a picture on each map
+card instead of a flat color swatch; drone models that actually look
+like a 5" build instead of a primitive skeleton; the leaving-flight-area
+border should show itself properly, not just light up a patch under the
+drone; a tidier pause menu; a round of pilot-aid features grounded in
+what the established sims (Liftoff, Velocidrone, Uncrashed, DRL, TRYP
+FPV) actually offer; honester front-page copy; and "make sure nothing is
+floating in the air anywhere" as a standing check, not a one-off map
+review. Uncommitted at the time of writing. Sonnet (a subagent) did the
+research pass behind the pilot aids; Opus did the rest of the round and
+reviewed Sonnet's findings before building on them.
+
+**Two modes.** Play now opens **Choose a Mode** before the map list:
+**Freestyle** (every map, including the race tracks - just without
+their timer, next-gate marker or ghost) or **Race** (only the three
+built-for-it tracks - Race Field, Race Arena, Office Whoop Race - with
+all of that switched on). `Settings.game_mode` persists the choice
+(`MODE_FREESTYLE`/`MODE_RACE`); `MapCatalog` entries got a `"race"` flag
+and `MapCatalog.is_race()`; `RaceCourse.setup` simply disables its own
+timing in Freestyle rather than the map needing to know which mode it's
+in. Personal bests are saved per map *and* drone, with the date, in
+`user://race_records.cfg`; `RaceCourse.records(map_id)` feeds a race
+map's card in Choose a Map ("Personal best: <drone> <time>"), and
+beating your own time flashes "NEW PERSONAL BEST" in the HUD.
+
+**A picture per map, and the run that quietly half-rendered itself.**
+Map cards swapped their flat tier-colored swatch for an actual render of
+the map (`images/maps/<id>.jpg`, 1024x512), produced by
+`godot --path . -- --dev-preview thumbs <map id>` - camera positions per
+map in `dev_preview_capture.gd`'s `HERO` dict, High quality, no HUD,
+camera tilt zeroed, the border disabled, haze pushed further out so the
+shot doesn't read as foggier than the real map. The first renders came
+back all sky: the FPV camera's standing 25-degree uptilt, fine for
+flying, pointed the preview camera at nothing but cloud, and - once that
+was leveled - the flight-area border tripped anyway because the hero
+camera positions sat higher up than any pilot actually flies, past the
+warning radius on more than one map. After both of those, a second
+problem looked like a rendering bug: an fog-distance override meant to
+push haze back for the screenshot instead seemed to blank entire scenes
+white. It wasn't the fog - it was that the first version rendered every
+map's thumbnail in one long run, and by the time it reached the later
+maps in the list, something in the accumulated state (loaded textures,
+shader variants, GPU memory, never pinned down more precisely than
+that) had started producing half-empty frames for maps later in the
+sequence - reliably reproducible by position in the list, not by which
+map it was. The fix sidesteps the question entirely rather than
+answering it: `thumbs <map id>` renders exactly one map and exits, so
+each map's shot comes from its own clean process.
+
+**Real quads, not a primitive skeleton.** `DroneFrameBuilder` was
+rebuilt around an actual typical 5" true-X build: a carbon bottom plate
+with tapered arms and motor pads, a top plate on standoffs, an FC stack
+between them, the camera in TPU side plates tilted 25 degrees, a LiPo
+with a printed label band, a strap and an XT60 lead, a VTX antenna on
+its own TPU mount, receiver whips, motors with anodised bells, and
+3-blade pitched props - the Static Three and Static Five both read as
+real builds now, not a shared generic frame scaled up. The Tiny Whoop
+got its own pass: translucent prop ducts, a canopy with a camera, a
+visible 1S cell, 4-blade props. All of it merged per material (so the
+part count stayed free) and lit by a new small shader,
+`shaders/drone_studio.gdshader` - a view-space studio light rig
+(key/fill/rim lights plus specular highlights, a carbon-twill weave
+texture) built specifically because the engine's own lights still do
+nothing on this GPU (Act XI), and the project's existing baked-vertex-
+light approach doesn't read well on a small, close-up, turntable-lit
+subject the way it does on a building or a landscape. The menu's preview
+camera moved to look from above-front, which suits the new, more
+detailed top plate and camera pod far better than the old side-on view.
+
+**The border shows itself, properly, this time.** Act XIII's visible
+border only lit up within about 30 m of the drone - correct, but it
+meant you couldn't actually see the shape of the boundary you were
+approaching, just a patch that followed you. Past the warning line the
+*whole* border now draws: a coarse 16 m grid over the entire boundary,
+with the finer 2 m grid and hazard stripes layered on top near wherever
+the drone actually is. And past the reset line, the drone no longer
+triggers a full scene reload behind the loading screen - it's put back
+at its spawn point instantly, exactly like pressing `R`, with a "OUT OF
+RANGE - BACK TO START" message in the HUD. Reloading the whole map was
+always overkill for what's functionally the same reset `R` already did
+in one frame.
+
+**Pause menu, tidied.** The header's "Back" became "Main menu" - it
+leaves the flight entirely, which "Back" undersold next to `Continue`
+and `Esc` (both of which already just resume). The bottom row is now
+Reset drone / Change map / Settings, matching how those three are
+actually used in practice.
+
+**Pilot aids, from a research pass, not a guess.** Sources: a Liftoff
+Steam forum thread asking for stick overlays, fpvcraft.com's
+Liftoff/Velocidrone settings guides, velocidrone.co.uk's desktop manual
+on fisheye/True Lens, oscarliang.com/fpv-simulator, and the demonixis
+DVR Simulator's auto turtle mode. Four features stayed: an optional stick
+overlay in the OSD (Settings -> Camera & HUD, off by default) showing
+roll/pitch/yaw/throttle live;
+Betaflight's actual throttle MID/EXPO formula from `rc.c` (Settings ->
+Rates, `Settings.throttle_curve`); a fisheye lens (barrel distortion in
+`shaders/analog_video.gdshader`, Settings -> Camera & HUD: Flat / Light
+/ Strong); and a line-of-sight view (`V`) - the camera jumps to the
+spawn point at eye height and turns to keep following the quad, the way
+a pilot without goggles actually watches their own flying. What the
+research turned up but didn't land this round, noted as open in
+TODO.md: DVR/replay of a flight, physics-tuning sliders exposed to a
+pilot (not just the `O` debug panel), checkpoint-style challenges,
+signal-loss simulation, structured lesson plans, and multiplayer/online
+leaderboards.
+
+**Honester front-page copy.** The start screen used to claim "real-world
+quads" - not true, and said so nowhere. It now reads "Practise FPV with
+your own radio and your own Betaflight rates..."; the About text
+explains instead that the quads' mass/thrust/drag are taken from real
+ones and that it's a simulation - close, but never quite the real thing.
+
+**Nothing floats, and the detector that lied about 270 bugs.** The
+standing map requirements already demanded nothing flicker and
+everything connect; this round added a third: nothing floats. `Geo` now
+records every primitive it draws as "support" - including pieces with
+no collision and the individual segments of a `Route` sweep, which
+hadn't counted before - and `Geo.floating()` / `BuiltMap.floating_pieces()`
+walk every solid piece looking for one that touches no ground and no
+other support (rectangle overlap with 0.15 m of slack, 0.35 m of
+vertical tolerance; hanging from something above counts as supported
+too). The first run flagged 270 pieces across the generated maps, 375
+once sweep segments were added to the count - and reading through them,
+almost all were the detector lying to itself: a roof resting on a
+cornice that had deliberately been built without collision (so it was
+invisible as "support"), and long thin parts (railings, cables)
+approximated by the circle check as having small gaps at every corner
+where the real geometry had none. Only after non-colliding parts and
+sweep segments started counting as support, and the test switched from
+a circle to a rectangle overlap, did the noise clear out and the real
+cases stay standing: a coke-oven larry car hovering 40 cm over its
+track in the steel mill; straddle carriers in the harbour holding
+containers in mid-air (fixed with an actual spreader and ropes); a
+ship-to-shore crane whose machinery house didn't reach down to its own
+girders; a ship's funnel floating above its deck; a pipe rack whose
+crossbeam ran *along* the route instead of *across* between the posts
+(now two crossbeams per frame, with the pipes actually resting on the
+top one); crane loads on the construction site with no slings holding
+them; the village's power-loop hoop, which had never had a stand under
+it; and the factory entrance sign, hanging 40 cm under its beam. Every
+fix added a new node - a stand, a spreader, a pair of straps - rather
+than moving anything already there. `SH_FLOAT=1` prints the list while a
+map builds; the self-test now checks every generated map has none, and
+`godot --path . -- --dev-preview floatcheck` runs the hand-made scene
+maps' equivalent by mesh bounding box.
+
+**More detail, kept cheap.** `YardProps` site clutter (cabins, cable
+reels, pallets, barriers, skips) now also dresses the harbour's
+container terminal, not just the construction site and steel mill. Its
+materials batch in coarse 256 m cells and stop drawing past 450 m, the
+same discipline the vehicle fleets already follow, so the extra detail
+didn't cost the draw-call budget back. Measured FPS on High/fullscreen
+at spawn: Harbour 44, Construction Site 42, Steel Mill 50.
+
+Self-test: 430 checks, all passing.
+
+A turtle mode (flip back over with a full stick) was built too and
+removed again the next day at the user's word: the quad already turns
+itself upright two seconds after landing on its back, so a second way
+to do the same thing was only clutter.
+
+### Act XV — A real race, real gates, real sky (2026-10-02)
+
+The list this time: Race mode rebuilt around an actual race instead of
+a single timed lap; gates redesigned to look like the real MultiGP
+hardware they were only gesturing at before; all three race tracks
+re-laid-out; a sky with a sun disc and drifting clouds instead of the
+plain gradient, plus the frame-rate regression it caused and the fix;
+the motor sound rebuilt from scratch, handed to a Sonnet subagent and
+reviewed afterward; and a small menu-card layout fix. Self-test: 431
+checks, all passing.
+
+**A real race, not a stopwatch on a single lap.** `RaceCourse` used to
+time one lap and call it done; a race is now `RaceCourse.LAPS = 3`
+laps, started from a flying start - the clock starts on the first pass
+of START, not on a countdown - and finishing brings up a results card
+(`ui.show_race_results`) listing every lap, the total, "NEW TRACK
+RECORD" or a rank, and the pilot's own local top 5 for that exact track
+and drone (`user://race_board.cfg`, with the date; `RaceCourse.boards(map_id)`).
+The next pass of START simply starts a new race - no menu round-trip
+needed to go again. Every gate now shows a live split against the best
+lap's own splits (saved alongside the best lap as `"<drone>_splits"` in
+`race_records.cfg`): green `-0.31` when ahead, red `+0.42` when behind,
+which needed `ui.set_race_info` to grow a good/bad colour flag. Flying
+through a later gate instead of the next one in order now says "MISSED
+GATE n" rather than silently not counting it. The HUD line reads `LAP
+n/3`, the current lap time, `GATE n/N`, and `BEST`, with a "NEW
+PERSONAL BEST LAP" flash on top; number boards (`Label3D`, billboard)
+sit above every gate, with START labelled "S"; and every timing event -
+gate, lap, personal best, race start, the finish fanfare, a missed gate
+- gets its own tiny synthesized beep, no audio files involved. Records
+are kept per *track layout*, not per map: `MapCatalog` entries carry a
+`"track": n`, and `RaceCourse.section(map_id)` turns that into a key
+like `"race_field@2"` - so redesigning a track (as this round did, to
+all three) starts a clean record table instead of comparing fresh laps
+against times set on a layout that no longer exists. The map choice
+cards for all three tracks now show each drone's best lap and best
+3-lap race, not just a single number.
+
+**Gates that actually look like MultiGP gates.** The old gate geometry
+was a flat frame; it's now a pillowed fabric panel on each side (a
+thicker strip down the middle of each panel, the way a real quilted
+gate panel sits), white piping around the opening - on the LED gates
+the piping doubles as the light strip and the panels go dark instead -
+a PVC tube frame around the outer edge, a dark sponsor patch on the top
+panel, and weighted feet / base plates so nothing in a race track reads
+as floating, which the project's own "nothing floats" rule (Act XIV)
+would otherwise flag. The small whoop-sized gates got piping and a base
+plate too. A new builder, `RaceCourse.hanging_gate()`, hangs a gate of
+any size - including whoop scale - from the ceiling on two wires slung
+from bars spanning between roof trusses, for courses where a gate needs
+to be in the air with nothing underneath it.
+
+**Three tracks, redesigned.** Race Field became a full 12-gate
+clockwise lap around the whole field instead of a short out-and-back:
+START facing east at (0, 30), then gate, gate, a ladder (fly the top
+opening), a 5 m dive gate, a hurdle to the west, a double gate (upper
+opening), a tower gate, a gate to the south, a second dive gate at 4 m,
+a hurdle to the east, one more gate, and back through START - with turn
+flags at the four corners and the spawn point moved behind START facing
+east to match. Race Arena gained a gate hung from the roof trusses as
+the last gate before START: a left turn out of the pink gate, a climb,
+then a drop down to the start line. Office got a whoop gate hung from
+the ceiling between the existing high gate and the desk gate, so the
+line is climb, duck under the ceiling, drop onto the desk.
+
+**A sky with clouds, and the FPS regression that came with it.** Every
+generated map (and, through `Settings`, the hand-made village, factory
+and school) swapped the plain `ProceduralSkyMaterial` gradient for
+`shaders/sky_clouds.gdshader`: same base colours, but now a sun disc
+with a warm glow around a low sun, and clouds generated from a single
+`FastNoiseLite` texture baked once at load, projected onto a flat cloud
+layer that shrinks toward the horizon, lit brighter on the sun's side
+and tinted by the sun's colour (orange at sunset), drifting slowly
+across the sky; an environment key `"clouds"` sets the cover threshold
+(1.2 reads as clear). `BuiltMap.cloud_sky()` is the one shared helper
+every map calls. The first version shipped and immediately cost real
+frame rate: Race Field dropped from 48 to 29 FPS. The cause wasn't the
+noise texture or the extra fragment work in the visible sky - it was
+that the drifting clouds read `TIME` in the sky shader, and Godot
+re-renders the sky's reflection cubemap every frame when anything in
+the sky material is time-varying. Nothing in the project actually uses
+reflected light (every material is the project's own unshaded baked
+kind), so the fix was to give the cubemap render passes
+(`AT_CUBEMAP_PASS`) the plain static gradient instead of the animated
+one, turn off reflected light entirely, and drop the radiance size to
+32 px. FPS came back to 54 on Race Field and 44 on Harbour.
+
+**Motor sound, rebuilt - by a subagent.** The motor audio
+(`scripts/motor_audio.gd`) was rebuilt from the ground up by a Sonnet
+subagent and reviewed afterward: two rendered layers per drone class
+instead of one - a tone loop (blade-pass harmonics with a spectral tilt
+per class, motor whine plus an odd-harmonic ESC "buzz", rumble, and
+four motors with slow, independent rpm wander so the beating between
+them drifts instead of locking into an audible loop, built click-free
+by integrating whole cycles of phase) and a separate broadband prop-wash
+noise loop on its own "Wash" child player. A new "MotorLPF" audio bus
+carries a low-pass filter whose cutoff tracks rpm - dull at idle,
+bright at full throttle - and the wash layer's volume follows rpm and
+spikes on fast rpm changes (punch-outs, throttle chops), the way prop
+noise actually behaves rather than just getting louder with throttle.
+Render time is about 100-150 ms per drone class, once, not per frame.
+Sources cited directly in the file: NASA's AMS 2021 quadcopter
+aeroacoustics paper (Kelecy), an Acentech article on drone noise, the
+BLHeli_32 ESC guide (uavmodel), and halfchrome / tattuworld for what
+actually distinguishes a whoop's scream from a 5-inch's growl.
+
+**Menu cards that fit what's actually in them.** The map-choice cards
+in Choose a Map were sized off the button alone, which doesn't grow
+with its children, so once a card's tags wrapped onto a second line or
+a per-drone personal-best list grew past a couple of entries, the
+bottom got cut off. The card's minimum height now follows its actual
+content, tags wrap through an `HFlowContainer` instead of overflowing,
+and personal bests are one line per drone - nothing at the bottom of a
+card is cut off anymore.
+
+Self-test: 431 checks, all passing. Uncommitted at the time of writing.
+
+### Act XVI — The whoop gets real (2026-10-02)
+
+The list this time: flight feedback on the motor sound, and the whoop
+itself stopped being an invented placeholder and became a researched
+real frame, the same way the Seeker3 and the Static Five already were.
+Both landed in one round, plus a model rebuild to match and a couple of
+finer details on the two freestyle quads while the model code was
+open. Self-test: 488 checks, all passing.
+
+**Motor sound, tuned from actually flying it.** The prop-wash layer was
+too loud on throttle-ups, so it's now roughly 8 dB quieter with a
+smaller punch spike (max +3 dB, down from a louder one). The other way:
+armed and sitting at 0% throttle the motors were too quiet, even though
+airmode and idle thrust already keep the props physically spinning
+there - idle volume is raised about 13 dB (`db_min` is now only ~8 dB
+under `db_max`, instead of a much bigger gap) and idle brightness is
+raised too (the low-pass idle cutoff moved up), so the idle hum reads
+as "motors are live" instead of as silence.
+
+**A toy whoop becomes a real one.** The old Tiny Whoop was an invented
+placeholder sized off a generic "sub-75mm class" research pass: 1.6
+inch, 25 g, translucent prop ducts doing double duty as guards, 1S
+300 mAh, an estimated 40 km/h, ~3:1 thrust-to-weight. It's now the
+**Static Whoop**, grounded the same way the Seeker3 and Static Five
+were - real sources cited directly in `drone.gd`: a current 75 mm
+brushless ducted whoop's own product page, and oscarliang.com's review
+of the previous generation ("incredibly nimble", hovers well under half
+throttle). New numbers: 75 mm wheelbase (motor offset 26.5 mm), 32 g
+all-up (21 g dry plus a ~11.5 g 1S 480 mAh pack - an estimate, no
+source states it directly), 0802 motors, 0.55 N thrust per motor
+(~7:1 thrust-to-weight from one secondary source), 41 mm 3-blade props,
+a 1S 480 mAh / 12 A pack, and a top speed of 70 km/h - still an
+ESTIMATE, since no source anywhere quotes a measured number for the
+class, derived with the same drag formula used for the other two
+frames rather than invented. The display name changes to Static Whoop
+in the menu; the id stays `"whoop"` internally, same pattern as the
+seeker3 -> Static Three rename back in Phase 1, so saved settings and
+personal bests keep working. At ~7:1 instead of ~3:1 it flies light and
+snappy rather than floaty. The motor sound's own per-class table moved
+with it: 3-blade, ~66,000 rpm loaded (0802 at roughly 25,000 KV on 1S),
+grounded in the same numbers as the flight model instead of left over
+from the old spec.
+
+**The model rebuilt to match - closed ducts, not open rings.** The old
+whoop model's prop guards were simple open `TorusMesh` rings; the new
+one is built like an actual ducted whoop's frame: closed thin-walled
+ducts (10.5 mm tall, a flared top lip and a narrow inner floor lip,
+with the props sitting inside the upper half instead of hanging below
+an open ring), motor mounts braced straight to the duct floor, arms
+running in to a centre plate, and bridges between neighbouring ducts so
+the four ducts read as one frame rather than four separate rings. On
+top: an angular black canopy with the camera (25 degrees) behind its
+front window, the 1S pack in a holder behind it, a copper-pipe antenna,
+red motor bells, and orange 3-blade props.
+
+**The freestyle quads got finer while the code was open.** Static
+Three and Static Five picked up copper stator windings visible under
+the bell, a spoked bell top, a metal lens ring around the camera, a
+rounded battery pack instead of a plain box, and a small rear LED
+strip - detail passes alongside the whoop rebuild, same primitives and
+materials, nothing that adds a meaningful draw call on weak hardware.
+
+**One self-test number moved for a real reason, not a flaky retry.**
+The Static Whoop's new ~7:1 thrust-to-weight meant the indoor takeoff
+hold in self-test - which only has to clear the School gym and Office
+ceilings before steering - now punched straight into them. Shortened
+just for the whoop indoors: School 0.6 s, Office 0.7 s, both
+re-verified against the new frame rather than loosened until the test
+passed.
+
+Self-test: 488 checks, all passing. Uncommitted at the time of writing.
+
 ## Recurring engineering themes
 
 A few patterns repeat often enough across all 13 commits to be the

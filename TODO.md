@@ -45,6 +45,47 @@ All 12 maps exist. Self-test: 413 checks.
       trees, the steel mill rebuilt after the Völklinger Hütte, sunsets,
       visible border, Settings in five tabs, Betaflight/Actual/Quick/KISS
       rates per axis. Phase 2 remaining: replay, key/button bindings.
+- [x] 2026-10-01 (Act XIV): Freestyle/Race menu modes (personal bests
+      per map + drone, saved with the date), a rendered preview picture
+      per map card (`--dev-preview thumbs <id>`), rebuilt freestyle and
+      whoop drone models lit by a studio shader, the visible border
+      extended to the whole boundary plus an instant respawn-at-spawn on
+      reset (no more full scene reload), a tidied pause menu (Main menu
+      header, Reset drone/Change map/Settings row), three researched
+      pilot aids (stick overlay, Betaflight throttle
+      MID/EXPO, fisheye lens) plus a line-of-sight view (`V`), honester
+      front-page copy, and a "nothing floats" check for every map
+      (`BuiltMap.floating_pieces()`, `--dev-preview floatcheck` for the
+      hand-made maps). Self-test: 430 checks.
+- [x] 2026-10-02 (Act XV): Race mode rebuilt as a real 3-lap race from a
+      flying start (results card with per-track-layout top 5, saved in
+      `user://race_board.cfg`; live gate splits against the best lap,
+      colour-flagged good/bad; "MISSED GATE n" warning; numbered gate
+      boards; synthesized timing beeps; records keyed per
+      `MapCatalog "track"` number so a redesigned layout starts fresh),
+      gates redesigned to look like real MultiGP hardware (pillowed
+      fabric panels, piping, PVC frame, sponsor patch, weighted feet)
+      plus a roof-hung `RaceCourse.hanging_gate()`, all three race
+      tracks re-laid-out (Race Field's 12-gate lap, a hung gate added to
+      Race Arena and Office), a sky shader with a sun disc and drifting
+      clouds (`BuiltMap.cloud_sky()`, fixed a reflection-cubemap FPS
+      regression along the way), motor sound rebuilt as a tone loop plus
+      a separate prop-wash noise loop with an rpm-tracking low-pass
+      filter (done by a Sonnet subagent, reviewed), and map-choice cards
+      that size to their actual content. Self-test: 431 checks.
+- [x] 2026-10-02 (Act XVI): motor sound tuned from flight feedback
+      (prop-wash quieter on throttle-ups, idle volume/brightness raised
+      so armed motors are audible at 0% throttle); the Tiny Whoop became
+      the **Static Whoop**, modelled on a current 75 mm brushless ducted
+      whoop (75 mm, 32 g, 0802 motors, 1S 480 mAh, ~7:1 thrust-to-weight,
+      70 km/h estimate) instead of an invented placeholder, flying
+      light and snappy instead of floaty; its frame rebuilt to match
+      (closed ducts, canopy, pack holder, antenna, red bells, orange
+      3-blade props), and finer surface detail added to the freestyle
+      quads (stator windings, spoked bell top, lens ring, rounded
+      battery, rear LED strip); self-test's indoor takeoff hold
+      shortened for the whoop (School 0.6s, Office 0.7s) now that it's
+      ~7:1. Self-test: 488 checks.
 
 ## Phase 2 - Sim features pilots expect (Liftoff / Velocidrone baseline)
 
@@ -58,10 +99,27 @@ All 12 maps exist. Self-test: 413 checks.
 - [x] Optional analog video look (static, slight colour noise, breakup
       near walls/far away) - on/off.
 - [x] Lap timer + checkpoints, best lap saved per map/drone, ghost of the best lap.
+- [x] Freestyle/Race mode choice at the menu, with race-only timing/ghost
+      and personal bests shown on the map card (Act XIV).
+- [x] Stick overlay in the OSD (Settings -> Camera & HUD) (Act XIV).
+- [x] Betaflight's actual throttle MID/EXPO curve, `rc.c`'s own formula
+      (Settings -> Rates; Act XIV).
+- [x] Fisheye lens (Flat/Light/Strong barrel distortion in the analog
+      video shader; Act XIV).
+- [x] Line-of-sight view (`V`): camera at the spawn point, eye height,
+      following the quad (Act XIV).
 - [ ] Replay of the last flight (record transforms, play back from a
       chase camera).
 - [ ] Key/button bindings screen (arm, mode, reset, pause on radio
       switches/buttons).
+- [ ] Checkpoint-style training challenges (not just race-mode laps).
+- [ ] Signal-loss simulation (the real-world reason an FPV radio cuts
+      out, distinct from this sim's distance-based border reset).
+- [ ] Structured training / lesson plans ("plug in -> calibrate -> fly"
+      goes some way; a real curriculum doesn't exist yet).
+- [ ] Multiplayer / online leaderboards.
+      (All five above: noted as open from the Act XIV research pass over
+      Liftoff, Velocidrone, Uncrashed, DRL and TRYP FPV - see DEVLOG.)
 - [x] Wind (off / light / gusty) for outdoor maps.
 - [x] Settings persisted to disk (user://settings.cfg, auto-saved; off in tests).
 
@@ -84,7 +142,7 @@ New:
        chimneys/exhaust stacks, gas holder, water tower. Forest via
        MultiMesh trees. Best graphics tier: rust/concrete textures,
        baked AO, fog, glow, light shafts.
-5. [x] **Playground** (Tiny Whoop) - Low. Slides, swings, climbing
+5. [x] **Playground** (whoop) - Low. Slides, swings, climbing
        frame, sandbox, tunnel tube, benches, fence, a few trees.
 6. [x] **Race Track - MultiGP field** - Low. Standard 5x5 ft gates,
        start/finish gate, double gate, ladder (3 stacked), tower gate,

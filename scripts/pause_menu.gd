@@ -69,7 +69,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		open()
 
 func _build_card() -> Control:
-	var parts: Array = UIKit.screen_card(_root, "Paused", "", 700, resume, 760)
+	# Header: Main menu (Continue and Esc already resume - a "Back" there
+	# was a third way to do the same thing).
+	var parts: Array = UIKit.screen_card(_root, "Paused", "", 700, _to_main_menu, 760, "‹  Main menu", "Esc to continue")
 	var content: VBoxContainer = parts[1]
 
 	var cont := UIKit.button("Continue", "PrimaryButton", 60)
@@ -122,7 +124,7 @@ func _build_card() -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	content.add_child(row)
-	for spec in [["Reset drone", _reset_drone], ["Change map", _change_map], ["Settings", _open_settings], ["Main menu", _to_main_menu]]:
+	for spec in [["Reset drone", _reset_drone], ["Change map", _change_map], ["Settings", _open_settings]]:
 		var b := UIKit.button(spec[0], "", 54)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.pressed.connect(spec[1])
@@ -130,7 +132,7 @@ func _build_card() -> Control:
 	# The key hints live here now (the in-flight HUD is one status line).
 	UIKit.gap(content, 4)
 	var keys := Label.new()
-	keys.text = "Enter arm/disarm   L acro/angle   R reset   O tuning panel   Esc pause\nKeyboard: A/D roll   W/S pitch   Q/E yaw   Shift/Ctrl throttle"
+	keys.text = "Enter arm/disarm   L acro/angle   R reset   V line of sight   O tuning panel   Esc pause\nKeyboard: A/D roll   W/S pitch   Q/E yaw   Shift/Ctrl throttle"
 	keys.theme_type_variation = "Small"
 	keys.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	content.add_child(keys)
@@ -139,7 +141,7 @@ func _build_card() -> Control:
 func _refresh_drone_label() -> void:
 	var d: Dictionary = Drone.PROFILES.get(Settings.selected_drone, Drone.PROFILES["seeker3"]).display
 	_drone_name.text = d.name
-	_drone_tags.text = "The school is Tiny Whoop only" if _drone_locked else Settings.spec_tags(d.tags)
+	_drone_tags.text = ("This map is %s only" % d.name) if _drone_locked else Settings.spec_tags(d.tags)
 
 ## Swaps the frame in place (mass, thrust, drag, collision, model - see
 ## Drone.apply_profile) and puts it back on the spawn point, disarmed.

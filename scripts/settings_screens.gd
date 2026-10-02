@@ -158,9 +158,14 @@ func _build_settings() -> Control:
 	_hint(c1, "Uptilt. Freestyle 25-40 deg, racing 35-50, cinematic 10-20.")
 	UIKit.slider(c1, "Field of view", 60.0, 140.0, 1.0, Settings.camera_fov_deg, func(v: float): Settings.camera_fov_deg = v, " deg")
 	_hint(c1, "Wider shows more but makes speed look faster. Real FPV cams: ~120-150 deg diagonal.")
+	UIKit.gap(c1, 6)
+	_segmented(c1, "Lens", ["Flat", "Light fisheye", "Strong fisheye"], Settings.lens_fisheye, func(i: int): Settings.lens_fisheye = i)
+	_hint(c1, "The barrel distortion of a real wide FPV lens: straight lines bend toward the edges.")
 	UIKit.section(c2, "On screen")
 	UIKit.toggle(c2, "OSD (throttle, altitude, speed, time)", Settings.osd_enabled, func(v: bool): Settings.osd_enabled = v)
 	UIKit.toggle(c2, "Crosshair", Settings.crosshair_enabled, func(v: bool): Settings.crosshair_enabled = v)
+	UIKit.toggle(c2, "Stick overlay", Settings.stick_overlay, func(v: bool): Settings.stick_overlay = v)
+	_hint(c2, "Both sticks live at the bottom of the screen - see what your thumbs really do.")
 	UIKit.gap(c2, 6)
 	_segmented(c2, "Units", ["Metric (km/h, m)", "Imperial (mph, ft)"], Settings.units, func(i: int): Settings.units = i)
 
@@ -347,6 +352,18 @@ func _build_rates(parent: VBoxContainer) -> void:
 	left.add_child(link)
 	_rate_link = link
 	_hint(left, "Tip: with \"Pitch follows roll\" on, editing roll sets pitch too, like most pilots fly.")
+
+	UIKit.gap(left, 6)
+	var thr_row := HBoxContainer.new()
+	thr_row.add_theme_constant_override("separation", 30)
+	left.add_child(thr_row)
+	for spec in [["Throttle MID", "throttle_mid"], ["Throttle EXPO", "throttle_expo"]]:
+		var col := VBoxContainer.new()
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		thr_row.add_child(col)
+		var field: String = spec[1]
+		UIKit.slider(col, spec[0], 0.0, 1.0, 0.01, Settings.get(field), func(v: float): Settings.set(field, v))
+	_hint(left, "Betaflight's throttle curve: EXPO flattens the throttle around MID for smoother hovering. Defaults 0.50 / 0.00.")
 
 	var gl := Label.new()
 	gl.text = "Rates preview - stick deflection to rotation rate"
