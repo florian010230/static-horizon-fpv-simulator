@@ -140,7 +140,7 @@ func _update_osd(delta: float) -> void:
 	_sticks.visible = Settings.stick_overlay and _drone != null
 	if _sticks.visible:
 		_sticks.queue_redraw()
-	_osd.visible = _drone != null
+	_osd.visible = _drone != null and not (replay != null and replay.active)
 	if not _osd.visible:
 		return
 	var b: Battery = _drone.battery
@@ -164,6 +164,7 @@ func _update_osd(delta: float) -> void:
 	_osd_labels.bat.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3) if b.is_low() else Color.WHITE)
 
 var _sticks: Control
+var replay: Replay
 
 func _draw_sticks() -> void:
 	var box: float = 120.0
@@ -185,10 +186,14 @@ var _los_cam: Camera3D
 var _los_key_down: bool = false
 
 func _update_los() -> void:
-	var down: bool = Input.is_key_pressed(KEY_V)
-	if down and not _los_key_down and _drone:
+	# The radio's restart switch (Settings -> Radio): the map from the start.
+	if InputManager.restart_pressed() and not SceneLoader.is_loading():
+		SceneLoader.reload("Restarting")
+		return
+	# V or the radio control assigned in Settings -> Radio (edge-triggered).
+	var pressed: bool = InputManager.los_toggle_pressed()
+	if pressed and _drone:
 		toggle_los()
-	_los_key_down = down
 	if _los_cam and _drone and _los_cam.global_position.distance_to(_drone.global_position) > 0.5:
 		_los_cam.look_at(_drone.global_position, Vector3.UP)
 
@@ -215,6 +220,11 @@ func set_drone(drone: Drone) -> void:
 	pause_menu = PauseMenu.new()
 	add_child(pause_menu)
 	pause_menu.setup(drone)
+	# DVR: always recording, P plays back (see Replay).
+	replay = Replay.new()
+	replay.name = "Replay"
+	add_child(replay)
+	replay.setup(drone, self)
 
 func _process(delta: float) -> void:
 	_handle_toggle()
@@ -231,7 +241,8 @@ func _process(delta: float) -> void:
 	_debug_label.visible = _panel_visible
 	if _panel_visible:
 		_debug_label.text = InputManager.raw_axes_debug_text()
-	_crosshair.visible = Settings.crosshair_enabled and _los_cam == null
+	var replaying: bool = replay != null and replay.active
+	_crosshair.visible = Settings.crosshair_enabled and _los_cam == null and not replaying
 	if _border_label.visible:
 		_border_blink_t += delta
 		_border_label.modulate.a = 0.4 + 0.6 * absf(sin(_border_blink_t * 6.0))

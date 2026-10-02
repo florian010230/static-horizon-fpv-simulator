@@ -103,8 +103,10 @@ static func _st(b: Dictionary, key: String) -> SurfaceTool:
 static func _freestyle(b: Dictionary, p: Dictionary) -> void:
 	var L: float = p.arm_length
 	var s: float = L / 0.08 # sizes below are a 5" build's, scaled
+	var race: bool = p.get("race", false)
 	var t_bot: float = 0.005 * s
-	var y_top: float = t_bot + 0.026 * s
+	# Race frames are low: short standoffs, the pack hung underneath.
+	var y_top: float = t_bot + (0.02 if race else 0.026) * s
 	var motors: Array[Vector3] = [Vector3(L, 0, -L), Vector3(-L, 0, -L), Vector3(L, 0, L), Vector3(-L, 0, L)]
 	# Bottom plate: body and four tapered arms ending in round motor pads.
 	_extrude(_st(b, "carbon"), Transform3D(), _rounded_rect(0.024 * s, 0.05 * s, 0.008 * s), 0.0, t_bot)
@@ -125,7 +127,8 @@ static func _freestyle(b: Dictionary, p: Dictionary) -> void:
 		_box(_st(b, "board"), Transform3D(Basis(), Vector3(0, t_bot + 0.006 * s + k * 0.009 * s, 0.006 * s)), Vector3(0.03 * s, 0.0016 * s, 0.03 * s))
 	_cyl(_st(b, "dark"), Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, t_bot + 0.012 * s, 0.034 * s)), 0.004 * s, 0.004 * s, 0.014 * s, 10)
 	# FPV camera between TPU side plates at the front, tilted up.
-	var cam := Transform3D(Basis(Vector3.RIGHT, deg_to_rad(25.0)), Vector3(0, t_bot + 0.013 * s, -0.04 * s))
+	# Racers fly a steeper camera (40-50 deg) than freestyle (25-35).
+	var cam := Transform3D(Basis(Vector3.RIGHT, deg_to_rad(45.0 if race else 25.0)), Vector3(0, t_bot + 0.011 * s, -0.04 * s))
 	_box(_st(b, "dark"), cam, Vector3(0.019 * s, 0.019 * s, 0.018 * s))
 	_cyl(_st(b, "dark"), cam * Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(0, 0, -0.009 * s)), 0.0075 * s, 0.0065 * s, 0.009 * s, 14)
 	_cyl(_st(b, "lens"), cam * Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(0, 0, -0.0182 * s)), 0.0052 * s, 0.0052 * s, 0.0008 * s, 14)
@@ -133,8 +136,11 @@ static func _freestyle(b: Dictionary, p: Dictionary) -> void:
 	for sx in [-1.0, 1.0]:
 		_box(_st(b, "accent"), Transform3D(Basis(), Vector3(sx * 0.0115 * s, t_bot + 0.013 * s, -0.04 * s)), Vector3(0.003 * s, 0.024 * s, 0.022 * s))
 	# LiPo on the top plate: wrap, label band, strap, XT60 lead out back.
-	var bat_y: float = y_top + 0.002 * s
 	var bat := Vector3(0.036 * s, 0.033 * s, 0.074 * s)
+	var bat_y: float = y_top + 0.002 * s
+	if race:
+		bat = Vector3(0.034 * s, 0.029 * s, 0.07 * s)
+		bat_y = -bat.y - 0.001 * s # strapped under the bottom plate
 	# Rounded pack: a slimmer core and four edge rods along its length.
 	var rr: float = 0.004 * s
 	_box(_st(b, "battery"), Transform3D(Basis(), Vector3(0, bat_y + bat.y * 0.5, 0.004 * s)), Vector3(bat.x - 2 * rr, bat.y, bat.z))
@@ -152,7 +158,7 @@ static func _freestyle(b: Dictionary, p: Dictionary) -> void:
 	# Antennas: VTX on a TPU mount at the back, receiver whips in a V.
 	var ant := Vector3(0, y_top, 0.05 * s)
 	_box(_st(b, "accent"), Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-25.0)), ant + Vector3(0, 0.004 * s, 0)), Vector3(0.012 * s, 0.01 * s, 0.008 * s))
-	var whip := Basis(Vector3.RIGHT, deg_to_rad(-25.0))
+	var whip := Basis(Vector3.RIGHT, deg_to_rad(-8.0 if race else -25.0))
 	_cyl(_st(b, "dark"), Transform3D(whip, ant + Vector3(0, 0.008 * s, 0)), 0.0016 * s, 0.0016 * s, 0.05 * s, 6)
 	_cyl(_st(b, "accent"), Transform3D(whip, ant + Vector3(0, 0.008 * s, 0) + whip * Vector3(0, 0.05 * s, 0)), 0.004 * s, 0.003 * s, 0.012 * s, 10)
 	for sx in [-1.0, 1.0]:

@@ -86,6 +86,19 @@ All 12 maps exist. Self-test: 413 checks.
       battery, rear LED strip); self-test's indoor takeoff hold
       shortened for the whoop (School 0.6s, Office 0.7s) now that it's
       ~7:1. Self-test: 488 checks.
+- [x] 2026-10-02: prop wash on/off (Settings -> Flight) and an
+      assignable radio restart switch (reloads the map).
+- [x] 2026-10-02 (Act XVII): a fourth drone, **Static Race** (5" 6S
+      race build, not a specific product - 440 g, 170 km/h estimate,
+      11:1 thrust-to-weight, 225 mm wheelbase, low frame with the pack
+      strapped underneath, 45-degree camera, lime green); motor
+      response lag, prop wash and ground effect added to the flight
+      model, all verified with throwaway frame-by-frame physics tests;
+      replay/DVR of the last 60s of flight (`P` to play back); flight
+      mode / reset / line-of-sight radio bindings alongside the arm
+      switch (done by a Sonnet subagent, reviewed); water ripples,
+      Fresnel reflection and sun glint plus a global colour grade in
+      the shared world shader. Self-test: 472 checks.
 
 ## Phase 2 - Sim features pilots expect (Liftoff / Velocidrone baseline)
 
@@ -108,17 +121,21 @@ All 12 maps exist. Self-test: 413 checks.
       video shader; Act XIV).
 - [x] Line-of-sight view (`V`): camera at the spawn point, eye height,
       following the quad (Act XIV).
-- [ ] Replay of the last flight (record transforms, play back from a
-      chase camera).
-- [ ] Key/button bindings screen (arm, mode, reset, pause on radio
-      switches/buttons).
+- [x] 2026-10-02 (Act XVII): Replay of the last flight - always records
+      the last 60s at 30 Hz, `P` to play back (pause, seek +/-5s, speed
+      1/4x-2x, three camera modes), `P` again to resume flying exactly
+      where it left off (`scripts/replay.gd`).
+- [x] 2026-10-02 (Act XVII): Key/button bindings - besides the arm
+      switch, flight mode / reset / line-of-sight can each be assigned
+      to a radio switch or button in Settings -> Radio (done by a
+      Sonnet subagent, reviewed); keyboard L/R/V still work either way.
 - [ ] Checkpoint-style training challenges (not just race-mode laps).
 - [ ] Signal-loss simulation (the real-world reason an FPV radio cuts
       out, distinct from this sim's distance-based border reset).
 - [ ] Structured training / lesson plans ("plug in -> calibrate -> fly"
       goes some way; a real curriculum doesn't exist yet).
 - [ ] Multiplayer / online leaderboards.
-      (All five above: noted as open from the Act XIV research pass over
+      (All four above: noted as open from the Act XIV research pass over
       Liftoff, Velocidrone, Uncrashed, DRL and TRYP FPV - see DEVLOG.)
 - [x] Wind (off / light / gusty) for outdoor maps.
 - [x] Settings persisted to disk (user://settings.cfg, auto-saved; off in tests).

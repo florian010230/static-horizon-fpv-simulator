@@ -132,7 +132,7 @@ func _build_card() -> Control:
 	# The key hints live here now (the in-flight HUD is one status line).
 	UIKit.gap(content, 4)
 	var keys := Label.new()
-	keys.text = "Enter arm/disarm   L acro/angle   R reset   V line of sight   O tuning panel   Esc pause\nKeyboard: A/D roll   W/S pitch   Q/E yaw   Shift/Ctrl throttle"
+	keys.text = "Enter arm/disarm   L acro/angle   R reset   V line of sight   P replay   O tuning panel   Esc pause\nKeyboard: A/D roll   W/S pitch   Q/E yaw   Shift/Ctrl throttle"
 	keys.theme_type_variation = "Small"
 	keys.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	content.add_child(keys)

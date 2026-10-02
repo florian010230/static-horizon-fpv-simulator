@@ -66,6 +66,7 @@ const IDLE_RPM_FRACTION: float = 0.18 ## armed idle (Betaflight's idle keeps pro
 const SOUNDS := {
 	"whoop": {"max_rot_hz": 1100.0, "blades": 3, "pole_pairs": 6, "blade_amp": 0.32, "whine_amp": 0.55, "buzz_amp": 0.12, "rumble_amp": 0.05, "tilt": 0.85, "noise_lp": 0.55, "wander_depth": 0.006, "lp_idle_hz": 2600.0, "lp_full_hz": 9500.0, "db_min": -17.0, "db_max": -9.0, "wash_db_min": -50.0, "wash_db_max": -31.0},
 	"seeker3": {"max_rot_hz": 580.0, "blades": 3, "pole_pairs": 7, "blade_amp": 0.5, "whine_amp": 0.28, "buzz_amp": 0.18, "rumble_amp": 0.12, "tilt": 1.0, "noise_lp": 0.3, "wander_depth": 0.004, "lp_idle_hz": 1800.0, "lp_full_hz": 8500.0, "db_min": -15.0, "db_max": -7.0, "wash_db_min": -46.0, "wash_db_max": -24.0},
+	"race": {"max_rot_hz": 640.0, "blades": 3, "pole_pairs": 7, "blade_amp": 0.55, "whine_amp": 0.24, "buzz_amp": 0.14, "rumble_amp": 0.22, "tilt": 1.1, "noise_lp": 0.12, "wander_depth": 0.0025, "lp_idle_hz": 1300.0, "lp_full_hz": 7500.0, "db_min": -13.0, "db_max": -4.0, "wash_db_min": -42.0, "wash_db_max": -18.0},
 	"five": {"max_rot_hz": 470.0, "blades": 3, "pole_pairs": 7, "blade_amp": 0.55, "whine_amp": 0.18, "buzz_amp": 0.10, "rumble_amp": 0.3, "tilt": 1.25, "noise_lp": 0.08, "wander_depth": 0.0025, "lp_idle_hz": 1100.0, "lp_full_hz": 6000.0, "db_min": -13.0, "db_max": -5.0, "wash_db_min": -42.0, "wash_db_max": -17.0},
 }
 const DETUNE: Array[float] = [1.0, 1.012, 0.992, 1.024]

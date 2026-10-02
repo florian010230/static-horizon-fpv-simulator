@@ -17,6 +17,9 @@ uniform bool use_vcol = true;
 uniform vec3 emission = vec3(0.0);
 uniform bool receive_shadow = true;
 uniform float alpha_cut = 0.5;
+// Water (Geo.water_mat): moving ripples, sky reflection at shallow
+// angles (Fresnel), the sun's glint. Uses `tex` as a ripple height map.
+uniform bool water = false;
 
 varying vec3 wpos;
 varying vec3 wnrm;
@@ -51,6 +54,19 @@ void fragment() {
 #endif
 	vec3 n = normalize(wnrm) * (FRONT_FACING ? 1.0 : -1.0);
 	vec3 col = c.rgb;
+	if (water) {
+		vec2 u1 = wpos.xz * 0.07 + TIME * vec2(0.021, 0.009);
+		vec2 u2 = wpos.xz * 0.12 - TIME * vec2(0.012, 0.027);
+		float h1 = texture(tex, u1).r - 0.5;
+		float h2 = texture(tex, u2).r - 0.5;
+		vec3 wn = normalize(vec3(h1 * 0.45, 1.0, h2 * 0.45));
+		vec3 v = normalize(CAMERA_POSITION_WORLD - wpos);
+		float fres = pow(1.0 - max(dot(wn, v), 0.0), 4.0);
+		col = mix(col, sh_fog_color.rgb * 0.8, clamp(0.04 + fres * 0.6, 0.0, 0.7));
+		vec3 r = reflect(-v, wn);
+		col += sh_sun_color.rgb * pow(max(dot(r, -sh_sun.xyz), 0.0), 140.0) * 1.6;
+		c.a = mix(c.a, 1.0, fres);
+	}
 	if (receive_shadow) {
 		col = sh_apply_shadow(col, wpos, n);
 	}

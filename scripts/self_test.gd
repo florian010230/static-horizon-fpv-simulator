@@ -62,6 +62,8 @@ func _run() -> void:
 		["res://scenes/Main3.tscn", "seeker3"], # the school must force the whoop anyway
 		["res://scenes/maps/Playground.tscn", "five"], # forced to the whoop too
 		["res://scenes/maps/RaceField.tscn", "five"],
+		["res://scenes/maps/RaceField.tscn", "race"],
+		["res://scenes/Main.tscn", "race"],
 		["res://scenes/maps/SteelMill.tscn", "seeker3"],
 		["res://scenes/maps/RaceArena.tscn", "seeker3"],
 		["res://scenes/maps/Office.tscn", "seeker3"], # forced to the whoop
@@ -228,7 +230,7 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		# against it and W can't move it.)
 		# The Static Whoop has ~7:1 thrust-to-weight too (since 2026-10-02):
 		# indoors it'd go straight into the ceiling (school gym 8.5 m).
-		var hold: float = 0.75 if Settings.selected_drone == "five" else (0.95 if map.ends_with("Office.tscn") else 1.4)
+		var hold: float = 0.75 if Settings.selected_drone in ["five", "race"] else (0.95 if map.ends_with("Office.tscn") else 1.4)
 		if Settings.selected_drone == "whoop" and (map.ends_with("Office.tscn") or map.ends_with("Main3.tscn")):
 			hold = 0.7 if map.ends_with("Office.tscn") else 0.6
 		await _wait(hold)
@@ -609,3 +611,50 @@ func _test_race() -> void:
 	await get_tree().physics_frame
 	await _wait(0.3)
 	_check(get_tree().current_scene == map_before and _drone().global_position.distance_to(_drone()._spawn_transform.origin) < 1.0, "border: out of range resets the drone instantly (no reload)")
+	# Replay: P plays the recording back, P again returns control exactly
+	# where the drone was.
+	var rd2: Drone = _drone()
+	rd2.freeze = false
+	await _wait(1.0)
+	var rep: Replay = get_tree().current_scene.get_node("UI").replay
+	var before: Transform3D = rd2.global_transform
+	rep.start()
+	await _wait(0.5)
+	var cam_ok: bool = get_viewport().get_camera_3d() == rep._cam and rep.length() > 0.5
+	rep.stop()
+	await get_tree().physics_frame
+	_check(cam_ok and rd2.global_position.distance_to(before.origin) < 0.5 and not rd2.freeze, "replay: plays the recording and hands back control where it left off", "length %.1f s" % rep.length())
+	# Prop wash can be switched off: a fast descent under throttle then
+	# costs no lift.
+	var pw: Drone = _drone()
+	Settings.prop_wash = false
+	pw.linear_velocity = -pw.global_transform.basis.y * 8.0
+	pw._last_total_thrust = 4.0 * pw.max_motor_thrust_n * 0.6
+	var f_off: float = pw._prop_wash(1.0 / 120.0, pw.global_transform.basis.y)
+	Settings.prop_wash = true
+	var f_on: float = pw._prop_wash(1.0 / 120.0, pw.global_transform.basis.y)
+	pw.linear_velocity = Vector3.ZERO
+	_check(f_off == 1.0 and f_on < 0.95, "prop wash: on costs lift in a fast descent, off doesn't", "on %.2f off %.2f" % [f_on, f_off])
+	# Restart switch (virtual radio): flipping it reloads the map.
+	var keep_joy = InputManager.test_joy
+	var keep_src: String = InputManager.restart_source
+	var axes: Array = []
+	for _i in range(8):
+		axes.append(0.0)
+	axes[6] = -1.0
+	InputManager.test_joy = {"axes": axes, "buttons": [false, false, false, false]}
+	InputManager.restart_source = "axis"
+	InputManager.restart_axis = 6
+	InputManager.restart_axis_off_value = -1.0
+	InputManager.restart_axis_on_value = 1.0
+	await _wait(0.2)
+	var scene_before: Node = get_tree().current_scene
+	InputManager.test_joy.axes[6] = 1.0
+	await _wait(0.3)
+	var reloading: bool = SceneLoader.is_loading() or get_tree().current_scene != scene_before
+	InputManager.test_joy.axes[6] = -1.0
+	await _wait(3.0)
+	InputManager.restart_source = keep_src
+	InputManager.test_joy = keep_joy
+	InputManager._joy_active = false
+	_check(reloading, "radio: the restart switch reloads the map")

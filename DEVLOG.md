@@ -1414,6 +1414,133 @@ passed.
 
 Self-test: 488 checks, all passing. Uncommitted at the time of writing.
 
+### Act XVII — A race quad, a replay, and air that pushes back (2026-10-02)
+
+The list this time: a fourth drone built for the race tracks instead of
+borrowing a freestyle quad's feel; three physics effects a real quad
+has and this sim didn't (motor lag, prop wash, ground effect); a replay
+system - the single most-requested feature from Act XIV's research
+pass - built and then flown before being trusted; radio switch
+bindings for flight mode, reset and line-of-sight, handed to a Sonnet
+subagent and reviewed; and a water shader plus a global colour grade,
+both toned down from their first pass after a look at the real
+screenshots. Self-test: 472 checks, all passing (the exact count
+depends on which radio paths a given run exercises). Uncommitted at the
+time of writing.
+
+**Static Race.** The fourth frame, alongside the Static Three, Static
+Five and Static Whoop in `Drone.PROFILES`/`PROFILE_ORDER` - a 5" race
+build, not a specific product, the same "grounded in real numbers, not
+one real product" rule the other three frames already follow. All-up
+weight 440 g: a race 5" dries out at 250-300 g against a freestyle
+build's 300-450 g (oscarliang.com's prop/motor/LiPo weight table), plus
+a 6S 1000-1300 mAh pack at roughly 150-180 g (intofpv.com) - 2207-class
+motors at ~1950 KV on 6S, 5.1" tri-blade props, 11.9 N per motor, an
+11:1 thrust-to-weight ratio (race builds run 8-12:1 per x-teamrc.com;
+bench tables show up to ~19 N per motor at full power, dronehitech.com's
+F60 Pro IV test - 11:1 sits comfortably inside the real range rather
+than at its edge), 225 mm wheelbase. Top speed 170 km/h is an ESTIMATE -
+a league racer was measured at ~137 km/h (drl.io), but a tuned personal
+race build goes faster than a league-regulated one - and, same as every
+other frame's top speed, it wasn't just typed in: a throwaway physics
+test (`scripts/physics_test.gd` + `scenes/PhysicsTest.tscn`, deleted
+after) flew it level at full throttle and tuned `drag_coefficient`
+until that settled at the target speed, converging on 171 km/h - the
+same session's version of that test also reproduced the Static Five's
+210 km/h exactly, which was the actual evidence the method still
+works, not just a one-off result for the new frame. Look: a low frame
+on short standoffs, the 6S pack strapped under the bottom plate instead
+of on top, the camera tilted a race-steep 45 degrees (vs. 25 on the
+freestyle quads), a slim near-vertical antenna, lime green. Its own
+motor sound profile in `motor_audio.gd`'s per-class table (~640 Hz
+rotation, tuned by the same ear that rebuilt the whole sound system in
+Act XV).
+
+**Three things a real quad does that this one didn't - motor lag, prop
+wash, ground effect.** All three went into `drone.gd` and were checked
+with the project's standard tool, a throwaway frame-by-frame physics
+test deleted right after: motors don't change thrust instantly, so each
+of the four now follows its commanded thrust through a first-order lag
+(`motor_tau`: whoop 15 ms, Static Three 20 ms, Static Race 22 ms,
+Static Five 25 ms - smaller, lighter props spin up faster) instead of
+responding in the same physics step it was commanded in. Prop wash:
+descending through your own downwash - the shake on a dive-and-catch
+every FPV pilot knows - now exists; past 1.5 m/s of descent along the
+thrust axis (full effect by 6 m/s) with the motors still loaded, it
+adds an ~8 Hz random roll/pitch torque and costs up to 20% of the
+thrust. The first version of this was wrong in an instructive way: it
+shook the Static Five at up to 28 rad/s on a dive-and-catch test - so
+violent it would have read as a bug, not a feature - and was scaled
+down until a catch wobbles at most ~3.4 rad/s (about 190 deg/s) while
+losing lift on the way through, which is what frame-by-frame logging of
+the test run actually showed rather than a number picked by feel. Ground
+effect adds up to 12% extra thrust right at the ground, fading out by
+two prop diameters of height, checked with one raycast every 50 ms
+rather than every physics step - the cushion that makes a low hover
+feel different from a mid-air one, cheap enough not to matter.
+
+**Replay - the thing the Act XIV research pass flagged as the top
+request and this round finally built.** `scripts/replay.gd`, created by
+`ui.gd`, always keeps the last 60 seconds of flight recorded at 30 Hz.
+`P` plays it back: `Space` pauses, `Left`/`Right` jump 5 s, `Up`/`Down`
+change speed from 1/4x to 2x, `C` cycles the camera (chase, FPV, or
+line-of-sight from the spawn point), and `P` again hands control back
+exactly where it was left - position, velocity and rotation restored,
+not just the camera cut back. The flying drone itself freezes and
+hides for the duration; what's actually on screen during a replay is a
+second copy of the same drone model (built by the same
+`DroneFrameBuilder` the real drone uses) flying the recorded path, with
+the HUD and crosshair hidden so a replay doesn't look like it's still
+being flown live. Self-test checks that stopping a replay really does
+hand control back.
+
+**Radio switch bindings - done by a Sonnet subagent, reviewed.** Besides
+the arm switch, three more controls can now be assigned to a radio
+switch or button in Settings -> Radio: **Assign Mode Switch** (sets
+Acro/Angle directly from the switch position, the same way Betaflight
+puts ANGLE on an AUX switch - not a toggle), **Assign Reset Button**,
+and **Assign Line-of-Sight Button**, each with its own Clear and status
+line, captured by the same calibration-wizard step the arm switch
+already used (`InputManager`'s `_control_on()`/`_control_name()`/
+`_clear_control()` generalize the one arm-switch pattern across all
+three instead of three near-copies of it). All three are optional and
+start unassigned - until assigned, behaviour is exactly what it always
+was (`L` for mode, `R` for reset, `V` for line-of-sight on the
+keyboard), and those keyboard keys keep working alongside a radio
+binding either way. Saved in the same radio config as the arm switch.
+Built by a Sonnet subagent and reviewed afterward rather than written
+directly.
+
+**Water that looks like water, and a colour grade for the whole world -
+both pulled back from their first pass.** The shared world shader
+(`shaders/world.gdshaderinc`, `shaders/world_common.gdshaderinc`) gives
+any material named `*water*` (`Geo.water_mat`) moving ripples, a
+Fresnel sky reflection that strengthens at shallow viewing angles, and
+a glint off the sun - the first version of this made the sunset
+harbour basin's water read as sand, so the reflection and glint
+strength were both toned down until the basin looked wet again rather
+than lit wrong. Alongside it, a small global colour grade
+(`sh_grade`: contrast 1.08, saturation 1.12, plus an optional per-map
+warmth) runs in the same shader pass over every world surface - set
+once in `WorldShading.set_grade()`, overridable per map via the
+environment's `"grade"` meta - at no extra per-frame cost since it
+rides along with work the shader was already doing.
+
+**FPS, measured again.** On High/fullscreen at spawn, frame rate on the
+dev machine varies run to run now (thermal throttling and background
+load, not a regression) - representative numbers from this round:
+Steel Mill 34-49, Harbour ~40, Mountain Lake 49, Race Field 55.
+
+Self-test: 472 checks, all passing. Uncommitted at the time of writing.
+
+**Two follow-ups the same day.** Prop wash got its own switch
+(Settings -> Flight, on by default) for pilots who want a clean catch
+every time, and a fifth assignable radio control: a **restart switch**
+that reloads the map from the start - race, timer and drone - for
+flying a whole session without touching the keyboard. Edge-triggered,
+and it starts out "on", so a switch already up when a map loads has to
+be flipped again rather than restarting the map forever.
+
 ## Recurring engineering themes
 
 A few patterns repeat often enough across all 13 commits to be the

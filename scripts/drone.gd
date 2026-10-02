@@ -171,7 +171,7 @@ const PITCH_MIX: Array[float] = [1.0, 1.0, -1.0, -1.0]
 ## small props), which caps how hard the motors can actually yaw the
 ## frame instead of treating yaw torque as unlimited.
 ## Menu order.
-const PROFILE_ORDER: Array[String] = ["seeker3", "five", "whoop"]
+const PROFILE_ORDER: Array[String] = ["seeker3", "five", "race", "whoop"]
 
 const PROFILES: Dictionary = {
 	"seeker3": {
@@ -208,6 +208,7 @@ const PROFILES: Dictionary = {
 		"arm_length": 0.08,
 		"max_motor_thrust_n": 14.7,
 		"drag_coefficient": 0.00866,
+		"motor_tau": 0.025,
 		"inertia": Vector3(1.3e-3, 2.3e-3, 1.3e-3),
 		"yaw_torque_per_newton": 0.012,
 		"collision_radius": 0.1,
@@ -221,6 +222,40 @@ const PROFILES: Dictionary = {
 			"prop_radius": 0.0635,
 			"has_prop_guards": false,
 			"frame_color": Color(0.95, 0.45, 0.08),
+		},
+	},
+	# Static Race (2026-10-02): a 5" race build, not a specific product.
+	# Sources: oscarliang.com/table-prop-motor-lipo-weight (race 5" dry
+	# 250-300 g vs freestyle 300-450 g), 6S 1000-1300 mAh packs ~150-180 g
+	# (intofpv.com) -> 440 g all-up; 2207 motors ~1950 KV on 6S with 5.1"
+	# tri-blades; race builds run 8:1-12:1 thrust-to-weight
+	# (x-teamrc.com) -> 11:1 = 11.9 N per motor (bench tables give up to
+	# ~19 N at full power, dronehitech.com F60 Pro IV test); 225 mm
+	# wheelbase. Top speed 170 km/h is an ESTIMATE (a league racer was
+	# measured at ~137 km/h, drl.io; tuned race builds go faster) - the
+	# drag coefficient was set by flying it to that speed in a physics
+	# test (full throttle, level, 40 m/s+ in acro). Battery slung under
+	# the frame, low top plate, bright colour for spotting at speed.
+	"race": {
+		"mass": 0.44,
+		"arm_length": 0.08,
+		"max_motor_thrust_n": 11.9,
+		"drag_coefficient": 0.0132,
+		"motor_tau": 0.022,
+		"inertia": Vector3(1.0e-3, 1.8e-3, 1.0e-3),
+		"yaw_torque_per_newton": 0.012,
+		"collision_radius": 0.095,
+		"camera_near": 0.05, "camera_far": 2000.0,
+		"display": {"name": "Static Race", "tags": ["5 inch", "170 km/h", "440 g"],
+			"text": "5-inch race quad - light, low and brutal: eleven times more thrust than weight."},
+		"visual": {
+			"body_radius": 0.04, "body_height": 0.024,
+			"arm_thickness": 0.014,
+			"motor_radius": 0.016, "motor_height": 0.02,
+			"prop_radius": 0.0648,
+			"has_prop_guards": false,
+			"race": true,
+			"frame_color": Color(0.55, 0.9, 0.1),
 		},
 	},
 	# Static Whoop (2026-10-02): modelled on a current 75 mm brushless
@@ -241,6 +276,7 @@ const PROFILES: Dictionary = {
 		"arm_length": 0.0265,
 		"max_motor_thrust_n": 0.55,
 		"drag_coefficient": 0.00489,
+		"motor_tau": 0.015,
 		"inertia": Vector3(1.05e-5, 2.0e-5, 1.05e-5),
 		"yaw_torque_per_newton": 0.012,
 		"collision_radius": 0.034,
@@ -361,6 +397,7 @@ func apply_profile(profile_name: String) -> void:
 	arm_length = p.arm_length
 	max_motor_thrust_n = p.max_motor_thrust_n
 	drag_coefficient = p.drag_coefficient
+	motor_tau = p.get("motor_tau", 0.02)
 	inertia = p.inertia
 	yaw_torque_per_newton = p.yaw_torque_per_newton
 	motor_positions = [
@@ -516,6 +553,7 @@ func _physics_process(delta: float) -> void:
 
 	if not InputManager.armed:
 		_reset_controller()
+		_motor_cmd = [0.0, 0.0, 0.0, 0.0]
 		_last_total_thrust = 0.0
 		rpm_fraction = 0.0
 		return
@@ -612,9 +650,14 @@ func _physics_process(delta: float) -> void:
 
 	var up_global: Vector3 = global_transform.basis.y
 	var sag: float = battery.thrust_factor() if Settings.battery_enabled else 1.0
+	var aero: float = _prop_wash(delta, up_global) * _ground_effect(up_global)
 	var total_thrust: float = 0.0
+	var k_motor: float = 1.0 - exp(-delta / maxf(motor_tau, 0.001))
 	for i in range(4):
-		var thrust: float = clampf(thrusts[i], idle, max_motor_thrust_n) * sag
+		# Motors don't change speed instantly: each one follows its command
+		# with a first-order lag (motor_tau, see PROFILES).
+		_motor_cmd[i] = lerpf(_motor_cmd[i], clampf(thrusts[i], idle, max_motor_thrust_n), k_motor)
+		var thrust: float = _motor_cmd[i] * sag * aero
 		if _prop_blocked[i] > 0.0:
 			# Recovering linearly over the spin-up time once free again.
 			thrust *= lerpf(1.0, PROP_STRIKE_THRUST, _prop_blocked[i] / PROP_SPINUP_TIME)
@@ -629,6 +672,53 @@ func _physics_process(delta: float) -> void:
 	apply_torque(up_global * clampf(yaw_torque, -max_yaw_torque, max_yaw_torque))
 	_last_total_thrust = total_thrust
 	rpm_fraction = sqrt(clampf(total_thrust / (4.0 * max_motor_thrust_n), 0.0, 1.0))
+
+## Motor response: real props take a moment to change speed - roughly
+## 15 ms on a whoop's tiny props up to ~25 ms on 5" props (time constant
+## of a brushless motor + prop under Betaflight's dynamic idle / RPM
+## filtering; measured step responses in the 15-40 ms range are typical
+## in blackbox logs). Set per frame in PROFILES ("motor_tau").
+var motor_tau: float = 0.02
+var _motor_cmd: Array[float] = [0.0, 0.0, 0.0, 0.0]
+var _wash_noise := FastNoiseLite.new()
+var _wash_t: float = 0.0
+var _ground_ray_t: float = 0.0
+var _ground_h: float = 100.0
+
+## Prop wash: descending fast along the thrust axis puts the props into
+## their own downwash (toward vortex ring state) - the familiar shake on
+## a dive-and-catch, and lift that's lost until you're through it. From
+## 1.5 m/s of descent along the props' axis, growing to full at 6 m/s,
+## scaled by how hard the motors push: random roll/pitch torque (~8 Hz)
+## and up to 20% less thrust. Returns the thrust factor.
+func _prop_wash(delta: float, up: Vector3) -> float:
+	var v_axial: float = linear_velocity.dot(up)
+	var load: float = clampf(_last_total_thrust / (4.0 * max_motor_thrust_n), 0.0, 1.0)
+	var w: float = smoothstep(1.5, 6.0, -v_axial) * clampf(load * 2.5, 0.0, 1.0)
+	if w <= 0.0 or not Settings.prop_wash:
+		return 1.0
+	_wash_t += delta
+	# (FastNoiseLite's default frequency is 0.01: x800 -> ~8 Hz.)
+	var n1: float = _wash_noise.get_noise_2d(_wash_t * 800.0, 1.0)
+	var n2: float = _wash_noise.get_noise_2d(_wash_t * 800.0, 7.0)
+	var amp: float = w * 0.12 * max_motor_thrust_n * arm_length
+	apply_torque(global_transform.basis * Vector3(n2 * amp, 0.0, n1 * amp))
+	return 1.0 - 0.2 * w
+
+## Ground effect: within about one prop diameter of the ground the props
+## get extra lift (the cushion under a low hover) - up to 12% right at
+## the ground, fading out by two prop diameters. One raycast every few
+## frames is plenty.
+func _ground_effect(up: Vector3) -> float:
+	_ground_ray_t -= get_physics_process_delta_time()
+	if _ground_ray_t <= 0.0:
+		_ground_ray_t = 0.05
+		var q := PhysicsRayQueryParameters3D.create(global_position, global_position - up * 1.0)
+		q.exclude = [get_rid()]
+		var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
+		_ground_h = global_position.distance_to(hit.position) if hit else 100.0
+	var d: float = _prop_radius * 2.0
+	return 1.0 + 0.12 * (1.0 - smoothstep(0.0, 2.0 * d, _ground_h))
 
 ## Quadratic body drag (dominant at speed) plus linear rotor drag
 ## (dominant slow - see rotor_drag_planar's docs), both applied at the

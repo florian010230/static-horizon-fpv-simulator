@@ -14,7 +14,7 @@ multi-part session, same style as the existing entries.
 
 ## Current state (as of 2026-10-02)
 
-All work through DEVLOG Act XVI is committed. Only commit when the
+All work through DEVLOG Act XVII is committed. Only commit when the
 user asks. Act XIV: Freestyle/Race
 menu modes, personal bests, a rendered preview picture per map card,
 rebuilt freestyle/whoop drone models, the visible border covering the
@@ -31,9 +31,17 @@ Whoop", modelled on a current 75 mm brushless ducted whoop (75 mm,
 with a redone ducted-frame model; motor sound rebalanced from flight
 feedback (quieter prop-wash punch, louder/brighter idle so armed
 motors are audible at 0% throttle).
+Act XVII (not committed): a fourth drone, "Static Race" (5" 6S race
+build, 440 g, 170 km/h estimate, ~11:1 thrust-to-weight); motor
+response lag, prop wash and ground effect added to the flight model;
+replay/DVR (`scripts/replay.gd`, `P` to play back the last 60s); three
+more radio-assignable controls (mode switch, reset, line-of-sight) done
+by a Sonnet subagent and reviewed; water ripples/reflection and a
+global colour grade in the shared world shader.
 TODO.md is the roadmap: Phases 1 and 3 are done (12 maps), Phase 2
-mostly (open: replay, bindings), then Phase 4.
-`--selftest`: 488 checks, all passing.
+done, then Phase 4.
+`--selftest`: ~472 checks, all passing (Act XVII; varies slightly by
+which radio paths a run exercises).
 
 InputManager is a *scene* autoload: the editor can't see its return
 types, so never write `var x := InputManager.foo()` - type it
@@ -214,7 +222,11 @@ The user's standing requirements for maps (2026-09-30), all built in:
   user's choice - it's modelled on a Seeker3 but isn't one); the id
   stays `"seeker3"` internally. The `"whoop"` profile is shown as
   **Static Whoop** since 2026-10-02 (modelled on a current 75 mm
-  brushless ducted whoop); the id stays `"whoop"` internally.
+  brushless ducted whoop); the id stays `"whoop"` internally. The
+  `"race"` profile (added 2026-10-02, Act XVII) is shown as **Static
+  Race** - a 5" race build grounded in real specs, not a specific
+  product (same pattern as Static Three/Static Five - never name the
+  real product the numbers were checked against).
 - `Settings.graphics_quality` (Low/Medium/High) -> render scale, per-object
   draw distances, view distance; applied by `Settings.apply_graphics_settings()`
   in every map's `_ready()`.

@@ -601,7 +601,7 @@ func _records_text(map_id: String) -> String:
 	if r.is_empty() and bd.is_empty():
 		return "No lap yet - set your first personal best"
 	var lines: Array[String] = ["Personal best  (lap / 3-lap race)"]
-	for id in ["whoop", "seeker3", "five"]:
+	for id in Drone.PROFILE_ORDER:
 		if r.has(id) or bd.has(id):
 			var lap: String = RaceCourse._fmt(r[id][0]) if r.has(id) else "--"
 			var race: String = RaceCourse._fmt(bd[id][0][0]) if bd.has(id) and not bd[id].is_empty() else "--"

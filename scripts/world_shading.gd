@@ -29,6 +29,7 @@ static var _sun := Vector4(0, -1, 0, 0) # global_shader_parameter_get is editor-
 ## call again (already converted materials are skipped).
 static func setup(scene: Node, env: Environment) -> void:
 	_set_fog_from(env)
+	set_grade(env.get_meta("grade", Vector4(1.08, 1.12, 0.0, 0.0)) if env else Vector4(1.08, 1.12, 0.0, 0.0))
 	var cache: Dictionary = {}
 	_convert(scene, cache)
 
@@ -38,6 +39,13 @@ static func fit_fog(env: Environment, far: float) -> void:
 		return
 	var begin: float = minf(env.get_meta("depth_fog"), far * 0.4)
 	RenderingServer.global_shader_parameter_set("sh_fog", Vector4(begin, far * 0.96, 0.0, 1.0))
+
+## Colour grade for every world surface (world_common sh_grade_color):
+## a touch more contrast and saturation than the flat baked look; maps
+## can set their own (env meta "grade": Vector4(contrast, saturation,
+## warmth, 0)).
+static func set_grade(g: Vector4) -> void:
+	RenderingServer.global_shader_parameter_set("sh_grade", g)
 
 static func _set_fog_from(env: Environment) -> void:
 	if env == null:
@@ -150,6 +158,8 @@ static func _from_standard(s: StandardMaterial3D) -> Material:
 		sm.set_shader_parameter("receive_shadow", false)
 	if blend:
 		sm.set_shader_parameter("receive_shadow", false)
+	if s.resource_name.contains("water"):
+		sm.set_shader_parameter("water", true)
 	return sm
 
 static func _shader(cull: int, blend: bool, scissor: bool) -> Shader:

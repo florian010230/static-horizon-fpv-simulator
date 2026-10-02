@@ -32,6 +32,55 @@ extends Node
 ## the switch is OFF (seen with some EdgeTX mixer setups).
 @export var arm_button_on_when_pressed: bool = true
 
+## Three more optional radio controls, same shape as the arm switch
+## above but every one of them starts unassigned ("" source, -1 index):
+## until the pilot assigns one in Settings -> Radio, behaviour is
+## unchanged (flight mode only toggles with L, reset is only KEY_R, the
+## line-of-sight toggle is only KEY_V). See _control_on()/_control_name()/
+## _clear_control(), which implement all three (and the calibration
+## wizard's capture step for all three) from one generalized
+## field-name-prefix pattern instead of three near-duplicate copies.
+@export_group("Mode switch (optional)")
+## Like Betaflight's ANGLE mode on an AUX switch: while assigned, the
+## switch's raw position sets self_level directly every frame (not a
+## toggle) - see _handle_level_toggle().
+@export var mode_source: String = ""
+@export var mode_axis: int = -1
+@export var mode_axis_off_value: float = -1.0
+@export var mode_axis_on_value: float = 1.0
+@export var mode_button_index: int = -1
+@export var mode_button_on_when_pressed: bool = true
+
+@export_group("Reset control (optional)")
+## reset_key_pressed() is level-based (true while active), same as the
+## keyboard's KEY_R - not edge-triggered.
+@export var reset_source: String = ""
+@export var reset_axis: int = -1
+@export var reset_axis_off_value: float = -1.0
+@export var reset_axis_on_value: float = 1.0
+@export var reset_button_index: int = -1
+@export var reset_button_on_when_pressed: bool = true
+
+@export_group("Line-of-sight toggle (optional)")
+## los_toggle_pressed() is edge-triggered (true only the frame it goes
+## from off to on), same as a single KEY_V tap.
+@export var los_source: String = ""
+@export var los_axis: int = -1
+@export var los_axis_off_value: float = -1.0
+@export var los_axis_on_value: float = 1.0
+@export var los_button_index: int = -1
+@export var los_button_on_when_pressed: bool = true
+
+@export_group("Restart map (optional)")
+## restart_pressed() is edge-triggered: flipping the switch (or pressing
+## the button) reloads the map from the start - race, timer, drone.
+@export var restart_source: String = ""
+@export var restart_axis: int = -1
+@export var restart_axis_off_value: float = -1.0
+@export var restart_axis_on_value: float = 1.0
+@export var restart_button_index: int = -1
+@export var restart_button_on_when_pressed: bool = true
+
 @export_group("Calibration")
 @export var invert_roll: bool = false
 @export var invert_pitch: bool = false
@@ -77,6 +126,13 @@ var preferred_device_name: String = ""
 const KEYBOARD_THROTTLE_RATE: float = 0.6 # units/sec while Shift/Ctrl held
 const CALIBRATION_PATH: String = "user://input_calibration.cfg"
 
+## The field-name prefixes of the three optional controls and the
+## per-control field suffixes, used to save/load/read/clear all three
+## with one small loop instead of three near-identical blocks (see
+## save_calibration(), load_calibration(), _control_on()).
+const OPTIONAL_CONTROLS: Array[String] = ["mode", "reset", "los", "restart"]
+const CONTROL_FIELDS: Array[String] = ["_source", "_axis", "_axis_off_value", "_axis_on_value", "_button_index", "_button_on_when_pressed"]
+
 var armed: bool = false
 ## Dev/test hook only: when set to a Dictionary with roll/pitch/yaw/
 ## throttle, the stick getters return those values instead of real
@@ -103,6 +159,8 @@ var _arm_switch_seen: bool = false
 ## stays disarmed until the switch is cycled.
 var arm_blocked: bool = false
 var _prev_level_key: bool = false
+var _prev_los_on: bool = false ## edge state for los_toggle_pressed()
+var _prev_restart_on: bool = true ## starts "on": a switch already up at load must be flipped again
 var _kb_throttle: float = 0.0
 
 ## A radio only takes over from the keyboard once it has actually sent
@@ -295,6 +353,9 @@ func save_calibration() -> void:
 	cfg.set_value("radio", "throttle_calibrated", throttle_calibrated)
 	cfg.set_value("radio", "throttle_raw_low", throttle_raw_low)
 	cfg.set_value("radio", "throttle_raw_high", throttle_raw_high)
+	for p in OPTIONAL_CONTROLS:
+		for suf in CONTROL_FIELDS:
+			cfg.set_value("radio", p + suf, get(p + suf))
 	cfg.save(CALIBRATION_PATH)
 
 func load_calibration() -> void:
@@ -324,6 +385,9 @@ func load_calibration() -> void:
 	throttle_calibrated = cfg.get_value("radio", "throttle_calibrated", throttle_calibrated)
 	throttle_raw_low = cfg.get_value("radio", "throttle_raw_low", throttle_raw_low)
 	throttle_raw_high = cfg.get_value("radio", "throttle_raw_high", throttle_raw_high)
+	for p in OPTIONAL_CONTROLS:
+		for suf in CONTROL_FIELDS:
+			set(p + suf, cfg.get_value("radio", p + suf, get(p + suf)))
 
 ## Raw axis -> -1..1 stick: measured from the axis's calibrated rest
 ## point (each side scaled separately so full deflection still reads
@@ -414,11 +478,89 @@ func arm_control_name() -> String:
 		return "switch on channel axis %d" % arm_axis
 	return "button %d" % arm_button_index
 
+## Generalized version of arm_switch_on(), for the three optional
+## controls (mode/reset/los): reads whichever of the "<prefix>_*" fields
+## is currently assigned. Unassigned (source "") always reads false, so
+## every caller below falls back to keyboard-only behaviour exactly as
+## before this feature existed.
+func _control_on(prefix: String) -> bool:
+	if not _joy_present():
+		return false
+	var source: String = get(prefix + "_source")
+	if source == "axis":
+		var axis: int = get(prefix + "_axis")
+		if axis < 0:
+			return false
+		var raw: float = joy_axis(axis)
+		var on_value: float = get(prefix + "_axis_on_value")
+		var off_value: float = get(prefix + "_axis_off_value")
+		return absf(raw - on_value) < absf(raw - off_value)
+	if source == "button":
+		var idx: int = get(prefix + "_button_index")
+		if idx < 0:
+			return false
+		return joy_button(idx) == bool(get(prefix + "_button_on_when_pressed"))
+	return false
+
+## Human-readable name of an optional control's assignment, or
+## "not assigned" - same shape as arm_control_name() above.
+func _control_name(prefix: String) -> String:
+	var source: String = get(prefix + "_source")
+	if source == "axis":
+		return "switch on axis %d" % int(get(prefix + "_axis"))
+	if source == "button":
+		return "button %d" % int(get(prefix + "_button_index"))
+	return "not assigned"
+
+## Wipes one optional control back to "not assigned" (keyboard only),
+## without touching ARM or the other two.
+func _clear_control(prefix: String) -> void:
+	set(prefix + "_source", "")
+	set(prefix + "_axis", -1)
+	set(prefix + "_button_index", -1)
+	save_calibration()
+
+func mode_control_name() -> String:
+	return _control_name("mode")
+
+func clear_mode_control() -> void:
+	_clear_control("mode")
+
+func reset_control_name() -> String:
+	return _control_name("reset")
+
+func clear_reset_control() -> void:
+	_clear_control("reset")
+
+func los_control_name() -> String:
+	return _control_name("los")
+
+func clear_los_control() -> void:
+	_clear_control("los")
+
+func restart_control_name() -> String:
+	return _control_name("restart")
+
+func clear_restart_control() -> void:
+	_clear_control("restart")
+
+## True the frame the assigned restart control goes from off to on.
+func restart_pressed() -> bool:
+	var on: bool = _control_on("restart")
+	var edge: bool = on and not _prev_restart_on
+	_prev_restart_on = on
+	return edge
+
 func _handle_level_toggle() -> void:
 	var key_pressed := Input.is_key_pressed(KEY_L)
 	if key_pressed and not _prev_level_key:
 		self_level = not self_level
 	_prev_level_key = key_pressed
+	# A mode switch, once assigned, is authoritative every frame (like a
+	# real FC's AUX-mapped ANGLE mode) - L still works, but is only
+	# "the last word" when no mode switch is assigned.
+	if mode_source != "" and _joy_connected():
+		self_level = _control_on("mode")
 
 func _update_keyboard_throttle(delta: float) -> void:
 	if Input.is_key_pressed(KEY_SHIFT):
@@ -476,8 +618,21 @@ func get_throttle() -> float:
 		return (1.0 - v) if invert_throttle else v
 	return _kb_throttle
 
+## Level-based, like the keyboard: true while R is held OR the assigned
+## reset control (button held / switch on) is active. Polled every
+## physics frame by drone.gd, which presumably debounces on its own.
 func reset_key_pressed() -> bool:
-	return Input.is_key_pressed(KEY_R)
+	return Input.is_key_pressed(KEY_R) or _control_on("reset")
+
+## Edge-triggered: true only on the frame KEY_V or the assigned
+## line-of-sight control goes from off to on. Intended to be polled
+## once a frame (e.g. by ui.gd, which currently reads KEY_V directly -
+## this is the API for it to switch to).
+func los_toggle_pressed() -> bool:
+	var on: bool = Input.is_key_pressed(KEY_V) or _control_on("los")
+	var pressed_edge: bool = on and not _prev_los_on
+	_prev_los_on = on
+	return pressed_edge
 
 func raw_axes_debug_text() -> String:
 	if not _joy_present():

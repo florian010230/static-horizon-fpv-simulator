@@ -10,7 +10,6 @@ render_mode unshaded, cull_disabled, fog_disabled;
 
 #include "res://shaders/world_common.gdshaderinc"
 
-global uniform vec4 sh_sun_color;
 uniform sampler2D leaves : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D bark : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float leaf_scale = 0.7;

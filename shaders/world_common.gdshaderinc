@@ -11,6 +11,9 @@ global uniform vec4 sh_fog_color;
 global uniform vec4 sh_sun;
 // The baked light's parts (see Geo.shade): x ambient, y sky, z sun.
 global uniform vec4 sh_light;
+global uniform vec4 sh_sun_color;
+// Colour grade: x contrast, y saturation, z warmth (+ = warmer).
+global uniform vec4 sh_grade;
 // World -> shadow map: uv = (r0.p, r1.p), depth = r2.p (p = (pos, 1)).
 global uniform vec4 sh_shadow_r0;
 global uniform vec4 sh_shadow_r1;
@@ -71,7 +74,19 @@ vec3 sh_apply_shadow(vec3 c, vec3 wpos, vec3 n) {
 	return c * (1.0 - sh_sun.w * sh * min(1.7 * direct / max(base + direct, 0.001), 0.62));
 }
 
+vec3 sh_grade_color(vec3 c) {
+	if (sh_grade.x <= 0.0) {
+		return c;
+	}
+	float l = dot(c, vec3(0.299, 0.587, 0.114));
+	c = mix(vec3(l), c, sh_grade.y);
+	c = (c - 0.45) * sh_grade.x + 0.45;
+	c *= vec3(1.0 + sh_grade.z, 1.0, 1.0 - sh_grade.z);
+	return max(c, vec3(0.0));
+}
+
 vec3 sh_apply_fog(vec3 c, vec3 wpos, vec3 cam) {
+	c = sh_grade_color(c);
 	if (sh_fog.w < 0.5) {
 		return c;
 	}

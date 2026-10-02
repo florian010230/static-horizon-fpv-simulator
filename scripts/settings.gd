@@ -107,6 +107,8 @@ var wind_level: int = 0
 ## throttle MID/EXPO, a fisheye camera lens (0 off, 1 light, 2 strong).
 ## (No turtle mode: a quad on its back rights itself after 2 s anyway.)
 var stick_overlay: bool = false
+## Prop wash in the flight model (Drone._prop_wash) - on by default.
+var prop_wash: bool = true
 var throttle_mid: float = 0.5
 var throttle_expo: float = 0.0
 var lens_fisheye: int = 0
@@ -138,7 +140,7 @@ const SETTINGS_PATH: String = "user://settings.cfg"
 const SAVED_FIELDS: Array[String] = ["crosshair_enabled", "shadows_enabled", "graphics_quality", "performance_mode",
 	"max_fps", "camera_angle_deg", "camera_fov_deg", "view_distance", "rates_type", "rates_roll", "rates_pitch", "rates_yaw",
 	"selected_drone", "game_mode", "osd_enabled", "battery_enabled", "video_effect", "wind_level", "units",
-	"stick_overlay", "throttle_mid", "throttle_expo", "lens_fisheye"]
+	"stick_overlay", "prop_wash", "throttle_mid", "throttle_expo", "lens_fisheye"]
 var _persist: bool = true
 var _last_saved: String = ""
 var _save_timer: float = 0.0

@@ -22,33 +22,42 @@ of it - then **Play** -> **Choose a Mode** -> **Choose a Map**:
   preview picture of that map (`images/maps/<id>.jpg`); a race map's
   card also shows each drone's best lap and best 3-lap race once one is
   set.
-- **Static Three**, **Static Five** or **Static Whoop** - the Static Three is
-  this sim's own 3-inch freestyle quad (3 inch, 150 km/h, 245 g; its
-  numbers are grounded in a real [DeepSpace Seeker3](https://oscarliang.com/deepspace-seeker3/),
+- **Static Three**, **Static Five**, **Static Race** or **Static
+  Whoop** - the Static Three is this sim's own 3-inch freestyle quad (3
+  inch, 150 km/h, 245 g; its numbers are grounded in a real
+  [DeepSpace Seeker3](https://oscarliang.com/deepspace-seeker3/),
   but it isn't that product); the Static Five is a typical 5-inch 6S
   freestyle build (5 inch, 210 km/h, 650 g, ~9:1 thrust-to-weight); the
-  Static Whoop is a 75 mm 1S brushless ducted micro (70 km/h estimate,
-  32 g) modelled on a current 75 mm brushless ducted whoop, built for
-  tight indoor spaces. Three real frames with their own mass/thrust/drag,
-  and their own model: the two freestyle quads are built like a typical
-  5" true-X frame - a carbon bottom plate with tapered arms and motor
-  pads, a top plate on standoffs, an FC stack, a camera in TPU side
-  plates tilted 25 degrees, copper stator windings visible under each
-  spoked motor bell, a metal lens ring, a rounded LiPo with a label
-  band, strap and XT60 lead, a VTX antenna on a TPU mount, receiver
-  whips, a small rear LED strip and 3-blade pitched props; the Static
-  Whoop is built like a real ducted whoop instead - closed thin-walled
-  ducts with a flared top lip and an inner floor lip (the props sit
-  inside the upper half), motor mounts braced to the duct floor, arms
-  to a centre plate, bridges between neighbouring ducts, an angular
-  black canopy with the camera (25 degrees) behind its front window, the
-  1S pack in a holder behind it, a copper-pipe antenna, red motor bells
+  Static Race is a typical 5-inch 6S race build, not a specific product
+  (5 inch, 170 km/h estimate, 440 g, 2207 ~1950 KV motors, 11:1
+  thrust-to-weight, 225 mm wheelbase - race builds run lighter and
+  harder-pushed than freestyle ones, per oscarliang.com and
+  x-teamrc.com); the Static Whoop is a 75 mm 1S brushless ducted micro
+  (70 km/h estimate, 32 g) modelled on a current 75 mm brushless ducted
+  whoop, built for tight indoor spaces. Four real frames with their own
+  mass/thrust/drag, and their own model: the three non-whoop quads are
+  built like a typical true-X frame - a carbon bottom plate with
+  tapered arms and motor pads, a top plate on standoffs, an FC stack, a
+  camera in TPU side plates (tilted 25 degrees on the two freestyle
+  quads, a race-steep 45 on the Static Race, which also sits lower on
+  short standoffs with its pack strapped under the bottom plate instead
+  of on top), copper stator windings visible under each spoked motor
+  bell, a metal lens ring, a rounded LiPo with a label band, strap and
+  XT60 lead, a VTX antenna on a TPU mount (a slim near-vertical whip on
+  the Static Race), receiver whips, a small rear LED strip and 3-blade
+  pitched props, lime green on the Static Race; the Static Whoop is
+  built like a real ducted whoop instead - closed thin-walled ducts
+  with a flared top lip and an inner floor lip (the props sit inside
+  the upper half), motor mounts braced to the duct floor, arms to a
+  centre plate, bridges between neighbouring ducts, an angular black
+  canopy with the camera (25 degrees) behind its front window, the 1S
+  pack in a holder behind it, a copper-pipe antenna, red motor bells
   and orange 3-blade props. All of it lit by a small view-space studio
   light rig (`shaders/drone_studio.gdshader`: key/fill/rim lights,
   specular highlights, a carbon-twill weave texture) rather than the
   engine's lights, which do nothing useful on this GPU either. Each
   frame also has its own motor sound - the whoop screams high, the
-  3-inch whines, the 5-inch growls lower.
+  3-inch whines, the race snarls around 640 Hz, the 5-inch growls lower.
 - **Village** - a small village that makes sense as a place: a Main
   Street that comes in from one edge of the map and leaves at the other
   (toward the next town), 15 two-storey houses on both sides with
@@ -103,7 +112,8 @@ flight time appear top left, with a LOW BATTERY warning. The High maps
 have only light haze now, a coarse terrain ring out to the horizon so
 their edge never shows, and are 2-4 times the area they were. Each drone carries a typical real
 pack (`scripts/battery.gd`: whoop 1S 480 mAh, Static Three 4S 850 mAh,
-Static Five 6S 1300 mAh) that drains with current and sags under load;
+Static Five 6S 1300 mAh, Static Race 6S 1100 mAh) that drains with
+current and sags under load;
 Settings -> "Battery simulation" turns on drain, sag and the readout. Acro
 rates (Settings -> Rates) are Betaflight's own: all four rate types
 (Betaflight, Actual, Quick, KISS) with Betaflight's formulas from
@@ -229,7 +239,7 @@ map, a radio with an unusual channel layout (sticks on axes 6-9, arm on
 button 40), a full timed race lap (plus that cutting the course
 doesn't count), both game modes, and that every generated map has no
 floating pieces (`BuiltMap.floating_pieces()` - see "Nothing floats"
-below). Current result: 431 checks, 0 failed.
+below). Current result: ~472 checks, 0 failed (the count varies a little with which radio paths a run exercises).
 
 ## Requirements
 
@@ -343,6 +353,14 @@ that way deliberately as the project grew:
   height, and turns to keep following the drone - the way a pilot
   without goggles spots their own quad
 - `O` show/hide the tuning panel
+- `P` replay the last 60 seconds of flight (always recording in the
+  background, 30 Hz): `Space` pause/play, `Left`/`Right` jump -/+5 s,
+  `Up`/`Down` change speed (1/4x-2x), `C` cycle the camera (chase, FPV,
+  line-of-sight from the spawn point), `P` again to resume flying
+  exactly where it left off (position, velocity and rotation restored).
+  The flying drone freezes and hides while a replay plays; a second
+  copy of its model flies the recording. HUD and crosshair are hidden
+  during a replay.
 - `Esc` pause menu (camera angle/FOV, drone, reset, Settings, main menu)
 
 The menu has a **Settings** button (see above), and the Rates tab works
@@ -409,6 +427,18 @@ Uncrashed, DRL and TRYP FPV - sources in the code comments):
    throttle up, has to be flipped off and on again first - the HUD says
    which. Settings has "Arm is a switch" - turn it off for a momentary
    button, where each press toggles.
+5. Four more radio controls can be assigned the same way, each
+   optional and unassigned by default: Settings -> Radio has **Assign
+   Mode Switch** (sets Acro/Angle directly from the switch position,
+   like Betaflight's ANGLE on an AUX switch, rather than toggling),
+   **Assign Reset Button**, **Assign Line-of-Sight Button** and
+   **Assign Restart Switch** (flip it: the map reloads from the start -
+   race, timer and drone; Reset only puts the drone back), each
+   with its own Clear and a status line, captured by the same
+   calibration-wizard step the arm switch uses. Until assigned, nothing
+   changes - mode is still `L`, reset still `R`, line-of-sight still
+   `V` on the keyboard, and those keys keep working alongside a radio
+   binding either way.
 
 If you'd rather set the raw axis numbers by hand, `scenes/InputManager.tscn`'s
 `InputManager` node still exposes `axis_roll`/`axis_pitch`/`axis_throttle`/
@@ -513,6 +543,16 @@ reflection cubemap every frame, which cost real FPS (Race Field 48 ->
 instead, turns off reflected light (nothing uses it - every material
 here is unshaded) and uses a 32 px radiance size, recovering the frame
 rate (54 FPS Race Field, 44 Harbour).
+
+Any material named `*water*` (`Geo.water_mat`) gets moving ripples, a
+Fresnel sky reflection that strengthens at shallow viewing angles, and
+a glint off the sun, in the same shared world shader - toned down from
+a first version that made the sunset harbour basin's water read as
+sand. A small global colour grade rides along in the same shader pass
+over every world surface at no extra cost: contrast 1.08, saturation
+1.12, plus an optional per-map warmth, set once by
+`WorldShading.set_grade()` and overridable per map via the
+environment's `"grade"` meta.
 
 ## Crashing into things
 
@@ -755,6 +795,23 @@ Same cascaded structure a real flight controller uses:
   is what makes a real quad bleed off speed once levelled out; without
   it the drone kept sliding - or, at hover throttle, kept climbing - for
   many seconds with the sticks centered.
+- **Motor response lag:** each of the four motors follows its commanded
+  thrust with a first-order time constant instead of reaching it in the
+  same physics step it was commanded in - smaller, lighter props spin
+  up faster, so the lag is per frame (`motor_tau`): whoop 15 ms, Static
+  Three 20 ms, Static Race 22 ms, Static Five 25 ms.
+- **Prop wash** (on by default; Settings -> Flight turns it off): descending through your own downwash - the familiar
+  shake on a dive-and-catch - kicks in past 1.5 m/s of descent along the
+  thrust axis (full strength by 6 m/s) while the motors are still
+  loaded: an ~8 Hz random roll/pitch torque plus up to 20% less thrust.
+  Tuned by flying it in a throwaway headless physics test: the first
+  version shook the Static Five at up to 28 rad/s on a dive-and-catch -
+  far too violent - scaled down until a catch wobbles at most ~3.4 rad/s
+  (~190 deg/s) while losing lift on the way through.
+- **Ground effect:** up to 12% extra thrust right at the ground, fading
+  out by two prop diameters of height - the cushion under a low hover -
+  checked with one ground raycast every 50 ms rather than every physics
+  step.
 
 **Is gravity right?** Yes - the standard 9.8 m/s² (checked when a pilot
 reported falls felt "a bit weak"). A disarmed drop matches a real quad:
@@ -780,9 +837,9 @@ it up instead since that's what felt right in testing; flip the sign in
 `_apply_camera_settings()` in `drone.gd` if you'd rather match the real
 convention).
 
-## Two frames: DeepSpace Seeker3 and Static Whoop
+## The frames: Static Three, Static Five, Static Race and Static Whoop
 
-`Drone.PROFILES` (in `drone.gd`) holds two complete, independently-real
+`Drone.PROFILES` (in `drone.gd`) holds four complete, independently-real
 frames - mass, arm length, thrust, drag, PID gains, collision size, and
 visual model all switch together via `Drone.apply_profile()`, driven by
 `Settings.selected_drone` (set by the menu's Choose Your Drone panel).

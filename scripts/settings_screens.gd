@@ -69,6 +69,7 @@ func _process(_delta: float) -> void:
 	elif _radio_status:
 		_radio_status.text = _radio_status_text()
 		_arm_hint_label.text = "Arm: %s, or Enter on the keyboard" % InputManager.arm_control_name()
+		_refresh_assign_info()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible or not event.is_action_pressed("ui_cancel"):
@@ -178,6 +179,8 @@ func _build_settings() -> Control:
 	UIKit.gap(f1, 6)
 	_segmented(f1, "Wind (outdoor maps)", ["Off", "Light", "Gusty"], Settings.wind_level, func(i: int): Settings.wind_level = i)
 	_hint(f1, "Light: about 3 m/s. Gusty: about 7 m/s with gusts.")
+	UIKit.toggle(f1, "Prop wash", Settings.prop_wash, func(v: bool): Settings.prop_wash = v)
+	_hint(f1, "Shaking and lost lift when you dive into your own downwash. Off: a clean catch every time.")
 	UIKit.section(f2, "Physics")
 	UIKit.toggle(f2, "Performance mode (240 Hz physics)", Settings.performance_mode, func(v: bool): Settings.performance_mode = v)
 	_hint(f2, "A slightly crisper flight controller. Costs CPU - for strong PCs.")
@@ -214,6 +217,15 @@ func _build_settings() -> Control:
 		InputManager.save_calibration())
 
 	UIKit.gap(third, 10)
+	UIKit.section(third, "Other controls (optional)")
+	_hint(third, "Assign a switch or button for any of these, or leave it unassigned and use the keyboard only.")
+	_assign_row(third, "Assign Mode Switch", "mode", Callable(InputManager, "mode_control_name"), Callable(InputManager, "clear_mode_control"))
+	_assign_row(third, "Assign Reset Button", "reset", Callable(InputManager, "reset_control_name"), Callable(InputManager, "clear_reset_control"))
+	_assign_row(third, "Assign Line-of-Sight Button", "los", Callable(InputManager, "los_control_name"), Callable(InputManager, "clear_los_control"))
+	_assign_row(third, "Assign Restart Switch", "restart", Callable(InputManager, "restart_control_name"), Callable(InputManager, "clear_restart_control"))
+	_hint(third, "Restart reloads the map from the start (race, timer, drone) - Reset only puts the drone back.")
+
+	UIKit.gap(third, 10)
 	UIKit.section(third, "Controller")
 	_device_picker = OptionButton.new()
 	_device_picker.custom_minimum_size = Vector2(0, 44)
@@ -240,6 +252,35 @@ func _hint(parent: Control, text: String) -> void:
 	var l := _hint_label()
 	l.text = text
 	parent.add_child(l)
+
+## One row in the Radio tab for an optional assignable control (mode/
+## reset/los): an "Assign ..." button that runs the generalized capture
+## step of the calibration wizard for `target`, a Clear button, and a
+## line showing what's currently assigned - refreshed every frame the
+## Settings screen is visible (see _process()).
+func _assign_row(parent: Control, button_label: String, target: String, name_fn: Callable, clear_fn: Callable) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	parent.add_child(row)
+	var btn := UIKit.button(button_label, "", 52)
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.pressed.connect(func(): _start_capture(target))
+	row.add_child(btn)
+	var clear_btn := UIKit.button("Clear", "GhostButton", 52)
+	clear_btn.custom_minimum_size = Vector2(90, 52)
+	clear_btn.pressed.connect(func():
+		clear_fn.call()
+		_refresh_assign_info())
+	row.add_child(clear_btn)
+	var info := _hint_label()
+	parent.add_child(info)
+	_assign_info.append({"label": info, "display": CAPTURE_LABELS[target], "name_fn": name_fn})
+	_refresh_assign_info()
+
+func _refresh_assign_info() -> void:
+	for info in _assign_info:
+		var label: Label = info.label
+		label.text = "%s: %s" % [info.display, info.name_fn.call()]
 
 # --- Rates (like Betaflight Configurator's PID Tuning -> Rates) ---------------
 
@@ -534,12 +575,28 @@ func _draw_rate_curve(c: Control) -> void:
 ## switch (flip on, flip off), then a test view that shows the sticks
 ## and the arm switch exactly as the sim now reads them.
 ##
-## Steps: REST(-1), sticks (0..3), ARM (4), TEST (5).
+## Steps: REST(-1), sticks (0..3), ARM (4), TEST (5). STEP_CAPTURE (6) is
+## a separate, single-step flow (not part of the REST->sticks->Arm->Test
+## sequence): it's where the Radio tab's "Assign Mode/Reset/Line-of-Sight"
+## buttons land, sharing the arm step's own "something changed from
+## baseline, now flip it back off" detection (see _detect_candidate()/
+## _confirm_candidate(), used by both _process_arm_step() and
+## _process_capture_step()).
 const STEP_ARM: int = 4
 const STEP_TEST: int = 5
+const STEP_CAPTURE: int = 6
 const HOLD_TIME: float = 0.7
 const HOLD_DEFLECTION: float = 0.7
 const STEP_NAMES: Array[String] = ["Rest", "Roll", "Pitch", "Yaw", "Throttle", "Arm", "Test"]
+## Display names for the three optional controls, keyed the same way as
+## InputManager's "<prefix>_*" fields - used for both the wizard's
+## STEP_CAPTURE prompt and the Radio tab's assigned-control lines.
+const CAPTURE_LABELS: Dictionary = {
+	"mode": "Flight Mode",
+	"reset": "Reset",
+	"los": "Line-of-Sight",
+	"restart": "Restart Map",
+}
 
 var _cal_title: Label
 var _cal_hint: Label
@@ -554,6 +611,19 @@ var _arm_base_axes: Array[float] = []
 var _arm_base_buttons: Array[bool] = []
 var _arm_candidate: Dictionary = {} ## detected control, waiting for "flip back off"
 var _arm_hint_label: Label
+## Which optional control (if any) a standalone "Assign ..." button in
+## the Radio tab is currently capturing ("" when not in that flow - the
+## full Calibrate Radio sequence and the arm-only re-assign both leave
+## this "", and keep using _arm_only/_arm_candidate as before).
+var _capture_only: String = ""
+var _capture_target: String = ""
+var _capture_base_axes: Array[float] = []
+var _capture_base_buttons: Array[bool] = []
+var _capture_candidate: Dictionary = {}
+## [{"label": Label, "display": String, "name_fn": Callable}] - one per
+## optional control's line in the Radio tab, refreshed every frame the
+## Settings screen is visible (see _process()).
+var _assign_info: Array = []
 
 func _build_calibration() -> Control:
 	var parts: Array = UIKit.screen_card(self, "Calibrate Radio", "", 760, _show_settings, 980)
@@ -581,7 +651,7 @@ func _build_calibration() -> Control:
 	content.add_child(row)
 	var restart := UIKit.button("Start over", "GhostButton", 56)
 	restart.custom_minimum_size = Vector2(170, 56)
-	restart.pressed.connect(func(): _start_calibration(_arm_only))
+	restart.pressed.connect(_restart_current)
 	row.add_child(restart)
 	_cal_skip = UIKit.button("Skip (keep current)", "GhostButton", 56)
 	_cal_skip.custom_minimum_size = Vector2(230, 56)
@@ -600,6 +670,7 @@ func _build_calibration() -> Control:
 ## test view), the stick calibration stays as it is.
 func _start_calibration(arm_only: bool = false) -> void:
 	_arm_only = arm_only
+	_capture_only = ""
 	_calibration_assigned_axes.clear()
 	_hold_axis = -1
 	_hold_time = 0.0
@@ -609,6 +680,26 @@ func _start_calibration(arm_only: bool = false) -> void:
 	else:
 		_calibration_step = -1
 	_update_calibration_step()
+
+## Settings -> "Assign Mode/Reset/Line-of-Sight ...": the same
+## single-step, no-sticks flow as arm_only above, generalized to any of
+## the three optional controls (see InputManager's "<prefix>_*" fields).
+func _start_capture(target: String) -> void:
+	_arm_only = false
+	_capture_only = target
+	_calibration_assigned_axes.clear()
+	_hold_axis = -1
+	_hold_time = 0.0
+	_show_calibration()
+	_enter_capture_step(target)
+	_update_calibration_step()
+
+## "Start over" in the wizard: redo whichever flow is currently active.
+func _restart_current() -> void:
+	if _capture_only != "":
+		_start_capture(_capture_only)
+	else:
+		_start_calibration(_arm_only)
 
 func _enter_arm_step() -> void:
 	_calibration_step = STEP_ARM
@@ -620,26 +711,44 @@ func _enter_arm_step() -> void:
 	for b in range(InputManager.BUTTONS):
 		_arm_base_buttons.append(InputManager.joy_button(b) if InputManager.has_joystick() else false)
 
+func _enter_capture_step(target: String) -> void:
+	_calibration_step = STEP_CAPTURE
+	_capture_target = target
+	_capture_candidate = {}
+	_capture_base_axes.clear()
+	_capture_base_buttons.clear()
+	for i in range(InputManager.AXES):
+		_capture_base_axes.append(InputManager.joy_axis(i) if InputManager.has_joystick() else 0.0)
+	for b in range(InputManager.BUTTONS):
+		_capture_base_buttons.append(InputManager.joy_button(b) if InputManager.has_joystick() else false)
+
 func _stick_axes() -> Array[int]:
 	return [InputManager.axis_roll, InputManager.axis_pitch, InputManager.axis_yaw, InputManager.axis_throttle]
+
+func _pill(text: String, done: bool, cur: bool) -> PanelContainer:
+	var pill := PanelContainer.new()
+	var bg: Color = UIKit.LOGO_SKY if done else (UIKit.LOGO_GROUND if cur else UIKit.BG)
+	pill.add_theme_stylebox_override("panel", UIKit.box(bg, bg if (done or cur) else UIKit.BORDER, 999, 1, Vector4(14, 4, 14, 4)))
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 15)
+	l.add_theme_color_override("font_color", Color.WHITE if (done or cur) else UIKit.MUTED_LIGHT)
+	pill.add_child(l)
+	return pill
 
 func _update_calibration_step() -> void:
 	for c in _cal_progress.get_children():
 		c.queue_free()
-	var first: int = STEP_ARM if _arm_only else -1
-	for st in range(first, STEP_TEST + 1):
-		var pill := PanelContainer.new()
-		var done: bool = st < _calibration_step
-		var cur: bool = st == _calibration_step
-		var bg: Color = UIKit.LOGO_SKY if done else (UIKit.LOGO_GROUND if cur else UIKit.BG)
-		pill.add_theme_stylebox_override("panel", UIKit.box(bg, bg if (done or cur) else UIKit.BORDER, 999, 1, Vector4(14, 4, 14, 4)))
-		var l := Label.new()
-		l.text = "%d  %s" % [st - first + 1, STEP_NAMES[st + 1]]
-		l.add_theme_font_size_override("font_size", 15)
-		l.add_theme_color_override("font_color", Color.WHITE if (done or cur) else UIKit.MUTED_LIGHT)
-		pill.add_child(l)
-		_cal_progress.add_child(pill)
-	_cal_skip.visible = _calibration_step == STEP_ARM
+	if _capture_only != "":
+		# Standalone "Assign Mode/Reset/Line-of-Sight": just two pills,
+		# the capture itself and the shared test view.
+		_cal_progress.add_child(_pill("1  %s" % CAPTURE_LABELS[_capture_only], _calibration_step == STEP_TEST, _calibration_step == STEP_CAPTURE))
+		_cal_progress.add_child(_pill("2  Test", false, _calibration_step == STEP_TEST))
+	else:
+		var first: int = STEP_ARM if _arm_only else -1
+		for st in range(first, STEP_TEST + 1):
+			_cal_progress.add_child(_pill("%d  %s" % [st - first + 1, STEP_NAMES[st + 1]], st < _calibration_step, st == _calibration_step))
+	_cal_skip.visible = _calibration_step == STEP_ARM or _calibration_step == STEP_CAPTURE
 	_cal_next.visible = _calibration_step < 0 or _calibration_step == STEP_TEST or not InputManager.has_joystick()
 	_cal_next.text = "Done" if _calibration_step == STEP_TEST else "Next"
 	if not InputManager.has_joystick():
@@ -656,9 +765,23 @@ func _update_calibration_step() -> void:
 	elif _calibration_step == STEP_ARM:
 		_cal_title.text = "Flip the switch you want to ARM with"
 		_cal_hint.text = "Any switch or button on the radio. Currently: %s. Enter on the keyboard always works too." % InputManager.arm_control_name()
+	elif _calibration_step == STEP_CAPTURE:
+		_cal_title.text = "Flip the switch you want for %s" % CAPTURE_LABELS[_capture_only]
+		_cal_hint.text = "Any switch or button on the radio (or press Esc to skip). Currently: %s." % _current_capture_name()
 	else:
 		_cal_title.text = "All set - try it"
 		_cal_hint.text = "This is exactly what the sim reads now. Flip the arm switch to check it. Saved - it stays calibrated after a restart."
+
+## The current assignment of whichever optional control the Radio tab's
+## "Assign ..." button is capturing - used for the STEP_CAPTURE hint
+## above.
+func _current_capture_name() -> String:
+	match _capture_only:
+		"mode": return InputManager.mode_control_name()
+		"reset": return InputManager.reset_control_name()
+		"los": return InputManager.los_control_name()
+		"restart": return InputManager.restart_control_name()
+	return "not assigned"
 
 func _process_calibration(delta: float) -> void:
 	_cal_viz.queue_redraw()
@@ -678,6 +801,8 @@ func _process_calibration(delta: float) -> void:
 			_accept_stick(sample)
 	elif _calibration_step == STEP_ARM:
 		_process_arm_step()
+	elif _calibration_step == STEP_CAPTURE:
+		_process_capture_step()
 
 func _accept_stick(sample: Dictionary) -> void:
 	var step: Dictionary = CALIBRATION_STEPS[_calibration_step]
@@ -701,50 +826,87 @@ func _accept_stick(sample: Dictionary) -> void:
 		_calibration_step += 1
 	_update_calibration_step()
 
-## Arm step: anything that changes from its state when the step began -
-## a button, or an axis that isn't one of the four sticks - is the
-## candidate; flipping it back confirms it (and tells a real switch from
-## a stick being bumped).
+## Shared by the arm step and the generalized capture step: anything
+## that changes from its state when the step began - a button, or an
+## axis that isn't one of the four sticks - is the candidate; the
+## caller then waits for it to flip back off to confirm it (and tell a
+## real switch from a stick being bumped). Empty while nothing's
+## changed yet.
+func _detect_candidate(base_axes: Array[float], base_buttons: Array[bool]) -> Dictionary:
+	for b in range(InputManager.BUTTONS):
+		if InputManager.joy_button(b) != base_buttons[b]:
+			return {"source": "button", "index": b, "off": base_buttons[b]}
+	var exclude := _stick_axes()
+	for i in range(InputManager.AXES):
+		if i in exclude:
+			continue
+		var v: float = InputManager.joy_axis(i)
+		if absf(v - base_axes[i]) > 0.5:
+			return {"source": "axis", "index": i, "off": base_axes[i], "on": v}
+	return {}
+
+## Checks a candidate dict (as returned by _detect_candidate) against
+## the radio right now: "" while still waiting for the flip-back-off,
+## else "button" or "axis" once confirmed. For an axis, `candidate` is
+## mutated in place to track a still-travelling 3-position switch.
+func _confirm_candidate(candidate: Dictionary) -> String:
+	if candidate.source == "button":
+		return "button" if InputManager.joy_button(candidate.index) == candidate.off else ""
+	var v: float = InputManager.joy_axis(candidate.index)
+	if absf(v - candidate.off) < 0.25:
+		return "axis"
+	if absf(v - candidate.off) > absf(candidate.on - candidate.off):
+		candidate.on = v
+	return ""
+
+func _candidate_name(candidate: Dictionary) -> String:
+	return ("button %d" if candidate.source == "button" else "switch on axis %d") % candidate.index
+
+## Arm step: see _detect_candidate()/_confirm_candidate() above.
 func _process_arm_step() -> void:
 	if _arm_candidate.is_empty():
-		for b in range(InputManager.BUTTONS):
-			if InputManager.joy_button(b) != _arm_base_buttons[b]:
-				_arm_candidate = {"source": "button", "index": b, "off": _arm_base_buttons[b]}
-				break
-		if _arm_candidate.is_empty():
-			var exclude := _stick_axes()
-			for i in range(InputManager.AXES):
-				if i in exclude:
-					continue
-				var v: float = InputManager.joy_axis(i)
-				if absf(v - _arm_base_axes[i]) > 0.5:
-					_arm_candidate = {"source": "axis", "index": i, "off": _arm_base_axes[i], "on": v}
-					break
+		_arm_candidate = _detect_candidate(_arm_base_axes, _arm_base_buttons)
 		if not _arm_candidate.is_empty():
 			_cal_title.text = "Got it - now flip it back OFF"
-			_cal_hint.text = "Detected %s." % _candidate_name()
+			_cal_hint.text = "Detected %s." % _candidate_name(_arm_candidate)
 		return
-	if _arm_candidate.source == "button":
-		if InputManager.joy_button(_arm_candidate.index) == _arm_candidate.off:
-			# A button that reads pressed with the switch OFF is simply an
-			# inverted switch.
-			InputManager.arm_button_on_when_pressed = not _arm_candidate.off
-			InputManager.arm_source = "button"
-			InputManager.arm_button_index = _arm_candidate.index
-			_finish_arm_step()
-	else:
-		var v: float = InputManager.joy_axis(_arm_candidate.index)
-		if absf(v - _arm_candidate.off) < 0.25:
-			InputManager.arm_source = "axis"
-			InputManager.arm_axis = _arm_candidate.index
-			InputManager.arm_axis_off_value = _arm_candidate.off
-			InputManager.arm_axis_on_value = _arm_candidate.on
-			_finish_arm_step()
-		elif absf(v - _arm_candidate.off) > absf(_arm_candidate.on - _arm_candidate.off):
-			_arm_candidate.on = v # a 3-position switch still travelling
+	var confirmed := _confirm_candidate(_arm_candidate)
+	if confirmed == "button":
+		# A button that reads pressed with the switch OFF is simply an
+		# inverted switch.
+		InputManager.arm_button_on_when_pressed = not _arm_candidate.off
+		InputManager.arm_source = "button"
+		InputManager.arm_button_index = _arm_candidate.index
+		_finish_arm_step()
+	elif confirmed == "axis":
+		InputManager.arm_source = "axis"
+		InputManager.arm_axis = _arm_candidate.index
+		InputManager.arm_axis_off_value = _arm_candidate.off
+		InputManager.arm_axis_on_value = _arm_candidate.on
+		_finish_arm_step()
 
-func _candidate_name() -> String:
-	return ("button %d" if _arm_candidate.source == "button" else "switch on axis %d") % _arm_candidate.index
+## The generalized version of _process_arm_step(), for the Radio tab's
+## "Assign Mode/Reset/Line-of-Sight" buttons - same detection, writing
+## to InputManager's "<_capture_target>_*" fields instead of arm_*.
+func _process_capture_step() -> void:
+	if _capture_candidate.is_empty():
+		_capture_candidate = _detect_candidate(_capture_base_axes, _capture_base_buttons)
+		if not _capture_candidate.is_empty():
+			_cal_title.text = "Got it - now flip it back OFF"
+			_cal_hint.text = "Detected %s." % _candidate_name(_capture_candidate)
+		return
+	var confirmed := _confirm_candidate(_capture_candidate)
+	if confirmed == "button":
+		InputManager.set(_capture_target + "_source", "button")
+		InputManager.set(_capture_target + "_button_index", _capture_candidate.index)
+		InputManager.set(_capture_target + "_button_on_when_pressed", not _capture_candidate.off)
+		_finish_capture_step()
+	elif confirmed == "axis":
+		InputManager.set(_capture_target + "_source", "axis")
+		InputManager.set(_capture_target + "_axis", _capture_candidate.index)
+		InputManager.set(_capture_target + "_axis_off_value", _capture_candidate.off)
+		InputManager.set(_capture_target + "_axis_on_value", _capture_candidate.on)
+		_finish_capture_step()
 
 func _finish_arm_step() -> void:
 	InputManager.save_calibration()
@@ -754,6 +916,13 @@ func _finish_arm_step() -> void:
 	_calibration_step = STEP_TEST
 	_update_calibration_step()
 
+func _finish_capture_step() -> void:
+	InputManager.save_calibration()
+	_calibration_step = STEP_TEST
+	_update_calibration_step()
+
+## Shared by the arm step's and the capture step's "Skip" button - both
+## just keep whatever was already assigned and move to the test view.
 func _skip_arm_step() -> void:
 	InputManager.save_calibration()
 	_calibration_step = STEP_TEST
@@ -801,24 +970,27 @@ func _draw_calibration() -> void:
 		var raw: float = InputManager.joy_axis(i)
 		var rest: float = InputManager.axis_rest[i] if _calibration_step >= 0 else 0.0
 		var held: bool = i == _hold_axis
-		var is_arm: bool = _calibration_step == STEP_ARM and not _arm_candidate.is_empty() and _arm_candidate.source == "axis" and _arm_candidate.index == i
+		# Highlights the axis a "flip the switch" step (arm, or the
+		## generalized mode/reset/los capture) is currently watching.
+		var is_candidate: bool = (_calibration_step == STEP_ARM and not _arm_candidate.is_empty() and _arm_candidate.source == "axis" and _arm_candidate.index == i) \
+			or (_calibration_step == STEP_CAPTURE and not _capture_candidate.is_empty() and _capture_candidate.source == "axis" and _capture_candidate.index == i)
 		var label: String = "Axis %d" % i
 		if names.has(i):
 			label += "  " + names[i]
-		var col: Color = UIKit.LOGO_GROUND if (held or is_arm) else (UIKit.ACCENT if names.has(i) else UIKit.MUTED_LIGHT)
+		var col: Color = UIKit.LOGO_GROUND if (held or is_candidate) else (UIKit.ACCENT if names.has(i) else UIKit.MUTED_LIGHT)
 		c.draw_string(font, Vector2(24, y + 7), label, HORIZONTAL_ALIGNMENT_LEFT, bar_x - 30, 18, col)
 		var track := Rect2(bar_x, y - 7, bar_w, 14)
 		c.draw_rect(track, Color(1, 1, 1, 0.06))
 		var cx: float = bar_x + bar_w * 0.5
 		var px: float = bar_x + (raw + 1.0) * 0.5 * bar_w
-		c.draw_rect(Rect2(minf(cx, px), y - 7, absf(px - cx), 14), col if (held or is_arm or names.has(i)) else Color(UIKit.MUTED_LIGHT, 0.5))
+		c.draw_rect(Rect2(minf(cx, px), y - 7, absf(px - cx), 14), col if (held or is_candidate or names.has(i)) else Color(UIKit.MUTED_LIGHT, 0.5))
 		var rx: float = bar_x + (rest + 1.0) * 0.5 * bar_w
 		c.draw_line(Vector2(rx, y - 11), Vector2(rx, y + 11), Color.WHITE, 2.0)
 		c.draw_string(font, Vector2(bar_x + bar_w + 12, y + 7), "%+.2f" % raw, HORIZONTAL_ALIGNMENT_LEFT, 70, 16, UIKit.MUTED_LIGHT)
 		if held:
 			var f: float = clampf(_hold_time / HOLD_TIME, 0.0, 1.0)
 			c.draw_rect(Rect2(bar_x, y + 9, bar_w * f, 4), UIKit.LOGO_GROUND)
-	if _calibration_step == STEP_ARM:
+	if _calibration_step == STEP_ARM or _calibration_step == STEP_CAPTURE:
 		var btns: Array[String] = []
 		for b in range(InputManager.BUTTONS):
 			if InputManager.joy_button(b):

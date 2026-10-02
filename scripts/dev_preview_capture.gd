@@ -315,6 +315,10 @@ func _menu_shots() -> void:
 	if next_btn:
 		next_btn.pressed.emit()
 	await get_tree().create_timer(0.5).timeout
+	_shot("preview_menu_race.png")
+	if next_btn:
+		next_btn.pressed.emit()
+	await get_tree().create_timer(0.5).timeout
 	_shot("preview_menu_whoop.png")
 	if next_btn:
 		next_btn.pressed.emit() # back to the default drone
@@ -395,6 +399,21 @@ func _map_shots(scene: String, prefix: String, views: Array, pause_shots: bool =
 		await get_tree().create_timer(0.5).timeout
 		_shot("preview_%s_los.png" % prefix)
 		ui.toggle_los()
+		# Replay: a recorded swoop past the start gate, chase camera.
+		var rp: Replay = ui.replay
+		rp._pos.clear()
+		rp._rot.clear()
+		for k in range(90):
+			var tt: float = k / 30.0
+			rp._pos.append(Vector3(-20 + tt * 12.0, 2.0 + sin(tt) * 1.5, 30 + sin(tt * 1.3) * 4.0))
+			rp._rot.append(Basis(Vector3.UP, -PI * 0.5 + sin(tt) * 0.3).get_rotation_quaternion())
+		rp.start()
+		rp._t = 1.5
+		for k in range(20):
+			rp._place()
+		await get_tree().create_timer(0.5).timeout
+		_shot("preview_%s_replay.png" % prefix)
+		rp.stop()
 	# The flight-area border, which shows while the HUD warns.
 	var sc: Node = get_tree().current_scene
 	if sc.has_method("border") and not sc.has_method("check_border_box"):

@@ -15,6 +15,7 @@ const PACKS := {
 	"whoop": {"cells": 1, "mah": 480.0, "max_a": 12.0, "r_cell": 0.05}, # 1S 480 mAh, 12 A ESC
 	"seeker3": {"cells": 4, "mah": 850.0, "max_a": 70.0, "r_cell": 0.014},
 	"five": {"cells": 6, "mah": 1300.0, "max_a": 130.0, "r_cell": 0.009},
+	"race": {"cells": 6, "mah": 1100.0, "max_a": 120.0, "r_cell": 0.01}, # 6S 1100 mAh race pack
 }
 ## Resting cell voltage by state of charge (LiPo, rough but typical).
 const CURVE: Array[Vector2] = [Vector2(0.0, 3.3), Vector2(0.1, 3.55), Vector2(0.25, 3.7), Vector2(0.5, 3.82), Vector2(0.8, 4.0), Vector2(1.0, 4.2)]
