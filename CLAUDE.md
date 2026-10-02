@@ -50,6 +50,19 @@ explicitly (that was a parse error in the editor once).
 `godot` isn't on PATH here: use `/Applications/Godot.app/Contents/MacOS/Godot`.
 `InputManager.test_joy` is a virtual radio for tests without hardware.
 
+## Builds (2026-10-02)
+
+`export_presets.cfg` and `builds/` are gitignored. Presets: "Windows
+Desktop", "Linux", "macOS" (universal, ad-hoc signed, not notarized;
+needs `import_etc2_astc=true`, already set). Templates live in
+`~/Library/Application Support/Godot/export_templates/4.7.2.stable/`
+(fetched piecewise from the official .tpz by HTTP range requests - the
+disk is nearly full). Export: `godot --headless --path . --export-release
+"macOS" builds/macos/StaticHorizonFPV.zip`; verify with the exported
+binary's `--headless -- --selftest`. Release zips
+`builds/StaticHorizonFPV-<ver>-<os>.zip` + `builds/README.txt`, hard-linked
+into the website repo's `downloads/` (not committed there either).
+
 ## Lighting: the engine sun does nothing on the dev machine
 
 Measured 2026-09-27: on the Intel Iris 6100 (macOS, Compatibility

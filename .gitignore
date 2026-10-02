@@ -5,3 +5,4 @@ export_presets.cfg
 *.translation
 .DS_Store
 previews/*.png
+builds/

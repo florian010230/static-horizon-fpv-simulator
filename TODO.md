@@ -191,7 +191,7 @@ stays a real node in the .tscn.
 - [ ] Menu: map thumbnails rendered at build time, credits/licences,
       first-run tutorial ("plug in radio -> calibrate -> fly").
 - [ ] Performance pass on a 4 GB / integrated GPU target per tier.
-- [ ] Export presets (Windows / macOS / Linux), app icon, version.
+- [x] Export presets (Windows / macOS universal / Linux; export_presets.cfg is gitignored, builds/ too). Still open: app icon, macOS notarization, Windows code signing, a public download host.
 - [ ] README rewritten as a public-facing page; DEVLOG kept for the blog.
 
 ## Research notes

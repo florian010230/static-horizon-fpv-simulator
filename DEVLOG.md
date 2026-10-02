@@ -1541,6 +1541,27 @@ flying a whole session without touching the keyboard. Edge-triggered,
 and it starts out "on", so a switch already up when a map loads has to
 be flipped again rather than restarting the map forever.
 
+**Shipping it: Windows, Linux, macOS, and a page to download from.**
+After the commit (f82939d) came the first real builds. The disk was
+nearly full, so instead of downloading Godot's 1.3 GB export-template
+archive, a small Python script read the archive's zip directory over
+HTTP range requests and pulled out only the three templates needed
+(Windows, Linux, macOS), checking each one's CRC. Windows and Linux are
+single executables with the game packed inside; macOS is a universal
+app (Intel and Apple Silicon in one bundle), which Godot only exports
+once the project allows ETC2/ASTC texture compression - free here,
+since every texture in the sim is generated at runtime. Each build was
+checked the way the game itself is: the exported pack runs the full
+`--selftest` (474 checks, the windowless subset of the suite), and the
+macOS app also started with a window on the dev machine's Intel GPU.
+The builds aren't code-signed (Windows) or notarized (macOS), so the
+README in each zip explains the one-time "Run anyway" / right-click ->
+Open step. The website session - a second Claude working on the
+Static Horizon website at the same time - got a brief with the facts,
+wording rules and 38 pictures, wrote the simulator article and the
+home-page teaser, and linked the three zips. Public hosting is still
+open: the downloads work on localhost for now.
+
 ## Recurring engineering themes
 
 A few patterns repeat often enough across all 13 commits to be the
