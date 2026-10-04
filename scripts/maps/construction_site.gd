@@ -233,6 +233,10 @@ func _tower() -> void:
 				var s: float = 1.0 if side % 2 == 0 else -1.0
 				var pos: Vector3 = o + (Vector3(0, y + FLOOR_H * 0.5 + 1.0, s * (d * 0.5 + 1.2)) if along_x else Vector3(s * (w * 0.5 + 1.2), y + FLOOR_H * 0.5 + 1.0, 0))
 				geo.box(pos, Vector3(w + 2.6, FLOOR_H, 0.2) if along_x else Vector3(0.2, FLOOR_H, d + 2.6), "screen")
+				# The steel brackets that hang it from the slab edge.
+				for k in [-0.3, 0.3]:
+					var bpos: Vector3 = o + (Vector3(k * w, y + 0.55, s * (d * 0.5 + 0.55)) if along_x else Vector3(s * (w * 0.5 + 0.55), y + 0.55, k * d))
+					geo.box(bpos, Vector3(0.1, 1.1, 1.5) if along_x else Vector3(1.5, 1.1, 0.1), "steel")
 		else:
 			# Edge protection: posts and a yellow net band at waist height.
 			for side in range(4):

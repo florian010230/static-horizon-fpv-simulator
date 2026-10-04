@@ -35,6 +35,9 @@ func preview_views() -> Array:
 		["village", Vector3(-120, 25, 60), Vector3(-250, 4, 60)],
 		["road_valley", Vector3(20, 25, 330), Vector3(-80, 5, 180)],
 		["road_north", Vector3(-230, 20, -20), Vector3(-120, 5, -150)],
+		# Buildings on the slope, on their footings.
+		["hotel", Vector3(-160, 14, 195), Vector3(-200, 8, 150)],
+		["station_top", Vector3(-370, 205, -280), Vector3(-400, 196, -310)],
 	]
 
 ## The lakeside village on the west shore, on levelled ground.
@@ -179,6 +182,24 @@ func _valley_road() -> void:
 func _ground(x: float, z: float) -> float:
 	return maxf(_height(x, z), WATER_Y)
 
+## Lowest ground under a footprint (centre c, size, turned by yaw).
+func _lowest(c: Vector3, size: Vector2, yaw: float = 0.0) -> float:
+	var lo: float = INF
+	var b := Basis(Vector3.UP, yaw)
+	for fx in [-0.5, 0.0, 0.5]:
+		for fz in [-0.5, 0.0, 0.5]:
+			var q: Vector3 = c + b * Vector3(fx * size.x, 0, fz * size.y)
+			lo = minf(lo, _ground(q.x, q.z))
+	return lo
+
+## A footing under a building standing at c.y on a slope: from below the
+## lowest ground under it up to its floor, so the downhill side doesn't
+## stand in the air.
+func _footing(c: Vector3, size: Vector2, mat: String, yaw: float = 0.0) -> void:
+	var lo: float = _lowest(c, size, yaw) - 0.3
+	if lo < c.y - 0.05:
+		geo.box(Vector3(c.x, (lo + c.y + 0.1) * 0.5, c.z), Vector3(size.x, c.y + 0.1 - lo, size.y), mat, yaw)
+
 ## Log cabin on the north shore, its pier out over the lake.
 func _cabin(o: Vector3) -> void:
 	var y: float = _ground(o.x, o.z - 10.0) + 0.3
@@ -195,6 +216,11 @@ func _cabin(o: Vector3) -> void:
 		geo.box(p + Vector3(1.2, -1.5, 0), Vector3(0.2, 3, 0.2), "wood")
 		geo.box(p + Vector3(-1.2, -1.5, 0), Vector3(0.2, 3, 0.2), "wood")
 	var bh := Vector3(o.x + 6, 1.1, o.z + 26)
+	# Walkways either side of the boat, on posts like the pier's.
+	for sx in [-3.0, 3.0]:
+		geo.box(bh + Vector3(sx * 0.9, -0.06, 0), Vector3(1.2, 0.12, 6.4), "wood")
+		for sz in [-3.0, 3.0]:
+			geo.box(bh + Vector3(sx, -1.5, sz), Vector3(0.25, 3, 0.25), "wood")
 	geo.box(bh + Vector3(0, 1.8, 3), Vector3(6, 3.6, 0.2), "wood")
 	for sx in [-3.0, 3.0]:
 		geo.box(bh + Vector3(sx, 1.8, 0), Vector3(0.2, 3.6, 6), "wood")
@@ -204,6 +230,8 @@ func _cabin(o: Vector3) -> void:
 func _chapel(o: Vector3) -> void:
 	var y: float = _ground(o.x, o.z)
 	var c := Vector3(o.x, y, o.z)
+	_footing(c, Vector2(6.4, 10.4), "stone")
+	_footing(c + Vector3(0, 0, 5.5), Vector2(3.4, 3.4), "stone")
 	geo.box(c + Vector3(0, 2.5, 0), Vector3(6, 6, 10), "white")
 	for s in [-1.0, 1.0]:
 		geo.box_xf(Transform3D(Basis(Vector3.FORWARD, s * 0.75), c + Vector3(s * 1.7, 7.0, 0)), Vector3(4.6, 0.25, 10.6), "roof")
@@ -216,7 +244,7 @@ func _dam(o: Vector3) -> void:
 	for i in range(13):
 		var a0: float = deg_to_rad(-40 + i * 6.7)
 		var p := o + Vector3(sin(a0) * 60.0, 0, -cos(a0) * 60.0 + 60.0)
-		var bottom: float = _height(p.x, p.z + 6.0) - 3.0
+		var bottom: float = minf(_height(p.x, p.z + 6.0), _lowest(p, Vector2(7.2, 5.0), -a0)) - 3.0
 		var hgt: float = crest - bottom
 		geo.box(Vector3(p.x, bottom + hgt * 0.5, p.z), Vector3(7.2, hgt, 5.0), "concrete", -a0)
 		geo.box(Vector3(p.x, crest + 0.6, p.z - 2.2), Vector3(7.2, 1.2, 0.3), "concrete", -a0)
@@ -236,8 +264,8 @@ func _cable_car(a: Vector3, b: Vector3) -> void:
 		var p: Vector3 = a.lerp(b, float(i) / n)
 		var g: float = _ground(p.x, p.z)
 		var t := Vector3(p.x, g + 18.0, p.z)
-		geo.beam(Vector3(p.x - 1.5, g, p.z), t, Vector2(0.6, 0.6), "steel")
-		geo.beam(Vector3(p.x + 1.5, g, p.z), t, Vector2(0.6, 0.6), "steel")
+		for sx in [-1.5, 1.5]: # each leg down into the slope under it
+			geo.beam(Vector3(p.x + sx, _lowest(Vector3(p.x + sx, 0, p.z), Vector2(0.8, 0.8)) - 0.3, p.z), t, Vector2(0.6, 0.6), "steel")
 		geo.box(t, Vector3(0.6, 0.6, 6), "steel")
 		tops.append(t)
 	for i in range(n):
@@ -263,11 +291,17 @@ func _lake_life() -> void:
 		var q := camp + Vector3(rng.randf_range(-25, 25), 0, rng.randf_range(-25, 25))
 		q.y = _ground(q.x, q.z)
 		if i % 3 == 0:
-			geo.box(q + Vector3(0, 1.4, 0), Vector3(2.3, 2.4, 6.5), "white", rng.randf() * TAU)
+			var yaw: float = rng.randf() * TAU
+			var top: float = q.y + 2.6
+			var foot: float = _lowest(q, Vector2(2.3, 6.5), yaw) - 0.1
+			geo.box(Vector3(q.x, (top + foot) * 0.5, q.z), Vector3(2.3, top - foot, 6.5), "white", yaw)
 		else:
-			geo.cone(q, q + Vector3(0, 1.6, 0), 1.8, 0.05, ["red", "steel", "wood"][rng.randi() % 3], 4)
+			# A tent's skirt reaches the ground all round, uphill and down.
+			var foot: float = _lowest(q, Vector2(3.6, 3.6)) - 0.1
+			geo.cone(Vector3(q.x, foot, q.z), q + Vector3(0, 1.6, 0), 1.8, 0.05, ["red", "steel", "wood"][rng.randi() % 3], 4)
 	var hotel := Vector3(-200, 0, 150)
 	hotel.y = _ground(hotel.x, hotel.z)
+	_footing(hotel, Vector2(40.4, 16.4), "stone")
 	geo.box(hotel + Vector3(0, 7, 0), Vector3(40, 14, 16), "white")
 	geo.box(hotel + Vector3(0, 8, 8.1), Vector3(38, 10, 0.1), "wood", 0.0, false, false)
 	for s in [-1.0, 1.0]:
@@ -277,6 +311,7 @@ func _lake_life() -> void:
 	# Cable car stations at both ends of the line.
 	for end in [Vector3(-100, 0, -130), Vector3(-400, 0, -310)]:
 		var g: float = _ground(end.x, end.z)
+		_footing(Vector3(end.x, g, end.z), Vector2(10.4, 14.4), "stone")
 		geo.box(Vector3(end.x, g + 4, end.z), Vector3(10, 8, 14), "concrete")
 		geo.box(Vector3(end.x, g + 8.4, end.z), Vector3(11, 0.8, 15), "red")
 

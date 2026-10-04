@@ -172,12 +172,29 @@ var _kb_throttle: float = 0.0
 ## off, so the drone couldn't take off at all, in any map. Found by
 ## reading the real RadioMaster Pocket through this code.
 var _joy_active: bool = false
+## Per axis: has it ever reported a value? The OS only sends a stick's
+## position when it changes, so after the game starts every untouched
+## axis reads exactly 0.000 - for a centred throttle channel that is 50%.
+## The user hit it on every map: "lower throttle to arm" until the
+## throttle had been pushed up and back down once. An axis that has never
+## reported is unknown, not centred: the throttle reads 0 and the arm
+## switch reads off until they move.
+var _axis_seen := PackedByteArray()
+
+func _axis_known(i: int) -> bool:
+	return i >= 0 and i < _axis_seen.size() and _axis_seen[i] == 1
+
+func _forget_axes() -> void:
+	_axis_seen.resize(AXES)
+	_axis_seen.fill(0)
 
 func _ready() -> void:
 	load_calibration()
+	_forget_axes()
 	Input.joy_connection_changed.connect(func(_device: int, _connected: bool):
 		_joy_active = false
-		_arm_switch_seen = false)
+		_arm_switch_seen = false
+		_forget_axes())
 
 func _process(delta: float) -> void:
 	_select_device()
@@ -188,7 +205,12 @@ func _process(delta: float) -> void:
 		_update_keyboard_throttle(delta)
 
 func _detect_joy_activity() -> void:
-	if _joy_active or not _joy_present():
+	if not _joy_present():
+		return
+	for i in range(AXES):
+		if _axis_seen[i] == 0 and joy_axis(i) != 0.0:
+			_axis_seen[i] = 1
+	if _joy_active:
 		return
 	for i in range(AXES):
 		if absf(joy_axis(i)) > 0.01:
@@ -227,6 +249,7 @@ func _use_device(d: int) -> void:
 	joystick_device = d
 	_joy_active = false
 	_arm_switch_seen = false
+	_forget_axes()
 
 func _device_moving(d: int) -> bool:
 	for i in range(AXES):
@@ -420,8 +443,15 @@ func _handle_arm_toggle() -> void:
 			armed = true
 	_prev_arm_key = key_pressed
 
-	if not _joy_connected():
+	if not _joy_present():
 		_arm_switch_seen = false
+		return
+	if not _joy_connected() or (arm_source == "axis" and not _axis_known(arm_axis)):
+		# Plugged in but the switch hasn't reported yet: as far as anyone
+		# can tell it's off, so its first real flip on arms (instead of
+		# being taken for "on at load" and needing a second cycle).
+		_arm_switch_seen = true
+		_prev_arm_button = false
 		return
 	var on: bool = arm_switch_on()
 	if not _arm_switch_seen:
@@ -458,6 +488,8 @@ func arm_switch_on() -> bool:
 	if not _joy_present():
 		return false
 	if arm_source == "axis" and arm_axis >= 0:
+		if not _axis_known(arm_axis):
+			return false
 		var raw: float = joy_axis(arm_axis)
 		return absf(raw - arm_axis_on_value) < absf(raw - arm_axis_off_value)
 	return joy_button(arm_button_index) == arm_button_on_when_pressed
@@ -608,6 +640,8 @@ func get_yaw() -> float:
 func get_throttle() -> float:
 	if test_override != null: return test_override["throttle"]
 	if _joy_connected():
+		if not _axis_known(axis_throttle):
+			return 0.0 # not reported since the game started: see _axis_seen
 		var v: float
 		var raw: float = joy_axis(axis_throttle)
 		if throttle_calibrated and absf(throttle_raw_high - throttle_raw_low) > 0.2:

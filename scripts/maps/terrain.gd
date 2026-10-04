@@ -17,12 +17,23 @@ static func build(root: Node3D, rect: Rect2, spacing: float, height: Callable, m
 	for iz in range(nz):
 		for ix in range(nx):
 			h[iz * nx + ix] = height.call(rect.position.x + ix * spacing, rect.position.y + iz * spacing)
+	# Normal and light once per grid point (each is shared by up to six
+	# triangle corners).
+	var nrms := PackedVector3Array()
+	var cols := PackedColorArray()
+	nrms.resize(nx * nz)
+	cols.resize(nx * nz)
+	for iz in range(nz):
+		for ix in range(nx):
+			var i: int = iz * nx + ix
+			nrms[i] = _normal(h, nx, nz, ix, iz, spacing)
+			cols[i] = shade.call(nrms[i], _p(rect, spacing, h, nx, ix, iz))
 	var holder := Node3D.new()
 	holder.name = "Terrain"
 	root.add_child(holder)
 	for cz in range(0, nz - 1, chunk_cells):
 		for cx in range(0, nx - 1, chunk_cells):
-			holder.add_child(_chunk(rect, spacing, h, nx, nz, cx, cz, mini(cx + chunk_cells, nx - 1), mini(cz + chunk_cells, nz - 1), mat, shade))
+			holder.add_child(_chunk(rect, spacing, h, nx, nrms, cols, cx, cz, mini(cx + chunk_cells, nx - 1), mini(cz + chunk_cells, nz - 1), mat))
 	if not collide:
 		return
 	# Collision: HeightMapShape3D samples are 1 unit apart, so the shape is
@@ -61,21 +72,36 @@ static func far_ring(root: Node3D, inner: Rect2, outer: Rect2, spacing: float, h
 		return height.call(x, z)
 	build(root, outer, spacing, h, mat, shade, 16, false)
 
-static func _chunk(rect: Rect2, s: float, h: PackedFloat32Array, nx: int, nz: int, x0: int, z0: int, x1: int, z1: int, mat: Material, shade: Callable) -> MeshInstance3D:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for iz in range(z0, z1):
-		for ix in range(x0, x1):
-			var q: Array[Vector3] = [_p(rect, s, h, nx, ix, iz), _p(rect, s, h, nx, ix + 1, iz), _p(rect, s, h, nx, ix + 1, iz + 1), _p(rect, s, h, nx, ix, iz + 1)]
-			for idx in [0, 1, 2, 0, 2, 3]: # clockwise from above = front (see Geo)
-				var v: Vector3 = q[idx]
-				var gx: int = ix + (1 if idx == 1 or idx == 2 else 0)
-				var gz: int = iz + (1 if idx >= 2 else 0)
-				var nrm: Vector3 = _normal(h, nx, nz, gx, gz, s)
-				st.set_normal(nrm)
-				st.set_color(shade.call(nrm, v))
-				st.add_vertex(v)
-	var mesh: ArrayMesh = st.commit()
+## One chunk as an indexed mesh: a vertex per grid point (normal and
+## light from the shared arrays), two triangles per cell.
+static func _chunk(rect: Rect2, s: float, h: PackedFloat32Array, nx: int, nrms: PackedVector3Array, cols: PackedColorArray, x0: int, z0: int, x1: int, z1: int, mat: Material) -> MeshInstance3D:
+	var w: int = x1 - x0 + 1
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	for iz in range(z0, z1 + 1):
+		for ix in range(x0, x1 + 1):
+			var i: int = iz * nx + ix
+			verts.append(Vector3(rect.position.x + ix * s, h[i], rect.position.y + iz * s))
+			normals.append(nrms[i])
+			colors.append(cols[i])
+	var idx := PackedInt32Array()
+	for cz in range(z1 - z0):
+		for cx in range(x1 - x0):
+			var a: int = cz * w + cx
+			# Split along the 10-01 diagonal, the way HeightMapShape3D splits
+			# its cells - otherwise collision and the visible ground disagree
+			# by up to half a cell's curvature, and a crashed drone ends up
+			# resting under the visible ground. Clockwise from above = front.
+			idx.append_array([a, a + 1, a + w, a + 1, a + w + 1, a + w])
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	mesh.surface_set_material(0, mat)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh

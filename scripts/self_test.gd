@@ -71,6 +71,7 @@ func _run() -> void:
 		["res://scenes/maps/ConstructionSite.tscn", "five"],
 		["res://scenes/maps/Harbour.tscn", "seeker3"],
 		["res://scenes/maps/MountainLake.tscn", "five"],
+		["res://scenes/maps/TestValley.tscn", "whoop"],
 	]
 	for c in cases:
 		await _test_map(c[0], c[1], false)
@@ -272,7 +273,7 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 	await get_tree().physics_frame
 	_key(KEY_R, false)
 	await _wait(0.3)
-	_check(d.global_position.distance_to(d._spawn_transform.origin) < 0.2, tag + ": R resets to spawn")
+	_check(d.global_position.distance_to(d._spawn_transform.origin) < 0.2, tag + ": R resets to spawn", "%s vs spawn %s" % [d.global_position, d._spawn_transform.origin])
 
 	# Crash recovery: dropped upside down, it has to end up upright on
 	# its own within a few seconds.
@@ -452,6 +453,21 @@ func _test_calibration_and_arm_switch() -> void:
 	_check(InputManager.armed, "arm switch: cycle with throttle low arms")
 	axes[5] = -1.0
 	await _wait(1.5)
+	# A radio that hasn't moved since the game started reads 0.000 on every
+	# axis (the OS only reports changes) - for this centred throttle
+	# channel that's 50%. The first flip of the arm switch must still arm,
+	# without pushing the throttle up and down first (the user had to).
+	for i in range(axes.size()):
+		axes[i] = 0.0
+	InputManager._joy_active = false
+	InputManager._forget_axes()
+	get_tree().change_scene_to_file("res://scenes/Main.tscn")
+	await _wait(2.0)
+	axes[5] = 1.0
+	await _wait(0.1)
+	_check(InputManager.armed and InputManager.get_throttle() == 0.0, "silent radio: the first arm-switch flip arms, no throttle wiggle", "armed %s, throttle %.2f, %s" % [InputManager.armed, InputManager.get_throttle(), InputManager.arm_hint()])
+	axes[5] = -1.0
+	await _wait(0.2)
 
 	InputManager.test_joy = null
 	InputManager._joy_active = false

@@ -55,8 +55,8 @@ func count() -> int:
 
 ## Builds the nodes under root. Call once, after all cars are placed.
 ## Per 128 m chunk, every car's model (built once per kind, heading and
-## paint) is copied into one mesh per material with SurfaceTool.append_from
-## - a C++ copy, fast - so a chunk full of cars is ~9 draw calls.
+## paint) is copied into one mesh per material - its arrays transformed
+## and appended in bulk - so a chunk full of cars is ~9 draw calls.
 func commit(root: Node3D) -> void:
 	# Drop cars that would stand inside a building, a truck, a pillar or
 	# another car (Geo's footprints); each kept car reserves its own.
@@ -80,18 +80,28 @@ func commit(root: Node3D) -> void:
 	holder.name = "Fleet"
 	root.add_child(holder)
 	for key in _items:
-		var tools: Dictionary = {}
+		# Per material: the chunk's vertices, normals, colours, UVs - each
+		# car's model arrays transformed and appended in bulk (C++), not
+		# SurfaceTool.append_from (which re-read the source mesh for every
+		# car: 2 ms a car, 6 s for the Harbour's 2,900).
+		var acc: Dictionary = {}
 		var body := StaticBody3D.new()
 		holder.add_child(body)
 		for it in _items[key]:
-			var model: ArrayMesh = _model(it[0], it[1], it[3])
-			for s in range(model.get_surface_count()):
-				var mat: Material = model.surface_get_material(s)
-				if not tools.has(mat):
-					var st := SurfaceTool.new()
-					st.begin(Mesh.PRIMITIVE_TRIANGLES)
-					tools[mat] = st
-				tools[mat].append_from(model, s, it[2])
+			var xf: Transform3D = it[2]
+			var rot := Transform3D(xf.basis, Vector3.ZERO)
+			for surf: Array in _surfaces(it[0], it[1], it[3]):
+				var mat: Material = surf[0]
+				# (Pieces collected here and joined once below: a packed array
+				# held in an Array is a value - appending to it in place
+				# appends to a copy.)
+				if not acc.has(mat):
+					acc[mat] = [[], [], [], []]
+				var a: Array = acc[mat]
+				a[0].append(xf * (surf[1] as PackedVector3Array))
+				a[1].append(rot * (surf[2] as PackedVector3Array))
+				a[2].append(surf[3])
+				a[3].append(surf[4])
 			var spec: Array = Vehicles.CAR_SPECS.get(it[0], Vehicles.CAR_SPECS.sedan)
 			var p: Vector3 = it[2].origin
 			var b := Basis(Vector3.UP, it[4])
@@ -101,8 +111,25 @@ func commit(root: Node3D) -> void:
 			cs.shape = shape
 			cs.transform = Transform3D(b, p + Vector3(0, spec[2] * 0.5 + 0.1, 0))
 			body.add_child(cs)
-		for mat in tools:
-			var mesh: ArrayMesh = tools[mat].commit()
+		for mat in acc:
+			var a: Array = acc[mat]
+			var vs := PackedVector3Array()
+			var ns := PackedVector3Array()
+			var cs2 := PackedColorArray()
+			var uvs := PackedVector2Array()
+			for i in range(a[0].size()):
+				vs.append_array(a[0][i])
+				ns.append_array(a[1][i])
+				cs2.append_array(a[2][i])
+				uvs.append_array(a[3][i])
+			var arrays: Array = []
+			arrays.resize(Mesh.ARRAY_MAX)
+			arrays[Mesh.ARRAY_VERTEX] = vs
+			arrays[Mesh.ARRAY_NORMAL] = ns
+			arrays[Mesh.ARRAY_COLOR] = cs2
+			arrays[Mesh.ARRAY_TEX_UV] = uvs
+			var mesh := ArrayMesh.new()
+			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 			mesh.surface_set_material(0, mat)
 			var mi := MeshInstance3D.new()
 			mi.mesh = mesh
@@ -125,6 +152,48 @@ func _blocked_box(p: Vector3, ax: Vector2, half: Vector2, h: float) -> bool:
 
 var _parts: Dictionary = {}
 var _models: Dictionary = {}
+var _surf_cache: Dictionary = {}
+
+## One model as plain arrays per surface, read once:
+## [[material, vertices, normals, colours, uvs], ...] - unindexed.
+func _surfaces(kind: String, bin: int, paint: Color) -> Array:
+	var mk: String = "%s|%d|%s" % [kind, bin, paint.to_html(false)]
+	if _surf_cache.has(mk):
+		return _surf_cache[mk]
+	var model: ArrayMesh = _model(kind, bin, paint)
+	var out: Array = []
+	for s in range(model.get_surface_count()):
+		var arr: Array = model.surface_get_arrays(s)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var n: PackedVector3Array = arr[Mesh.ARRAY_NORMAL] if arr[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+		var c: PackedColorArray = arr[Mesh.ARRAY_COLOR] if arr[Mesh.ARRAY_COLOR] != null else PackedColorArray()
+		var uv: PackedVector2Array = arr[Mesh.ARRAY_TEX_UV] if arr[Mesh.ARRAY_TEX_UV] != null else PackedVector2Array()
+		var idx: Variant = arr[Mesh.ARRAY_INDEX]
+		if idx != null and (idx as PackedInt32Array).size() > 0:
+			var ii: PackedInt32Array = idx
+			var v2 := PackedVector3Array()
+			var n2 := PackedVector3Array()
+			var c2 := PackedColorArray()
+			var uv2 := PackedVector2Array()
+			for k in ii:
+				v2.append(v[k])
+				n2.append(n[k] if n.size() > k else Vector3.UP)
+				c2.append(c[k] if c.size() > k else Color.WHITE)
+				uv2.append(uv[k] if uv.size() > k else Vector2.ZERO)
+			v = v2
+			n = n2
+			c = c2
+			uv = uv2
+		if n.size() != v.size():
+			n.resize(v.size())
+		if c.size() != v.size():
+			c.resize(v.size())
+			c.fill(Color.WHITE)
+		if uv.size() != v.size():
+			uv.resize(v.size())
+		out.append([model.surface_get_material(s), v, n, c, uv])
+	_surf_cache[mk] = out
+	return out
 
 ## One car model: the kind at a heading, its body in `paint` (the paint
 ## is multiplied into the body's baked vertex colours).

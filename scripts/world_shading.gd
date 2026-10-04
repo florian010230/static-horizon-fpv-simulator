@@ -158,6 +158,9 @@ static func _from_standard(s: StandardMaterial3D) -> Material:
 		sm.set_shader_parameter("receive_shadow", false)
 	if blend:
 		sm.set_shader_parameter("receive_shadow", false)
+	# Interiors bake their own sun patches (Geo.light_fn): no shadow map there.
+	if s.has_meta("no_shadow"):
+		sm.set_shader_parameter("receive_shadow", false)
 	if s.resource_name.contains("water"):
 		sm.set_shader_parameter("water", true)
 	return sm

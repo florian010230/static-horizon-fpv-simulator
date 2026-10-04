@@ -35,7 +35,9 @@ func queue_trees(trees: Array) -> bool:
 ## Solid pieces touching nothing (Geo.floating) - the self-test wants none.
 func floating_pieces() -> Array:
 	var g: Callable = Callable(self, "_height") if has_method("_height") else func(_x: float, _z: float) -> float: return 0.0
-	return geo.floating(g)
+	# Judged out to 100 m past the reset border: as close as anyone gets.
+	var b: Array = border()
+	return geo.floating(g, b[4] if b.size() > 4 else Vector2.ZERO, b[1] + 100.0)
 
 func _plant_trees() -> void:
 	var kept: Array = []
@@ -62,30 +64,63 @@ func border() -> Array:
 	return [200.0, 260.0, 120.0, 170.0]
 
 func _ready() -> void:
+	var lt: Array = [Time.get_ticks_usec()] # SH_LOADTIME: phase times
 	_make_environment(map_env())
 	fleet = Fleet.new(geo)
 	_building = true
 	build()
 	_building = false
+	lt.append(Time.get_ticks_usec())
 	# Scattered things go last, around whatever the map built: parked cars
 	# and trees that would stand inside a building, a crane, another car,
 	# or (trees) on a road or track are dropped (Geo's footprints).
 	fleet.commit(self)
+	lt.append(Time.get_ticks_usec())
 	_plant_trees()
 	if OS.has_environment("SH_FLOAT"):
+		if OS.get_environment("SH_FLOAT") != "1":
+			geo.gap_limit = float(OS.get_environment("SH_FLOAT"))
 		var f: Array = floating_pieces()
 		print("FLOATING %s: %d" % [name, f.size()])
+		var kinds: Dictionary = {}
+		for e: Array in f:
+			kinds["%s %s" % [e[3], e[1]]] = kinds.get("%s %s" % [e[3], e[1]], 0) + 1
+		print("  by kind: ", kinds)
 		for k in range(mini(f.size(), 60)):
 			print("  float ", f[k])
+	lt.append(Time.get_ticks_usec())
 	geo.commit(self)
+	lt.append(Time.get_ticks_usec())
 	if ui.has_method("set_drone"):
 		ui.set_drone(drone)
 	after_build()
 	Settings.apply_graphics_settings()
+	lt.append(Time.get_ticks_usec())
+	if OS.has_environment("SH_LOADTIME"):
+		_report_load(lt)
 	if OS.has_environment("SH_PERF"):
 		# Measure the real cost: no frame cap, no vsync.
 		Engine.max_fps = 0
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+
+## Dev aid (SH_LOADTIME=1): where a map's load time goes - build()
+## (the creators, GDScript), scattering (trees, cars), Geo.commit (meshes
+## and collision shapes), graphics settings (incl. the shadow map
+## render), and the first frames (shader compiling on the GPU driver).
+func _report_load(lt: Array) -> void:
+	var names: Array = ["build", "cars", "trees", "commit", "graphics+shadows"]
+	var line: String = "LOAD %s: engine up %d ms before _ready;" % [name, int(lt[0] / 1000.0)]
+	for i in range(names.size()):
+		line += " %s %d ms," % [names[i], int((lt[i + 1] - lt[i]) / 1000.0)]
+	print(line)
+	var t: int = Time.get_ticks_usec()
+	var frames: Array = []
+	for k in range(5):
+		await get_tree().process_frame
+		var n: int = Time.get_ticks_usec()
+		frames.append(int((n - t) / 1000.0))
+		t = n
+	print("LOAD %s: first frames %s ms; ready to fly %d ms after engine start" % [name, frames, int(Time.get_ticks_usec() / 1000.0)])
 
 func _process(_delta: float) -> void:
 	check_border()

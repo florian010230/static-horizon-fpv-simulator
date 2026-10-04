@@ -539,6 +539,8 @@ func _sts_crane(o: Vector3, boom_up: bool) -> void:
 	geo.box(o + Vector3(0, 45, -25), Vector3(10, 6, 12), "white")
 	geo.box(o + Vector3(0, 40.5, 8), Vector3(6.2, 3, 4), "crane_red") # between the boom girders
 	if not boom_up:
+		# The trolley on the boom girders, its hoist rope and the spreader.
+		geo.box(o + Vector3(0, 40.8, 30), Vector3(8.2, 1.6, 3.0), "crane_red")
 		geo.beam(o + Vector3(0, 40, 30), o + Vector3(0, 22, 30), Vector2(0.1, 0.1), "steel", false)
 		geo.box(o + Vector3(0, 21.5, 30), Vector3(12.4, 0.8, 2.6), "yellow")
 
@@ -721,14 +723,14 @@ func _road_network() -> void:
 		roads.traffic(r, w, 1, 25.0, 0.3, _colors)
 		# Steel truss sides over the tracks.
 		for s in [-1.0, 1.0]:
-			var tx: float = x + s * (w * 0.5 + 2.7)
+			var tx: float = x + s * (w * 0.5 + 0.35) # on the deck's edge beam
 			for k in range(9):
 				var za: float = -466.0 + k * 11.0
 				geo.beam(Vector3(tx, 9.0, za), Vector3(tx, 15.0, za + 5.5), Vector2(0.4, 0.4), "crane")
 				geo.beam(Vector3(tx, 15.0, za + 5.5), Vector3(tx, 9.0, za + 11.0), Vector2(0.4, 0.4), "crane")
 			geo.box(Vector3(tx, 15.0, -416.5), Vector3(0.6, 0.6, 99), "crane")
 		for s in [-1.0, 1.0]:
-			geo.beam(Vector3(x - w * 0.5 - 2.7, 15.0, -416.5 + s * 30.0), Vector3(x + w * 0.5 + 2.7, 15.0, -416.5 + s * 30.0), Vector2(0.4, 0.6), "crane", true, false)
+			geo.beam(Vector3(x - w * 0.5 - 0.35, 15.0, -416.5 + s * 30.0), Vector3(x + w * 0.5 + 0.35, 15.0, -416.5 + s * 30.0), Vector2(0.4, 0.6), "crane", true, false)
 	var south := Route.from(Vector3(XS[0], 0, WF_Z + 6.0), 90.0).straight(60.0, 12.0)
 	roads.road(south, 10.0, {"walk": 2.5, "lamps": 25.0})
 	city.car_park(Rect2(XS[0] - 50.0, WF_Z + 66.0, 100.0, 34.0), 0.0)

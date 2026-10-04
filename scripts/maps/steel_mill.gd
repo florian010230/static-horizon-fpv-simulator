@@ -561,7 +561,7 @@ func _paradies() -> void:
 	var b := Vector3(-262, 0, 118)
 	for dx in [-8.0, 8.0]:
 		for dz in [-6.0, 6.0]:
-			geo.box(b + Vector3(dx, 5, dz), Vector3(1.2, 10, 1.2), "concrete")
+			geo.box(b + Vector3(dx, 7.75, dz), Vector3(1.2, 15.5, 1.2), "concrete") # up to the top frame
 	for y in [10.0, 15.0]:
 		for s in [-1.0, 1.0]:
 			geo.box(b + Vector3(0, y, s * 6.0), Vector3(17.2, 1.0, 1.0), "concrete")

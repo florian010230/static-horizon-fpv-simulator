@@ -1,8 +1,9 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled, fog_disabled;
 
-// Trees (Forest): one material for leaves and bark - vertex alpha 1 is
-// foliage, 0 is bark - so a tree species is one draw call per chunk.
+// Trees (Forest, TreeCreator): one material for leaves and bark - vertex
+// alpha 1 is foliage, 0 is bark, 0.4 a plain colour (fruit, flowers) -
+// so a tree species is one draw call per chunk.
 // Lit here, not baked: MultiMesh instances are turned at random, so a
 // baked sun side would point the wrong way. Same formula as Geo.shade
 // (ambient + sky fill + sun * N.L), with the crown's soft "spherical"
@@ -37,6 +38,8 @@ void fragment() {
 		w /= (w.x + w.y + w.z);
 		vec3 p = wpos * leaf_scale;
 		t = texture(leaves, p.xz).rgb * w.y + texture(leaves, p.xy).rgb * w.z + texture(leaves, p.zy).rgb * w.x;
+	} else if (COLOR.a > 0.25) {
+		t = vec3(1.0); // fruit, flowers (TreeCreator): the vertex colour as is
 	} else {
 		vec2 uv = vec2(atan(wnrm.x, wnrm.z) * 0.318, wpos.y * 0.25 * bark_scale);
 		t = texture(bark, uv).rgb;

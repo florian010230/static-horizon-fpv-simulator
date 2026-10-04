@@ -8,12 +8,49 @@ extends RefCounted
 
 static var _cache: Dictionary = {}
 
+## Generated once, then kept on disk: the per-pixel loops below cost
+## 50-200 ms a texture in GDScript (1.2 s a map); reading a PNG back costs
+## a few ms. The file name carries a hash of this script's source, so
+## changing any texture's code makes fresh ones (and old files go).
+const DISK_CACHE := "user://texcache"
+static var _key: String = ""
+static var _swept: bool = false
+
+static func _cache_key() -> String:
+	if _key == "":
+		var scr: Script = load("res://scripts/maps/map_textures.gd")
+		var src: String = scr.source_code if scr != null else ""
+		# (Exported builds carry no source: the game's version instead, so
+		# an update still makes fresh textures.)
+		_key = ("%x" % src.hash()) if src != "" else "v" + str(ProjectSettings.get_setting("application/config/version", "0")).replace(".", "_")
+	return _key
+
 static func get_tex(tex_name: String) -> Texture2D:
 	if not _cache.has(tex_name):
-		var img: Image = MapTextures.new().call("_" + tex_name)
+		var t0: int = Time.get_ticks_usec()
+		var path: String = "%s/%s-%s.png" % [DISK_CACHE, tex_name, _cache_key()]
+		var img := Image.new()
+		var from_disk: bool = FileAccess.file_exists(path) and img.load(path) == OK and not img.is_empty()
+		if not from_disk:
+			img = MapTextures.new().call("_" + tex_name)
+			_store(img, path)
 		img.generate_mipmaps()
 		_cache[tex_name] = ImageTexture.create_from_image(img)
+		if OS.has_environment("SH_LOADTIME"):
+			print("TEXTURE %s %d ms%s" % [tex_name, int((Time.get_ticks_usec() - t0) / 1000.0), " (disk)" if from_disk else ""])
 	return _cache[tex_name]
+
+static func _store(img: Image, path: String) -> void:
+	DirAccess.make_dir_recursive_absolute(DISK_CACHE)
+	if not _swept:
+		# Files from older versions of this script.
+		_swept = true
+		var d := DirAccess.open(DISK_CACHE)
+		if d != null:
+			for f in d.get_files():
+				if not f.ends_with("-%s.png" % _cache_key()):
+					d.remove(f)
+	img.save_png(path)
 
 ## Tileable grayscale noise, remapped to lo..hi.
 static func _noise(size: int, freq: float, seed_value: int, octaves: int = 4) -> Image:
@@ -404,3 +441,94 @@ static func _streaks(img: Image, count: int, color: Color, seed_value: int) -> v
 			for k in range(w):
 				var px: int = (x + k) % size
 				img.set_pixel(px, y, img.get_pixel(px, y).lerp(color, t))
+
+## Crop rows seen from above, light grey (each crop tints it): 8 rows a
+## tile, darker gaps between them, patchy growth. _rows_z: the rows run
+## along world z (the stripes vary along the image's x = world x in
+## world triplanar mapping); _rows_x along x.
+static func _rows_z() -> Image:
+	return _rows(true)
+
+static func _rows_x() -> Image:
+	return _rows(false)
+
+static func _rows(vary_x: bool) -> Image:
+	# 128 px (16 a row): a per-pixel loop in GDScript costs ~1.5 us a pixel.
+	var patches := _noise(128, 0.04, 301, 3)
+	var fine := _noise(128, 0.7, 302, 1)
+	var img := Image.create(128, 128, false, Image.FORMAT_RGB8)
+	for y in range(128):
+		for x in range(128):
+			var u: int = x if vary_x else y
+			var s: float = 0.5 + 0.5 * cos(TAU * u / 16.0)
+			var v: float = (0.58 + 0.42 * pow(s, 0.7)) * (0.86 + 0.28 * (patches.get_pixel(x, y).r - 0.5)) * (0.88 + 0.24 * fine.get_pixel(x, y).r)
+			img.set_pixel(x, y, Color(v, v, v))
+	return img
+
+## Ploughed soil: brown furrows, 8 a tile, the ridges lighter and drier.
+static func _furrows_z() -> Image:
+	return _furrows(true)
+
+static func _furrows_x() -> Image:
+	return _furrows(false)
+
+static func _furrows(vary_x: bool) -> Image:
+	var img := _ramp(128, Color(0.36, 0.27, 0.19), Color(0.45, 0.35, 0.25), 0.06, 0.5, 311)
+	for y in range(128):
+		for x in range(128):
+			var u: int = x if vary_x else y
+			var s: float = 0.5 + 0.5 * sin(TAU * u / 16.0)
+			img.set_pixel(x, y, img.get_pixel(x, y) * (0.7 + 0.45 * s))
+	return img
+
+## Straw: hay bales, stubble - pale gold with darker fibres.
+static func _straw() -> Image:
+	var img := _ramp(128, Color(0.88, 0.68, 0.24), Color(0.97, 0.82, 0.36), 0.08, 0.4, 321)
+	_streaks(img, 250, Color(0.62, 0.45, 0.14), 322)
+	return img
+
+## Stalks for the inside of a standing crop (FieldCreator): see-through
+## (alpha) between thin upright stalks with leaves angling off them;
+## light grey, the crop's colour comes from the vertices. Tiles across
+## and up.
+static func _stalks() -> Image:
+	var size: int = 128
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 331
+	for k in range(24):
+		var x: int = rng.randi() % size
+		var w: int = rng.randi_range(1, 2)
+		var v: float = rng.randf_range(0.7, 1.0)
+		for y in range(size):
+			for i in range(w):
+				img.set_pixel((x + i) % size, y, Color(v, v, v * 0.95, 1.0))
+		# Leaves: a few strokes angling up and out of the stalk.
+		for l in range(rng.randi_range(0, 2)):
+			var y0: int = rng.randi() % size
+			var dir: int = 1 if rng.randf() < 0.5 else -1
+			var length: int = rng.randi_range(6, 12)
+			var lv: float = v * rng.randf_range(0.8, 1.0)
+			for j in range(length):
+				var px: int = (x + dir * j + size) % size
+				var py: int = (y0 - j + size) % size
+				var lw: int = 2 if j < length * 0.6 else 1 # tapering to the tip
+				for t in range(lw):
+					img.set_pixel(px, (py + t) % size, Color(lv, lv, lv * 0.9, 1.0))
+	return img
+
+## Render / plaster: nearly flat, fine grain and faint blotches - a
+## facade tinted per house (CityHouseCreator), not a weathered slab.
+static func _plaster() -> Image:
+	return _ramp(128, Color(0.9, 0.9, 0.89), Color(0.84, 0.84, 0.83), 0.05, 0.12, 341)
+
+## Concrete slabs: light, even, joints every half tile (an industrial
+## yard, silos, plinths - the old_concrete texture is for weathered walls).
+static func _concrete_slab() -> Image:
+	var img := _ramp(128, Color(0.78, 0.78, 0.76), Color(0.7, 0.7, 0.69), 0.04, 0.15, 351)
+	for i in range(128):
+		for j in [0, 64]:
+			img.set_pixel(i, j, img.get_pixel(i, j) * 0.7)
+			img.set_pixel(j, i, img.get_pixel(j, i) * 0.7)
+	return img

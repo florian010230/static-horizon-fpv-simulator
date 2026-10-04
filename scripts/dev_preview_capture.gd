@@ -98,6 +98,7 @@ const HERO := {
 	"construction": [Vector3(220, 140, 230), Vector3(20, 20, -20)],
 	"harbour": [Vector3(-480, 260, 300), Vector3(-120, 0, -380)],
 	"mountain_lake": [Vector3(0, 160, 420), Vector3(0, 20, -100)],
+	"test_valley": [Vector3(250, 55, 190), Vector3(20, 0, 0)],
 }
 
 func _thumb_shots() -> void:
@@ -184,6 +185,10 @@ func _go() -> void:
 		return
 	if OS.get_cmdline_user_args().has("borders"):
 		await _border_shots()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("lab"):
+		await _lab_shots()
 		get_tree().quit()
 		return
 	if _wants("menu"):
@@ -434,6 +439,91 @@ func _map_shots(scene: String, prefix: String, views: Array, pause_shots: bool =
 		await get_tree().create_timer(0.4).timeout
 		_shot("preview_%s_pause_settings.png" % prefix)
 		ui.pause_menu.resume()
+
+## `-- --dev-preview lab <Scene>`: a creator lab (scenes/labs/<Scene>.tscn,
+## default HouseLab) shot from every camera in its preview_views()
+## ([name, eye, target, group]) into SH_SHOT_DIR (default previews/lab):
+## a PNG per view, a contact sheet per group (sheet_<group>.png, views
+## in order, 4 across - one picture to check a whole house) and an
+## index.html to browse them (arrow keys step through).
+func _lab_shots() -> void:
+	var args := OS.get_cmdline_user_args()
+	var i: int = args.find("lab")
+	var scene_name: String = args[i + 1] if i + 1 < args.size() else "HouseLab"
+	var out: String = OS.get_environment("SH_SHOT_DIR") if OS.has_environment("SH_SHOT_DIR") else ProjectSettings.globalize_path("res://previews/lab")
+	DirAccess.make_dir_recursive_absolute(out)
+	Settings.graphics_quality = 2
+	Settings.osd_enabled = false
+	Settings.crosshair_enabled = false
+	Settings.camera_angle_deg = 0.0
+	Settings.camera_fov_deg = float(OS.get_environment("SH_FOV")) if OS.has_environment("SH_FOV") else 95.0
+	WorldBorder.disabled = true
+	var path: String = "res://scenes/labs/%s.tscn" % scene_name
+	if not ResourceLoader.exists(path):
+		path = "res://scenes/maps/%s.tscn" % scene_name # a whole map works too
+	get_tree().change_scene_to_file(path)
+	await get_tree().create_timer(2.5).timeout
+	var root: Node = get_tree().current_scene
+	var drone := root.find_child("Drone", true, false) as RigidBody3D
+	drone.freeze = true
+	InputManager.armed = false
+	var ui: Node = root.find_child("UI", true, false)
+	if ui is CanvasLayer:
+		ui.visible = false
+	var groups: Dictionary = {}
+	var order: Array = []
+	for v: Array in root.preview_views():
+		drone.global_position = v[1]
+		var target: Vector3 = v[2]
+		drone.look_at(target, Vector3.FORWARD if absf((target - v[1]).normalized().y) > 0.99 else Vector3.UP)
+		drone.reset_physics_interpolation()
+		await get_tree().create_timer(0.4).timeout
+		var img := get_viewport().get_texture().get_image()
+		img.convert(Image.FORMAT_RGB8)
+		img.save_png(out.path_join(v[0] + ".png"))
+		var g: String = v[3] if v.size() > 3 else "views"
+		if not groups.has(g):
+			groups[g] = []
+			order.append(g)
+		var th: Image = img.duplicate()
+		th.resize(480, 270, Image.INTERPOLATE_BILINEAR)
+		groups[g].append([v[0], th])
+	var body: String = ""
+	for g: String in order:
+		var items: Array = groups[g]
+		var cols: int = 4
+		var rows: int = ceili(items.size() / float(cols))
+		var sheet := Image.create(cols * 480, rows * 270, false, Image.FORMAT_RGB8)
+		var names: Array = []
+		for k in range(items.size()):
+			sheet.blit_rect(items[k][1], Rect2i(0, 0, 480, 270), Vector2i((k % cols) * 480, (k / cols) * 270))
+			names.append(items[k][0])
+		var sheet_name: String = "sheet_%s.png" % g.replace(" ", "_")
+		sheet.save_png(out.path_join(sheet_name))
+		print("LAB SHEET %s: %s" % [sheet_name, ", ".join(names)])
+		body += "<h2>%s</h2><div class=grid>" % g
+		for n: String in names:
+			body += "<figure><img src='%s.png' loading=lazy><figcaption>%s</figcaption></figure>" % [n, n]
+		body += "</div>"
+	var html: String = """<!doctype html><meta charset=utf-8><title>%s</title>
+<style>body{background:#111418;color:#d8dde3;font:14px system-ui,sans-serif;margin:16px}
+h1{font-size:20px}h2{font-size:16px;margin:28px 0 8px;color:#9fb3c8}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:10px}
+figure{margin:0;cursor:zoom-in}img{width:100%%;display:block;border-radius:4px}
+figcaption{padding:4px 2px;color:#8a96a3}
+#lb{position:fixed;inset:0;background:#000d;display:none;align-items:center;justify-content:center;flex-direction:column}
+#lb img{max-width:96vw;max-height:90vh;width:auto}#lb div{margin-top:8px}</style>
+<h1>%s - %s</h1><p>Click a picture to enlarge; arrow keys step, Esc closes. Reload after a new run.</p>%s
+<div id=lb><img><div></div></div>
+<script>const figs=[...document.querySelectorAll('figure')];let cur=-1;const lb=document.getElementById('lb');
+function show(i){cur=(i+figs.length)%%figs.length;lb.querySelector('img').src=figs[cur].querySelector('img').src;
+lb.querySelector('div').textContent=figs[cur].textContent;lb.style.display='flex'}
+figs.forEach((f,i)=>f.onclick=()=>show(i));lb.onclick=()=>{lb.style.display='none';cur=-1};
+onkeydown=e=>{if(cur<0)return;if(e.key=='ArrowRight')show(cur+1);if(e.key=='ArrowLeft')show(cur-1);if(e.key=='Escape')lb.onclick()}</script>""" % [scene_name, scene_name, Time.get_datetime_string_from_system(), body]
+	var f := FileAccess.open(out.path_join("index.html"), FileAccess.WRITE)
+	f.store_string(html)
+	f.close()
+	print("LAB DONE: ", out.path_join("index.html"))
 
 func _shot(filename: String) -> void:
 	var img := get_viewport().get_texture().get_image()

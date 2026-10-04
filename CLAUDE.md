@@ -12,7 +12,7 @@ Read `README.md` first for how the project actually works right now
 raw material for a blog, and it should get a new entry after any future
 multi-part session, same style as the existing entries.
 
-## Current state (as of 2026-10-02)
+## Current state (as of 2026-10-03)
 
 All work through DEVLOG Act XVII is committed. Only commit when the
 user asks. Act XIV: Freestyle/Race
@@ -38,10 +38,42 @@ replay/DVR (`scripts/replay.gd`, `P` to play back the last 60s); three
 more radio-assignable controls (mode switch, reset, line-of-sight) done
 by a Sonnet subagent and reviewed; water ripples/reflection and a
 global colour grade in the shared world shader.
+Act XVIII (not committed, 2026-10-02/03): creators and labs
+(`map_design.md`) - HouseCreator (furnished houses, baked interior
+light, 1 in 5 enterable, closed ones show painted window niches),
+ToiletCreator (in every house bathroom), TreeCreator (collision from
+the drawn leaf masses), TerrainCreator, RiverCreator, RoadCreator
+(junctions, turning circles, roads running on into the haze),
+BridgeCreator, VillageKit -> HouseCreator.build_plot -> GardenCreator
+(plots with fences and gardens), and (2026-10-04) FieldCreator,
+FarmCreator, StreetKit, PowerLineCreator, RockCreator, CityHouseCreator,
+IndustryCreator (the last two shown in Test Valley; the user decides after
+seeing them whether the old maps get them). Big layout is designed by hand per
+map, small things are generated - see map_design.md "Designed layout,
+generated detail";
+and the Test Valley map (hand-laid-out village in a river valley) that uses them all. `Terrain` fixes that affect the older
+hilly maps too: light once per grid point, indexed chunks, and the
+mesh now splits cells along the same diagonal as HeightMapShape3D
+(they disagreed by up to 1.5 m - a crashed drone sank under the
+visible ground). `Geo.ground_fn`: AO relative to the terrain below.
 TODO.md is the roadmap: Phases 1 and 3 are done (12 maps), Phase 2
 done, then Phase 4.
 `--selftest`: ~472 checks, all passing (Act XVII; varies slightly by
 which radio paths a run exercises).
+
+A radio axis that hasn't moved since the game started reads 0.000 (the
+OS only reports changes) - InputManager treats such an axis as unknown
+(`_axis_seen`): the throttle reads 0 and the arm switch off until they
+move (2026-10-04; before, every map wanted the throttle pushed up and
+down once before it would arm).
+
+Load times (2026-10-04): `SH_LOADTIME=1` prints where a generated map's
+load goes (build, cars, trees, commit, graphics+shadows, first frames).
+It is CPU (GDScript, one core) almost entirely. MapTextures keeps its
+generated textures in `user://texcache` (key = hash of map_textures.gd,
+or the game version in exported builds - bump `config/version` with
+every release). Fleet merges car meshes by bulk array copies. Next steps
+(cache built maps, fly-first loading) are planned, not built.
 
 InputManager is a *scene* autoload: the editor can't see its return
 types, so never write `var x := InputManager.foo()` - type it
@@ -49,6 +81,17 @@ explicitly (that was a parse error in the editor once).
 
 `godot` isn't on PATH here: use `/Applications/Godot.app/Contents/MacOS/Godot`.
 `InputManager.test_joy` is a virtual radio for tests without hardware.
+
+## Map design process (read map_design.md)
+
+`map_design.md` describes how map content is made: the goal (details
+that make the player smile, humour as rare surprises), **creators**
+(seeded generators such as `HouseCreator`, `ToiletCreator`, `TreeCreator`,
+`TerrainCreator`, `RiverCreator`, `RoadCreator`, `VillageKit`, tuned once in a
+lab and reused), the **lab** feedback loop (`--dev-preview lab <Scene>`
+-> screenshots, contact sheets, index.html for the user), the surprises
+catalogue and the idea backlog. Read it before any map/creator work and
+keep its tables current.
 
 ## Builds (2026-10-02)
 
@@ -117,9 +160,18 @@ The user's standing requirements for maps (2026-09-30), all built in:
   backed by `Geo.floating()`, which also counts non-colliding primitives
   and route-sweep segments as support, and a rectangle-overlap test
   rather than a circle, to avoid false positives on roofs/cornices and
-  long thin parts). `SH_FLOAT=1` prints flagged pieces while a map
-  builds. `--dev-preview floatcheck` runs the equivalent check by mesh
-  bounding box for the hand-made scene maps (village/factory/school).
+  long thin parts). Since 2026-10-03 it is strict: a group of pieces
+  that only hold each other up ("loose" - a whole house or fence lifted
+  together used to pass) and a piece standing on the ground with more
+  than 10 cm of air under part of it ("gap") both fail, within 100 m of
+  the reset border. The user saw floating houses and fences the old
+  check passed - never loosen it to make a map pass; fix the map.
+  Things on a creator's own level reach into the real ground
+  (`Geo.box_on` / `Geo.sunk` / `Geo.floor_fn`, see map_design.md
+  "Nothing floats"). `SH_FLOAT=1` prints flagged pieces while a map
+  builds (`SH_FLOAT=0.05` = stricter gap). `--dev-preview floatcheck`
+  runs a check by mesh bounding box for the hand-made scene maps
+  (village/factory/school).
 - **Race tracks**: when you change a track layout, bump its
   `MapCatalog` `"track"` number (fresh records).
 

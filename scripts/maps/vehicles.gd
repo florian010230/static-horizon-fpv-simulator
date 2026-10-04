@@ -292,6 +292,8 @@ static func tram(geo: Geo, p: Vector3, yaw: float) -> void:
 			for sx in [-1.0, 1.0]:
 				_bx(geo, xf, Vector3(sx * 1.19, 2.0, z0 + 1.2 + j * 2.5), Vector3(0.03, 1.8, 0.2), "train_white")
 		_bx(geo, xf, Vector3(0, 3.5, z), Vector3(1.6, 0.35, 3.0), "train_grey")
+		# Low-floor bogie behind its skirts: the body stands on it, not on air.
+		_bx(geo, xf, Vector3(0, 0.21, z), Vector3(2.1, 0.42, 3.4), "train_grey")
 	geo.beam(xf * Vector3(0, 3.7, -1), xf * Vector3(0, 4.8, 0.3), Vector2(0.06, 0.06), "veh_steel", false)
 	geo.beam(xf * Vector3(0, 4.8, 0.3), xf * Vector3(0, 3.7, 1.5), Vector2(0.06, 0.06), "veh_steel", false)
 	_bx(geo, xf, Vector3(0, 4.82, 0.3), Vector3(1.4, 0.05, 0.2), "veh_steel")

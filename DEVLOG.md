@@ -1562,6 +1562,449 @@ wording rules and 38 pictures, wrote the simulator article and the
 home-page teaser, and linked the three zips. Public hosting is still
 open: the downloads work on localhost for now.
 
+### Act XVIII — Creators: houses, a toilet, trees and land from a seed (2026-10-02/03)
+
+This one started as a question rather than a feature request: how has
+map design worked so far, and could Claude write tools for itself that
+make it cheaper? Cheaper in a specific sense - fewer tokens. Every map
+so far was built by writing out its content by hand, coordinate by
+coordinate, and a house with furniture in every room is thousands of
+lines of that. The answer became a new way of making map content:
+**creators**, seeded generators that build one kind of thing with all
+its detail, are tuned once in a **lab** until every seed looks right,
+and are then reused by every map. The session built four of them - a
+house, a toilet, trees, and the land itself - plus a test map to fly
+them in. Self-test: 495 checks, all passing. Uncommitted at the time of
+writing.
+
+**The lab: a feedback loop for a human and for Claude.** Each creator
+has a lab scene (`scenes/labs/*.tscn`, not in the menu) that lays out a
+few variants and names its camera views. One command
+(`--dev-preview lab <Scene>`) renders every view to a PNG, stitches
+contact sheets of four views across, and writes an `index.html` with a
+lightbox for the user - open it, reload after each run. The contact
+sheets are the token trick: one sheet is a single image read, about
+1.5k tokens for a whole house seen from a dozen angles, where the old
+way was a screenshot at a time. `map_design.md` records the process,
+the creators table and a catalogue of surprises, and `CLAUDE.md` points
+every future session at it.
+
+**HouseCreator: a detached family house, furnished.** From one seed:
+one or two storeys, gable or hip roof, plaster or brick, shutters or
+roller blinds, a garage or carport or neither, a terrace with a parasol
+and garden furniture, and inside a real floor plan - kitchen, hall with
+stairs, WC, living room across the back; bathroom, bedrooms and a
+study or kids' room upstairs (a bungalow plan for one storey). Every
+room is furnished by a small placement solver (`_spot`) that knows
+which wall stretches are blocked by doors and windows and what's
+already standing. Half the seeds are mirrored - the whole frame, which
+is safe because `Geo` orders each triangle's winding from its intended
+normal. And there's always a way in: a patio door or window left open
+at the back, because an interior is only fun if you can fly into it.
+The lab renders each house from the street, the back, the air, through
+every way in, and from the doorway of every room.
+
+**Light indoors, baked, for free at runtime.** The first houses looked
+flat and grey inside - the engine sun does nothing on the dev machine's
+GPU, so all light here is baked into vertex colours, and the interiors
+only had the outdoor formula. `Geo` got a `light_fn` hook, and while a
+room is drawn HouseCreator lights it: daylight from that room's own
+windows and glass doors, sun patches where a ray through an opening
+reaches the floor, a warm glow round the ceiling lamp, and darkening
+into corners, along edges and under furniture. Walls, floors and
+ceilings are split into cells (`Geo.quad_grid`) so the light can vary
+across them. Measured on four houses: draw calls unchanged (104),
++14k vertices and +0.13 s build per house, nothing per frame. Interior
+materials carry a `no_shadow` meta, because the runtime sun shadow map
+would darken them a second time.
+
+**ToiletCreator: the first surprise.** The user's brief: a really
+well-made American toilet with plenty of water in it, where mostly
+nothing floats - and sometimes something does. An elongated bowl
+(`Geo.lathe_xf`, a new revolve-a-profile tool for round things), a
+tank with the flush lever front left, seat and lid down or up, bolt
+caps, a shut-off valve, and a paper roll hung "over" in 70% of homes.
+In one toilet in five there's a rubber duck, a battleship, a swan or a
+message in a bottle. The first lab round had a shark fin too; the user
+took it out of the random draw (it still exists on request) and
+pointed out that the raised seat merged into the cistern - the hinges
+moved forward to the back of the rim and the raised angle became 91
+degrees, leaning just clear of the tank. Then into the houses: every
+bathroom and WC now gets one, with its own random generator so the
+rest of the house keeps its layout, and a frame un-mirrored so the
+lever stays on the left even in mirrored houses. They came out dark
+grey at first - the toilet's materials took the outdoor shadow map
+indoors, the same double-darkening the house materials had already
+been protected from - and the fix was the same meta.
+
+**A seed library instead of a perfect generator.** The user's idea,
+mid-session: every seed gives the same house, so rather than making
+the generator robust against every bad seed, keep a list of good ones -
+500 is plenty. The catch is that any change to the generator reshuffles
+what every seed produces, so the decision recorded in `map_design.md`
+is about 10 hand-picked designs during development and the real
+library built once, right before release.
+
+**Test Street, and only one house in five you can enter.** A map in
+the menu to fly the creators in: a street with sidewalks and eight
+houses. Then the user's load-time rule: 20% of houses enterable, the
+rest empty - but they must look as good from outside. A closed house
+now shows a shallow painted room niche behind every pane: back wall,
+sides, curtains drawn to the sides in a fabric colour, now and then a
+plant on the sill, built in shell materials so it never drops out at
+distance and leaves a see-through window. `HouseCreator.accessible(i)`
+opens every fifth. Eight houses went from 4.1-4.6 s to 1.4 s to build.
+
+**TreeCreator: trees that cost almost nothing.** Maples, apple trees
+with fruit, birches, spruces and bushes (hydrangeas in blue or pink),
+three seeded shapes per species, each tree turned, scaled and tinted.
+Built on the existing tree shader and drawn as MultiMesh: one draw call
+per shape and 128 m chunk however many trees use it, and a simple
+stand-in beyond the near range. One small shader change made fruit and
+flowers free: vertex alpha 0.4 now means "plain colour" next to 1
+(leaves) and 0 (bark), so apples are part of the tree's own mesh. The
+garden surprises: a birdhouse (8%), a tyre swing (5%), a kite caught in
+the crown (3%), and the one every FPV pilot will recognise - a quad
+stuck in a tree with its LED still on (2.5%). A cherry in blossom was
+built too and left out at the user's request; a copper beech among the
+maples turned out to be one tree in three and is now one in ten.
+
+**TerrainCreator: the land itself.** Test Street's flat green plane to
+the horizon had become the weakest thing in the picture. The project
+already had `Terrain` (heightfield to mesh, collision and horizon
+ring), but each hilly map hand-wrote its own height formula.
+TerrainCreator supplies that part: "rolling", "hills" or "valley" from
+a seed, level ground wherever the map builds (plots, a street running
+on into the fog) that eases into the hills over 40-70 m, ponds that
+take their water level from the ground around them, ground colours
+(dry pasture, lush patches, bare earth on steep banks), and woods -
+real patches of wood plus lone field trees - handed to TreeCreator.
+The first lab round showed hills too flat to notice (the noise only
+used half its range) and trees spread evenly instead of in woods; both
+needed a second look at real pictures, not a number.
+
+**Two seconds down to 0.6.** The first terrain-plus-woods version cost
+about 2 s of load time; the rest of the session went into profiling it
+section by section rather than guessing. Three findings. `Terrain` lit
+every grid point six times (once per triangle corner) and pushed every
+vertex through several script calls; it now lights each point once and
+builds indexed chunk meshes - and since that touches every hilly map,
+Mountain Lake was rendered with the old and the new code and the two
+pictures compared pixel by pixel: the ground was identical, only
+swaying trees and drifting clouds differed. The terrain caches its
+height grid, so placing a few thousand trees no longer re-evaluates the
+noise. And the biggest single item was a design bug, not a slow
+function: wood trees used the garden surprise chances, so a 2,500-tree
+wood carried about 200 birdhouses, drones and kites, each built in full
+detail. That was also exactly what the surprise rule forbids - a drone
+in every twelfth tree isn't a discovery. Woods now get no garden
+surprises and no copper beeches, only a rare lost drone (0.2%) or kite
+(0.1%). Tree collision moved from a node per tree to shared shapes on
+the chunk's body. Test Street now builds its land in 0.46 s and about
+1,840 trees in 0.27 s.
+
+**Three bugs the user found by flying it.** After a crash into a hill
+you could see through the ground; birdhouses and some apples hung in
+the air next to their trees; and tree hitboxes didn't match the trees.
+The first was the best one, and old: `Terrain` drew each 8 m grid cell
+as two triangles split along one diagonal, while Godot's
+`HeightMapShape3D` - the collision - splits along the other. A
+throwaway probe on a single cell showed it (0.0 vs 0.4 m at the same
+point), and 389 random raycasts on the "hills" landscape measured it:
+7.5 cm off on average, 1.55 m at worst, enough for a crashed drone to
+come to rest with its camera under the visible hillside. That mismatch
+had been in Mountain Lake and the Steel Mill since they were built;
+one flipped index order fixed all three maps, and the same raycasts
+afterwards agreed to 0.1 mm. The birdhouse sat at the trunk's base
+radius, but trunks taper and some lean - it now sits on the trunk's
+real axis at its height. Apples were placed on a nominal crown, while
+the leaf masses are jittered - they now sit on the masses' own corner
+points. And trees collided as two upright cylinders, whose corners
+stuck out of round crowns while other parts of the leaves let you
+through; they now collide as a convex hull per leaf mass (its own
+jittered points), a prism along each real trunk, and a cone over a
+spruce's tiers. A ray test against the drawn meshes first gave
+nonsense - it turned out that headless Godot doesn't store multimesh
+transforms, so the test read every tree as unturned - and, once fixed,
+showed 419 of 441 tree hits matching within 8 cm.
+
+**Rivers, roads and bridges - creators that talk to each other.** The
+user asked for a road generator and a river generator that interact.
+The design: the land is the shared plan. Every line is a `LandLine`
+registered with TerrainCreator before it builds, and the ground is
+built in stages - natural land, ponds, rivers, level plots, roads -
+each seeing what the earlier ones left. Rivers only flow downhill by
+construction (the water level along the course can only fall; where
+the land rises in the way, the river carves its own valley). A
+crossing is decided by the later line: the road finds the river, holds
+its deck 4.5 m above the water, ramps up at 7 %, marks those segments
+as bridge, and a third creator builds the bridge - a concrete beam, a
+stone arch or a steel through-truss you can fly through. Two first-run
+failures made the rules sharper: the road's embankment buried the
+river beside a skewed crossing (now: a road never dams a river - the
+channel is carved again on top of any fill), and the first bridge was
+6 m long because the span search measured in 3D while the road points
+had no height yet. The river's banks are drawn as their own surfaces,
+finer than the 8 m terrain grid, and the terrain is carved just below
+them. And everything on the hills had been shaded as if it lay on the
+ground at y = 0 - a bridge 15 m down a valley came out nearly black -
+until `Geo` learned the ground height under each point. Surprises: a
+rubber-duck race drifting down a river (5%) and a shopping trolley
+under a bridge (12%). Test Street got a river across the north and a
+country road off the end of the street, over a green truss bridge and
+up into the hills.
+
+**Junctions, a village, and roads that don't break.** Next round: road
+junctions, a village generator, and "the streets are bugged in the
+terrain sometimes". Low cameras along every road found two separate
+bugs. Roads stopped dead where the detailed terrain ended, and past it
+the cameras were underground - the coarse horizon ring isn't cut for a
+road. Roads now lie on the ring out there (`far_ground()` mirrors its
+triangles exactly) and run on into the haze as plain carriageway. And on
+hillsides the road's edge was bitten by grass triangles: the flat bed
+under the road was only a metre wider than the road, so an 8 m grid
+triangle with one corner up the slope rose through the edge. The bed is
+now a grid cell's diagonal wider on each side - every triangle touching
+the road lies flat. One more surfaced at the edge of the detailed land:
+the horizon ring overlapping it was kept 1.5 m under the natural
+ground, and where the road ran in a deeper cutting the ring's 110 m
+triangles spanned it and buried the road; the ring is now kept under
+any road or river within one of its cells. Junctions: a branch road
+starts square-on at the edge of the road it leaves, at that road's
+level, through a mouth with 7 m rounded corners and a give-way line,
+laid edge to edge with both roads (overlapping asphalt flickers). Side
+lanes end in turning circles. The village generator puts it together:
+a main road in from the haze past a village green (lime tree, benches,
+a maypole), two or three lanes on junctions, house plots dealt out in
+turn along every road (levelled to the road, the house facing it, one
+in five open), gardens and street lamps. Test Street became a village.
+Loading was 7.3 s at first; markings built dash by dash along 3.4 km of
+main road that mostly lies in the haze cost 1.1 s of it (now plain
+there), and switching off the new terrain shading hook while a house is
+built (a house sets its own levels - and the hook was wrong upstairs)
+took closed houses from 90 to 64 ms. About 6 s remain, 2.3 s of them
+the 16 houses.
+
+**The generators, made to work together.** The user's verdict on the
+village round was blunt: the road looked bad at the junctions, still
+broke in the terrain, rivers stood above the land, the village didn't
+look good - and the generators should hand work to each other, the
+village telling the house generator where its plot is and the house
+generator building the house, its fences and its garden. Close views
+of every junction found the real road bug: roads carved the ground one
+after another, so a side road's flat bed - at its own junction level -
+flattened the main road beside it, burying the main road where it
+sloped. Now only the nearest road shapes a point. The junction mouth
+had been laid flat at one height on a sloping road; it now follows the
+main road along its edge, and the main road's edge lines break at
+every mouth. Rivers: smoothing the water level averaged pools with the
+higher water upstream and lifted them above hollows; the level is now
+capped under the ground again after smoothing, and in the haze the
+water had been laid over the coarse hills - every horizon vertex near
+the river now sits under it. The village now claims its land first
+(levelled over its whole area, easing into the hills over 110 m), lays
+out real rectangular plots square to their roads (checked against
+every road, the green, water and each other), and hands each to
+`HouseCreator.build_plot`, which sets the house back on it, reports
+where its path and driveway reach the street, and calls the new
+`GardenCreator`: a picket fence, low hedge or low wall to the street
+with a gate at the path and an opening for the drive, hedges or
+post-and-rail round the rest, and a garden behind - trees, bushes, a
+shed, a washing line with laundry, vegetable beds, a trampoline or a
+sandpit; a gnome by the path in one plot in sixteen, and in one in a
+hundred an army of fifteen. Along the way `Geo` got a fast path for
+consecutive pieces in the same batch (boxes 115 -> 85 us) and the
+levelled areas a bounding box each (the land went back from 1.7 to
+1.1 s with 18 of them).
+
+**Stepping back: design the layout, generate the detail.** After
+another round of reports - houses floating, a pond standing high with
+its water not enclosed, the road layout not good, the land glitchy -
+the user asked the real question: does it make sense to generate the
+big things at all? The answer was no. Every generator that builds one
+self-contained thing (house, garden, tree, toilet, bridge) had worked;
+nearly every bug of the last rounds came from generators deciding the
+layout together - the pond, for instance, took its water level from
+the land before the village levelled the land round it. So the
+automatic village planner was retired, and the big ones became
+builders: Test Street's layout is now written by hand in its script -
+a village on level ground, a valley with the river 250 m north, three
+hills with woods, a pond in a hollow, the street, two lanes and a
+country road over the river - and the creators build it. The terrain
+gained designed landforms (hill, hollow, valley) over a gentle noise,
+a fixed stage order (natural, rivers, level areas, ponds, roads), ponds
+whose level is settled when the land is built and which draw their own
+shore, and woods only in areas the map marks. The old planner's useful
+parts became `VillageKit` (plots along a named stretch of road,
+building them, lamps, the green). Then measured rather than eyeballed:
+the ground under all 21 plots is within 0.27 m of their level (the
+road-bed strip at the front edge), every pond's water edge lies under
+its shore, and low views along all four roads are clean.
+
+**Test Valley, and a standing rule about ideas.** The user asked to be
+told plainly when one of their ideas is technically bad - the village
+planner had been one, and it should have been said before it was built.
+Then Test Street was deleted and a different map designed by hand on
+the current creators: Test Valley, a village in the floor of a
+north-south river valley with houses on both banks and a stone arch
+bridge between them. Building it found three more ordering bugs, each
+measured before fixing: the land's height 0 was taken before the
+valley landform existed (the village sat on a terrace 28 m above the
+river); a road climbing past a plot re-shaped its garden; and plots
+stepping up a slope 2 m apart fought over each other's edges. Now the
+datum is taken on first read, a plot's ground belongs to the plot (no
+later levelled area or road earthworks change it), and plots are
+levelled a grid cell past their sides and back. Result: 22 plots, the
+ground under every one within 0.27 m of its level, nothing floating.
+
+**A river that vanished at a distance, and nicer gardens.** From far
+away the river looked "not loaded yet": all its materials, water
+included, had been given the prefix that culls small detail beyond
+450 m, so from afar only the carved trench was left. Now only the reeds
+carry it. Measuring the load time on the way found that the road verges
+running on into the haze cost a second - every vertex out there asked
+for the ground height, which past the detailed land meant the full
+terrain calculation; occlusion is now simply off out there (roads and
+river 2.5 s -> 1.0 s). The gardens: one kind of boundary all round each
+plot and one height (the user's call - half hedge, half fence looked
+wrong), the hedge rebuilt as rounded, trimmed sections that vary a
+little, and flower beds by the front door, flower borders, benches,
+bird baths, little ponds and stepping stones to the shed - flowers as
+one coloured clump each rather than stalk and bloom, keeping the extra
+cost at about 10 ms a garden.
+
+**The check that said nothing floats, while houses floated.** The user
+flew Test Valley and saw houses and fences hanging in the air - with
+the self-test's "nothing floats" check passing. The check asked every
+piece one question: does it touch something? A fence post touches its
+rail, the rail the next post; a house's plinth touches its wall. A
+whole fence lifted 20 cm off the ground held itself up, piece by piece.
+And "on the ground" meant within 35 cm, which from a drone at
+fence-height is a clear strip of sky. The new check follows each group
+of touching pieces until one of them really stands on the ground
+(within 10 cm), and looks under everything that stands on the ground
+for more than 10 cm of air. Made strict, it found 111 hedge sections,
+fence posts by the hundred, garages and front steps in Test Valley -
+and, in older maps that had passed for weeks, a bridge truss standing
+1.9 m beside its deck and a crane rope hanging from nothing at the
+harbour, a coal bunker frame 5 m above its legs at the steelworks, and
+at the mountain lake a hotel, a chapel and the cable-car stations with
+their downhill side up to 12 m in the air. The cause in the village was
+a grid: the land is a mesh with a point every 8 m, the plots were set
+15 cm above the road and the ground under a road 12 cm below it, so the
+first grid row of every plot sloped 27 cm down to the street - right
+where the front steps, the drive and the garage stand. Plots now lie at
+the road's bed level, and everything that stands on a creator's own
+level (posts, hedges, walls, plinths, steps, lamp posts, tree trunks)
+is stretched 8 cm down into the real ground beneath each of its
+corners. The rule now written into the project notes: never loosen
+that check to make a map pass.
+
+**Flowers.** The beds' one-cone-per-flower clumps looked like candles.
+Now there are four real clump shapes - bedding cushions dotted with
+open flowers, tulips with their strap leaves and closed cups,
+marguerites on stems, lupin spikes - built once and drawn as MultiMesh
+like the trees, coloured per clump by the shader so one shape serves
+every colour, planted tall at the back and low in front in drifts of
+the garden's colours. 944 clumps, about 150k triangles, out to 110 m;
+the houses-and-gardens step got 0.8 s faster, since the old cones had
+been real geometry. (First render: every flower pitch black - the
+compatibility renderer multiplies a MultiMesh's instance colour in even
+when the mesh has none, unless it is given white ones.)
+
+**Farmland, wires and stones.** Asked what generators were still
+missing, the honest answer was: things to fill the empty grass round
+the village, small things that make it lived in, and something to fly
+between - not another planner. The user said build them, and five
+creators came out of it, all small and self-contained, the layout
+still drawn by hand in the map script. FieldCreator lays a field on
+four corners: wheat, maize and rapeseed as a canopy over the land at
+the crop's height with rows, a wall of stalks and tractor tramlines -
+deliberately not solid, so you can skim the wheat - and ploughed,
+stubble and mown fields as a layer on the ground, with round bales and
+a stack by the gate. The first version sampled its surface on a grid of
+its own and the land poked green patches through the ploughed field
+near the river; now every field surface is cut out of the terrain's own
+triangles, so it lies exactly parallel to the ground. FarmCreator puts a
+farmstead on a levelled yard: a red timber barn with its doors slid
+open at both ends (fly straight through, under the hay loft), a silo,
+an open machine shed, the farmhouse, a tractor with a trailer of
+bales. The first spot for it, up the east slope, would have needed a
+lane at 20 % - it moved to the valley floor. PowerLineCreator strings
+a line along a hand-laid course: wooden poles with three wires and a
+stay at every corner up the road to the farm, the last wire into the
+barn wall, and 36 m lattice pylons carrying six conductors and an earth
+wire across the valley, every wire solid and sagging as real ones do.
+StreetKit: give-way signs at the junctions, yellow place-name boards
+(the village is Talbach now), a bus stop with its H sign, a letter box
+and a notice board on the green, wheelie bins inside the garden gates.
+RockCreator: six faceted boulder shapes drawn as MultiMesh with shared
+collision hulls, half buried, on the slopes, by the river, round the
+pond, and one five-metre erratic alone on a meadow. Together about
+0.6 s of load time - most of it went at first into a per-pixel loop
+generating a texture the meadow could borrow from the crops instead.
+
+**Inside the wheat, and the throttle that had to be wiggled.** Flying
+into a field (it doesn't collide, on purpose) showed nothing: the crop's
+top faced only up and its walls only out, so from inside it simply
+wasn't there. Now its top has a shaded underside and rows of stalks
+stand under it - one 4 m patch of see-through stalks and leaves, copied
+across the field as MultiMesh, tilted with the land. A first try with
+solid stalk walls made the inside of a wheat field look like a maze of
+yellow corridors; the cut-out texture with gaps between the stalks
+fixed that. The bales became golden straw and yellow-green hay with
+their rolled layers as rings on the ends, the plastic-wrapped ones gone.
+And a radio bug the user hit on every map: after opening a world the
+drone wouldn't arm until the throttle had been pushed up and back down.
+The OS only reports a stick when it moves, so until then every axis
+reads exactly 0.000 - and on a centred throttle channel that's 50 %,
+"lower throttle to arm". The radio's first arm-switch flip also counted
+as "switch already on at load". An axis that has never reported is now
+unknown, not centred: the throttle reads zero and the switch off until
+they move. A self-test case reproduces it first (the old code: "armed
+false, throttle 0.50") and passes now.
+
+**Generators for the old maps: town houses and industry.** Looking at
+all twelve maps' pictures for what was missing, the honest answer was
+mostly "use what we have" - the new trees, rocks and houses in the older
+maps - plus two new creators, because they would lift several maps at
+once: the city maps are all flat boxes with painted windows, and the
+Factory is a few grey blocks on a slab. CityHouseCreator builds rows of
+town houses in three styles a German town has side by side - around
+1900 (pastel plaster, framed windows, cornices, steep roofs with
+dormers, iron balconies, now and then an archway through to the
+courtyard to fly through), 1950s, and modern with a set-back top floor -
+with shops on the ground floor, their names on boards, awnings over the
+pavement. IndustryCreator builds an estate's pieces: a sawtooth-roofed
+hall with one roller door open and an overhead crane inside, docks with
+lorries backed up to them, tanks in a bund, a pipe rack to fly under, a
+banded chimney, grain silos with a conveyor gallery to fly up. Both went
+into Test Valley first (a town on the main road north of the village,
+the estate under the pylons) for the user to judge before any old map
+changes. The first renders: facades in a camouflage pattern (the
+weathered-concrete texture, fine on a ruin, wrong on fresh plaster - now
+a plaster texture of its own) and shop windows as flat navy slabs (now
+the shop-window texture the old city builder already had).
+
+**Where the load time goes.** The user asked what limits loading -
+CPU, disk, graphics card - before talking about loading dynamically.
+Measured on five maps: almost all of it is the CPU, on one core (wall
+time and CPU time come out the same, and there are no files to read):
+4-9 s generating, 2-3 s in the first frame while the graphics driver
+compiles shaders and takes the geometry, about 1 s rendering the shadow
+map. Two quick wins came out of it. Parked cars cost 7-8 s in Harbour and
+Construction Site: 2,900 cars, each copied into the chunk meshes with
+SurfaceTool.append_from, which re-reads the source mesh every time - now
+each car model's arrays are read once and copied in bulk (Harbour 6.9 s
+-> 2.2 s). The first try was fast because it was empty: a packed array
+kept inside a GDScript Array is a value, so appending to it appended to a
+copy - the cars had vanished, and a vertex count caught it before a
+screenshot did. And the generated textures (1.2 s a map, per-pixel loops)
+are now kept on disk after the first run: 28 ms. Caching whole built
+maps and "fly first, build the rest" are planned next.
+
+Self-test: 562 checks, all passing. Uncommitted at the time of writing.
+
 ## Recurring engineering themes
 
 A few patterns repeat often enough across all 13 commits to be the
@@ -1591,6 +2034,12 @@ actual "how this project gets built," more than any individual fix:
   at startup. This shows up as its own genre of bug (e.g. `albedo_color`
   silently multiplying with a freshly-generated texture) that a
   traditional asset pipeline wouldn't produce.
+- **Creators instead of hand-placed content (Act XVIII on).** Map
+  detail is generated by seeded creators tuned in a lab - contact
+  sheets for Claude, an index.html for the user - and reused by every
+  map; surprises are options with a chance, never one-off placements.
+  The point is as much cost as quality: describing a generator once is
+  cheaper than describing every house.
 - **Screenshots catch a whole category of bugs headless tests
   structurally cannot.** `--headless` never starts a real GPU context,
   so anything about how something actually *looks* (a near-black

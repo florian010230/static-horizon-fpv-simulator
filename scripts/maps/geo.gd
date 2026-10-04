@@ -70,6 +70,9 @@ func add_material(mat_name: String, mat: Material) -> void:
 		mat.resource_name = mat_name
 	_mats[mat_name] = mat
 
+func material(mat_name: String) -> Material:
+	return _mats.get(mat_name)
+
 func has_material(mat_name: String) -> bool:
 	return _mats.has(mat_name)
 
@@ -254,36 +257,159 @@ func _overlaps(a: Array, b: Array) -> bool:
 				return false
 	return true
 
-## Dev check (SH_FLOAT=1): solid pieces above the ground that touch
-## nothing at all - no other piece within 0.35 m of their height range
-## where their footprints meet (hanging from above counts as attached).
-## ground: Callable(x, z) -> ground height.
-func floating(ground: Callable) -> Array:
+## Dev check (SH_FLOAT=1, and the self-test): solid pieces that float.
+## Two ways to float:
+## - "loose": a group of pieces touching each other but, as a group,
+##   nothing on the ground - a whole house or fence lifted off its plot
+##   holds itself up piece by piece, so every piece is followed through
+##   what it touches (within 0.35 m, footprints overlapping; hanging
+##   from above counts) until something stands on the ground.
+##   A piece only counts as on the ground when its bottom is within
+##   gap_limit (10 cm) of it: a fence hovering 20 cm is loose.
+## - "gap": a piece standing on the ground at one spot but more than
+##   gap_limit above it somewhere else under its footprint - a house on
+##   a slope, a hedge over a dip - with nothing else under that spot.
+## ground: Callable(x, z) -> ground height. Only pieces within `radius`
+## of `centre` are judged - nobody flies close enough to see a lamp post
+## three kilometres out in the haze.
+func floating(ground: Callable, centre: Vector2 = Vector2.ZERO, radius: float = INF) -> Array:
 	var out: Array = []
+	var state: Dictionary = {} # support index -> true (on the ground) / false (loose)
 	for i in range(_obs.size()):
 		var o: Array = _obs[i]
-		var c: Vector2 = o[0]
-		var g: float = ground.call(c.x, c.y)
-		if o[3] < g + 0.35:
+		if (o[0] as Vector2).distance_to(centre) > radius:
 			continue
-		var held: bool = false
-		var rr: float = (o[2] as Vector2).length() + 1.0
+		var j: int = _support_index(o)
+		if j < 0:
+			continue
+		if not state.has(j):
+			_settle(j, ground, state)
+		if not state[j]:
+			out.append([Vector3(o[0].x, o[3], o[0].y), o[5], o[2], "loose"])
+			continue
+		if not _grounded(o, ground) or _rests_on(o, j):
+			continue # held by other pieces: only what stands on the bare ground can gape
+		var gap: Vector3 = _gap(o, ground)
+		if gap.x != INF:
+			out.append([Vector3(gap.x, o[3], gap.y), o[5], o[2], "gap", snappedf(gap.z, 0.01)])
+	return out
+
+## Does piece q stand on the ground (its bottom within gap_limit of it
+## at its centre or a corner)? A car body over its wheels doesn't - it
+## is held by them.
+func _grounded(q: Array, ground: Callable) -> bool:
+	if q[3] <= ground.call(q[0].x, q[0].y) + gap_limit:
+		return true
+	for p: Vector2 in _corners(q):
+		if q[3] <= ground.call(p.x, p.y) + gap_limit:
+			return true
+	return false
+
+func _corners(q: Array) -> Array:
+	var ax: Vector2 = q[1]
+	var az := Vector2(-ax.y, ax.x)
+	var h: Vector2 = q[2]
+	var c: Vector2 = q[0]
+	return [c + ax * h.x + az * h.y, c + ax * h.x - az * h.y, c - ax * h.x + az * h.y, c - ax * h.x - az * h.y]
+
+## The _support entry an _obs entry was recorded with (same centre and
+## height range).
+func _support_index(o: Array) -> int:
+	for j in _sup_grid.get(Vector2i(floori(o[0].x / OBS_CELL), floori(o[0].y / OBS_CELL)), []):
+		var q: Array = _support[j]
+		if q[0] == o[0] and q[3] == o[3] and q[4] == o[4]:
+			return j
+	return -1
+
+## Follows everything touching support piece `start` until one of them
+## stands on the ground; marks the whole group in `state`.
+func _settle(start: int, ground: Callable, state: Dictionary) -> void:
+	var seen: Dictionary = {start: true}
+	var todo: Array[int] = [start]
+	var on_ground: bool = false
+	while not todo.is_empty() and not on_ground:
+		var k: int = todo.pop_back()
+		if state.has(k):
+			on_ground = state[k]
+			if on_ground:
+				break
+			continue
+		var o: Array = _support[k]
+		if _grounded(o, ground):
+			on_ground = true
+			break
+		var c: Vector2 = o[0]
+		var rr: float = minf((o[2] as Vector2).length(), 400.0) + 0.2
 		for gx in range(floori((c.x - rr) / OBS_CELL), floori((c.x + rr) / OBS_CELL) + 1):
 			for gz in range(floori((c.y - rr) / OBS_CELL), floori((c.y + rr) / OBS_CELL) + 1):
-				for j in _sup_grid.get(Vector2i(gx, gz), []):
-					var q: Array = _support[j]
-					if q[0] == o[0] and q[3] == o[3] and q[4] == o[4]:
+				for j: int in _sup_grid.get(Vector2i(gx, gz), []):
+					if seen.has(j):
 						continue
+					var q: Array = _support[j]
 					if q[3] - 0.35 <= o[4] and o[3] <= q[4] + 0.35 and _overlaps(o, q):
-						held = true
-						break
-				if held:
-					break
-			if held:
-				break
-		if not held:
-			out.append([Vector3(c.x, o[3], c.y), o[5], o[2]])
-	return out
+						seen[j] = true
+						todo.append(j)
+	for k: int in seen:
+		if not state.has(k):
+			state[k] = on_ground
+
+## A spot under piece o (on the ground somewhere) where the ground is
+## more than gap_limit below it and no other piece fills the space -
+## [x, z, how high] - Vector3(INF, INF, INF) when there is none. Samples the centre, and for
+## anything wider than half a metre the corners and edge midpoints too,
+## pulled 0.1 m in. 10 cm is about what shows from a low pass as light
+## under a fence post or a hedge.
+var gap_limit: float = 0.1
+func _gap(o: Array, ground: Callable) -> Vector3:
+	var h: Vector2 = o[2]
+	var ax: Vector2 = o[1]
+	var az := Vector2(-ax.y, ax.x)
+	var c: Vector2 = o[0]
+	var hx: float = maxf(h.x - 0.1, 0.0)
+	var hz: float = maxf(h.y - 0.1, 0.0)
+	var at: Array = [Vector2.ZERO]
+	if h.x >= 0.25 or h.y >= 0.25:
+		at.append_array([Vector2(1, 1), Vector2(1, -1), Vector2(-1, 1), Vector2(-1, -1), Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)])
+	for f: Vector2 in at:
+		var p: Vector2 = c + ax * hx * f.x + az * hz * f.y
+		var g: float = ground.call(p.x, p.y)
+		if o[3] - g <= gap_limit:
+			continue
+		if not _filled_below(p, o[3], o):
+			return Vector3(p.x, p.y, o[3] - g)
+	return Vector3(INF, INF, INF)
+
+## Does piece o (support index j) sit on another piece - one whose top
+## is just under o's bottom where their footprints meet (a roof on its
+## walls, a deck on its posts)? Then it's that piece's job to reach the
+## ground.
+func _rests_on(o: Array, j: int) -> bool:
+	var c: Vector2 = o[0]
+	var rr: float = minf((o[2] as Vector2).length(), 400.0) + 0.2
+	for gx in range(floori((c.x - rr) / OBS_CELL), floori((c.x + rr) / OBS_CELL) + 1):
+		for gz in range(floori((c.y - rr) / OBS_CELL), floori((c.y + rr) / OBS_CELL) + 1):
+			for k: int in _sup_grid.get(Vector2i(gx, gz), []):
+				if k == j:
+					continue
+				var q: Array = _support[k]
+				if q[3] < o[3] - 0.05 and q[4] >= o[3] - 0.35 and _overlaps(o, q):
+					return true
+	return false
+
+## Is there a piece (other than o) at point p reaching from near the
+## ground up to near height y?
+func _filled_below(p: Vector2, y: float, o: Array) -> bool:
+	for j: int in _sup_grid.get(Vector2i(floori(p.x / OBS_CELL), floori(p.y / OBS_CELL)), []):
+		var q: Array = _support[j]
+		if q[0] == o[0] and q[3] == o[3] and q[4] == o[4]:
+			continue
+		if q[4] < y - gap_limit - 0.05 or q[3] > y - 0.05:
+			continue
+		var d: Vector2 = p - q[0]
+		var qa: Vector2 = q[1]
+		if absf(d.dot(qa)) <= q[2].x + 0.1 and absf(d.dot(Vector2(-qa.y, qa.x))) <= q[2].y + 0.1:
+			return true
+	return false
 
 ## Marks an area as taken (parked cars, so trees and other cars avoid them).
 func reserve(c: Vector2, ax: Vector2, half: Vector2, y0: float, y1: float) -> void:
@@ -422,6 +548,57 @@ func lathe(base: Vector3, profile: Array, mat: String, sides: int = 24, wall: fl
 	if shadow:
 		_shadow(pts)
 
+## Lathe in a local frame: the profile (Vector2(radius, height)) turned
+## round xf's y axis - and xf may scale x/z, so an ellipse works
+## (toilet bowls, seats, ducks). Trace the profile with the solid on its
+## inner side: the outside surface bottom to top, then over a rim and
+## down an inside surface - every face then faces the right way.
+## `closed` joins the last point back to the first (a ring section).
+func lathe_xf(xf: Transform3D, profile: Array, mat: String, sides: int = 24, closed: bool = false, collide: bool = true) -> void:
+	var m: int = profile.size()
+	if m < 2:
+		return
+	_begin(mat, xf.origin, collide)
+	var nb: Basis = xf.basis.inverse().transposed()
+	var pts: Array = []
+	var segs: int = m if closed else m - 1
+	for i in range(segs):
+		var p0: Vector2 = profile[i]
+		var p1: Vector2 = profile[(i + 1) % m]
+		var e: Vector2 = p1 - p0
+		if e.length() < 1e-5:
+			continue
+		var n2: Vector2 = Vector2(e.y, -e.x).normalized()
+		for s in range(sides):
+			var a0: float = TAU * s / sides
+			var a1: float = TAU * (s + 1) / sides
+			var mid: float = (a0 + a1) * 0.5
+			var q0: Vector3 = xf * Vector3(cos(a0) * p0.x, p0.y, sin(a0) * p0.x)
+			var q1: Vector3 = xf * Vector3(cos(a1) * p0.x, p0.y, sin(a1) * p0.x)
+			var q2: Vector3 = xf * Vector3(cos(a1) * p1.x, p1.y, sin(a1) * p1.x)
+			var q3: Vector3 = xf * Vector3(cos(a0) * p1.x, p1.y, sin(a0) * p1.x)
+			var n: Vector3 = (nb * Vector3(cos(mid) * n2.x, n2.y, sin(mid) * n2.x)).normalized()
+			_quad(q0, q1, q2, q3, n, collide)
+			if s % 4 == 0:
+				pts.append(q0)
+	_obstacle_points(pts, collide)
+
+## One face of a rectangle (corner o, edges u and v), facing n, split
+## into cells of about `cell` metres: for surfaces whose baked light
+## changes across them (a room wall lit from its window). No back face.
+## Counts as support for the floating check; collides only if asked.
+func quad_grid(o: Vector3, u: Vector3, v: Vector3, n: Vector3, mat: String, cell: float = 0.4, collide: bool = false) -> void:
+	var nu: int = maxi(1, ceili(u.length() / cell))
+	var nv: int = maxi(1, ceili(v.length() / cell))
+	_begin(mat, o + (u + v) * 0.5, collide)
+	_obstacle_points([o, o + u, o + v, o + u + v], collide)
+	for i in range(nu):
+		for j in range(nv):
+			var a: Vector3 = o + u * (float(i) / nu) + v * (float(j) / nv)
+			var du: Vector3 = u / nu
+			var dv: Vector3 = v / nv
+			_quad(a, a + du, a + du + dv, a + dv, n, collide)
+
 ## Flat ground-lying slab: a box whose top is at `top_y`.
 func slab(rect: Rect2, top_y: float, thickness: float, mat: String, collide: bool = true) -> void:
 	var c := Vector3(rect.get_center().x, top_y - thickness * 0.5, rect.get_center().y)
@@ -531,7 +708,7 @@ func sweep(path: Array[Vector3], profile: Array, mat: String, closed: bool = fal
 				for v in order:
 					st.set_normal(v[1])
 					st.set_uv(v[2])
-					st.set_color(shade(v[1], v[0].y) * tint)
+					st.set_color(_light(v[1], v[0]) * tint)
 					st.add_vertex(v[0])
 					if collide:
 						_cell_col.append(v[0])
@@ -583,6 +760,59 @@ func prism(xf: Transform3D, profile: Array, width: float, mat: String, collide: 
 		var pts := PackedVector3Array(left)
 		pts.append_array(PackedVector3Array(right))
 		_shadow(pts)
+
+## A surface through rows of points: quads from row i to row i+1, point
+## k to k+1 (river banks, bridge bodies - shapes a fixed sweep profile
+## can't give, e.g. an edge that has to land on the terrain). Normals
+## face up (ground-like), or - with `centres`, one point per row - away
+## from that row's centre (the sides and underside of a body).
+func strip(rows: Array, mat: String, collide: bool = false, centres: Array = []) -> void:
+	for i in range(rows.size() - 1):
+		var a: PackedVector3Array = rows[i]
+		var b: PackedVector3Array = rows[i + 1]
+		_begin(mat, a[0], collide)
+		for k in range(a.size() - 1):
+			var n: Vector3 = (b[k] - a[k]).cross(a[k + 1] - a[k])
+			if n.length() < 1e-6:
+				n = (b[k + 1] - a[k + 1]).cross(a[k + 1] - a[k])
+			n = n.normalized()
+			if centres.is_empty():
+				if n.y < 0.0:
+					n = -n
+			elif n.dot((a[k] + b[k + 1]) * 0.5 - (centres[i] as Vector3)) < 0.0:
+				n = -n
+			_quad(a[k], a[k + 1], b[k + 1], b[k], n, collide)
+
+## Triangles (three points each, any winding), each lit by its own
+## upward-facing normal - a surface draped on the terrain's own
+## triangles (FieldCreator).
+## `down`: facing down instead (an underside, seen from beneath).
+func tris(pts: PackedVector3Array, mat: String, collide: bool = false, down: bool = false) -> void:
+	if pts.size() < 3:
+		return
+	_begin(mat, pts[0], collide)
+	for t in range(0, pts.size() - 2, 3):
+		var n: Vector3 = (pts[t + 1] - pts[t]).cross(pts[t + 2] - pts[t])
+		if n.length_squared() < 1e-10:
+			continue
+		n = n.normalized()
+		if (n.y < 0.0) != down:
+			n = -n
+		_tri(pts[t], pts[t + 1], pts[t + 2], n, collide)
+
+## A flat-ish polygon facing up (points in order round it, any
+## winding, may be concave; each keeps its own y) - a junction's
+## rounded mouth, a turning circle.
+func polygon(pts: Array[Vector3], mat: String, collide: bool = true) -> void:
+	var flat := PackedVector2Array()
+	for q in pts:
+		flat.append(Vector2(q.x, q.z))
+	var tris: PackedInt32Array = Geometry2D.triangulate_polygon(flat)
+	if tris.is_empty():
+		return
+	_begin(mat, pts[0], collide)
+	for t in range(0, tris.size(), 3):
+		_tri(pts[tris[t]], pts[tris[t + 1]], pts[tris[t + 2]], Vector3.UP, collide)
 
 ## Circle of radius r as a sweep profile (pipes, tanks lying down).
 static func circle(r: float, sides: int = 12) -> Array:
@@ -661,6 +891,13 @@ func _tube(a: Vector3, b: Vector3, r0: float, r1: float, wall: float, mat: Strin
 		_shadow(pts)
 
 func _begin(mat: String, pos: Vector3, collide: bool) -> void:
+	# Fast path: most pieces land in the same batch as the one before
+	# (a house is hundreds of boxes in one or two cells) - skip building
+	# the string keys and the dictionary lookups.
+	if mat == _last_mat:
+		var cs0: float = _last_cs
+		if floori(pos.x / cs0) == _last_cx and floori(pos.z / cs0) == _last_cz:
+			return
 	assert(_mats.has(mat), "Geo: unknown material " + mat)
 	if not _mat_cell.has(mat):
 		var coarse: bool = false
@@ -680,26 +917,141 @@ func _begin(mat: String, pos: Vector3, collide: bool) -> void:
 		_batches[key] = st
 		_batch_mat[key] = mat
 	_cell_key = key
+	_cur_st = _batches[key]
 	var ck: String = "%d|%d|%d" % [cx, cz, int(cs)]
 	if not _col.has(ck):
 		_col[ck] = []
 	_cell_col = _col[ck]
+	_last_mat = mat
+	_last_cs = cs
+	_last_cx = cx
+	_last_cz = cz
+
+var _cur_st: SurfaceTool
+var _last_mat: String = ""
+var _last_cs: float = 1.0
+var _last_cx: int = 0
+var _last_cz: int = 0
 
 func _quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, collide: bool) -> void:
-	_tri(a, b, c, n, collide)
-	_tri(a, c, d, n, collide)
+	# Two triangles over the a-c diagonal, each corner lit once (as
+	# _tri(a, b, c) + _tri(a, c, d), with the same winding rule).
+	var la: Color = _light(n, a) * tint
+	var lb: Color = _light(n, b) * tint
+	var lc: Color = _light(n, c) * tint
+	var ld: Color = _light(n, d) * tint
+	var st: SurfaceTool = _cur_st
+	var flip1: bool = (b - a).cross(c - a).dot(n) > 0.0
+	var flip2: bool = (c - a).cross(d - a).dot(n) > 0.0
+	_v(st, n, a, la)
+	if flip1:
+		_v(st, n, c, lc)
+		_v(st, n, b, lb)
+	else:
+		_v(st, n, b, lb)
+		_v(st, n, c, lc)
+	_v(st, n, a, la)
+	if flip2:
+		_v(st, n, d, ld)
+		_v(st, n, c, lc)
+	else:
+		_v(st, n, c, lc)
+		_v(st, n, d, ld)
+	if collide:
+		_cell_col.append_array([a, c, b] if flip1 else [a, b, c])
+		_cell_col.append_array([a, d, c] if flip2 else [a, c, d])
+
+func _v(st: SurfaceTool, n: Vector3, p: Vector3, col: Color) -> void:
+	st.set_normal(n)
+	st.set_color(col)
+	st.add_vertex(p)
 
 func _tri(a: Vector3, b: Vector3, c: Vector3, n: Vector3, collide: bool) -> void:
-	var st: SurfaceTool = _batches[_cell_key]
-	var order: Array[Vector3] = [a, b, c]
+	var st: SurfaceTool = _cur_st
 	if (b - a).cross(c - a).dot(n) > 0.0:
-		order = [a, c, b]
-	for p in order:
-		st.set_normal(n)
-		st.set_color(shade(n, p.y) * tint)
-		st.add_vertex(p)
+		var sw: Vector3 = b
+		b = c
+		c = sw
+	st.set_normal(n)
+	st.set_color(_light(n, a) * tint)
+	st.add_vertex(a)
+	st.set_normal(n)
+	st.set_color(_light(n, b) * tint)
+	st.add_vertex(b)
+	st.set_normal(n)
+	st.set_color(_light(n, c) * tint)
+	st.add_vertex(c)
 	if collide:
-		_cell_col.append_array(order)
+		_cell_col.append(a)
+		_cell_col.append(b)
+		_cell_col.append(c)
+
+## Optional baked light for what is drawn next, replacing shade():
+## Callable(normal: Vector3, pos: Vector3) -> Color, both world space.
+## Interiors use it (HouseCreator: light from the room's windows, sun
+## patches, corner darkening) - still vertex colours, so free per frame.
+var light_fn: Callable = Callable():
+	set(f):
+		light_fn = f
+		_lcache.clear()
+## A quad grid's corners are shared by up to 6 triangle vertices: light each once.
+var _lcache: Dictionary = {}
+
+## Ground height under a point (Callable(x, z) -> float) on maps with
+## terrain: ambient occlusion then counts from the ground below, not
+## from y = 0 (a bridge 15 m down a valley isn't "at the ground").
+var ground_fn: Callable
+
+## The real ground (Callable(x, z) -> float, below -1e5 = unknown) for
+## pieces that stand on it. Unlike ground_fn it stays on while a house
+## builds: creators set things on a level of their own (a plot, a house
+## base), and where the land drops away from that level - a plot's edge
+## next to a road - a post or hedge must still reach down into it.
+var floor_fn: Callable
+## How far a grounded piece reaches into the ground.
+const SINK: float = 0.08
+
+## Bottom for an upright piece whose bottom is at y0 and whose footprint
+## is pts (world): low enough to reach SINK into the ground under every
+## point, never higher than y0.
+func sunk(pts: Array, y0: float) -> float:
+	var lo: float = y0
+	if floor_fn.is_valid():
+		for p: Vector3 in pts:
+			var g: float = floor_fn.call(p.x, p.z)
+			if g > -1e5:
+				lo = minf(lo, g - SINK)
+	return lo
+
+## box_xf for a piece standing on a creator's own level: when its bottom
+## is at (or below) `level`, the box is stretched down into the real
+## ground under it (see floor_fn). Fence boards, posts, walls, plinths,
+## steps. Anything higher (a rail, a seat) is drawn as given.
+func box_on(xf: Transform3D, size: Vector3, mat: String, level: float, collide: bool = true, shadow: bool = true) -> void:
+	if floor_fn.is_valid() and absf(xf.basis.y.normalized().y) > 0.99:
+		var ys: float = xf.basis.y.length()
+		var h: Vector3 = size * 0.5
+		var bottom: float = xf.origin.y - h.y * ys
+		if bottom <= level + 0.02:
+			var nb: float = sunk([xf * Vector3(-h.x, -h.y, -h.z), xf * Vector3(h.x, -h.y, -h.z),
+				xf * Vector3(-h.x, -h.y, h.z), xf * Vector3(h.x, -h.y, h.z), xf * Vector3(0, -h.y, 0)], bottom)
+			if nb < bottom - 0.001:
+				var extra: float = bottom - nb
+				xf.origin.y -= extra * 0.5
+				size.y += extra / ys
+	box_xf(xf, size, mat, collide, shadow)
+
+func _light(n: Vector3, p: Vector3) -> Color:
+	if not light_fn.is_valid():
+		if ground_fn.is_valid():
+			return shade(n, p.y - ground_fn.call(p.x, p.z) + ao_ground_y)
+		return shade(n, p.y)
+	var key := [p, n]
+	var c: Variant = _lcache.get(key)
+	if c == null:
+		c = light_fn.call(n, p)
+		_lcache[key] = c
+	return c
 
 ## Baked light for a surface with normal n at height y (see the header).
 func shade(n: Vector3, y: float) -> Color:
@@ -716,6 +1068,10 @@ func _shadow(_pts: PackedVector3Array) -> void:
 	pass
 
 ## Turns everything into nodes under `root`. Call once, after building.
+## Callables(holder: Node3D) run at the end of commit(): creators that
+## make their own nodes (garden flowers as MultiMesh) add them there.
+var on_commit: Array[Callable] = []
+
 func commit(root: Node3D) -> void:
 	var holder := Node3D.new()
 	holder.name = "Generated"
@@ -750,7 +1106,11 @@ func commit(root: Node3D) -> void:
 		cs.shape = shape
 		body.add_child(cs)
 	_batches.clear()
+	_last_mat = "" # the fast path in _begin must not reuse a cleared batch
 	_col.clear()
+	for c: Callable in on_commit:
+		c.call(holder)
+	on_commit.clear()
 
 ## Everything built so far as one local-space mesh (one surface per
 ## material) instead of scene nodes - for MultiMesh sources like trees.
@@ -770,5 +1130,6 @@ func build_mesh() -> ArrayMesh:
 		st.commit(mesh)
 		mesh.surface_set_material(mesh.get_surface_count() - 1, _mats[m])
 	_batches.clear()
+	_last_mat = "" # the fast path in _begin must not reuse a cleared batch
 	_col.clear()
 	return mesh
