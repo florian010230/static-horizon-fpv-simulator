@@ -385,7 +385,10 @@ func _menu_shots() -> void:
 	Collectibles.reset()
 	Collectibles.mark_found("playground", 0)
 	Achievements.note_flight("village")
-	Updater.latest = {"version": "0.9.1", "tag": "v0.9.1", "url": Updater.RELEASES_PAGE, "checked": 0,
+	# A pretend release one minor version above this build (example notes).
+	var cur: PackedStringArray = Updater.current_version().split(".")
+	var fake: String = "%s.%d.0" % [cur[0], int(cur[1]) + 1] if cur.size() >= 2 else "9.9.9"
+	Updater.latest = {"version": fake, "tag": "v" + fake, "url": Updater.RELEASES_PAGE, "checked": 0,
 		"body": "## Fixes\n- The **Static Race** no longer drifts at idle.\n- Gnomes are now easier to find.\n\n## New\n- A quieter menu with an Updates screen."}
 	var mn: Node = get_tree().current_scene
 	mn._refresh_update_hint()

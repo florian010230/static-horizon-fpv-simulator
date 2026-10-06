@@ -64,11 +64,12 @@ static func is_race(m: Dictionary) -> bool:
 	return m.get("race", false)
 
 ## Maps whose scene exists in this build. "dev" maps (the creators' test
-## bed) only show in development runs, never in a release build.
+## bed) only show in development runs, never in a release build
+## (SH_HIDE_DEV=1 hides them in a development run too - for screenshots).
 static func available() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for m in MAPS:
-		if m.get("dev", false) and not OS.is_debug_build():
+		if m.get("dev", false) and (not OS.is_debug_build() or OS.has_environment("SH_HIDE_DEV")):
 			continue
 		if ResourceLoader.exists(m.scene):
 			out.append(m)
