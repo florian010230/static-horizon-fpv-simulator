@@ -49,11 +49,13 @@ func _run() -> void:
 	var te: float = Settings.throttle_curve(0.75)
 	Settings.throttle_expo = 0.0
 	_check(absf(te - 0.5625) < 0.001, "throttle: Betaflight EXPO curve", "%.4f" % te)
-	# Dev aid: SH_SELFTEST_ONLY=menu,realism,race runs just those parts.
+	# Dev aid: SH_SELFTEST_ONLY=menu,reset,realism,race runs just those parts.
 	if OS.has_environment("SH_SELFTEST_ONLY"):
 		var only: PackedStringArray = OS.get_environment("SH_SELFTEST_ONLY").split(",")
 		if only.has("menu"):
 			await _test_menu_flow()
+		if only.has("reset"):
+			await _test_reset_switch()
 		if only.has("realism"):
 			await _test_realism()
 		if only.has("race"):
@@ -97,6 +99,7 @@ func _run() -> void:
 	await _test_race()
 	await _test_realism()
 	await _test_video_link()
+	await _test_reset_switch()
 	Settings.performance_mode = true
 	await _test_map("res://scenes/maps/Factory.tscn", "seeker3", true)
 	await _test_map("res://scenes/Main3.tscn", "whoop", true)
@@ -821,6 +824,78 @@ func _test_race() -> void:
 	InputManager.test_joy = keep_joy
 	InputManager._joy_active = false
 	_check(reloading, "radio: the restart switch reloads the map")
+
+## A reset switch on the radio (virtual radio, the user's Pocket layout:
+## arm on axis 4, throttle on axis 2, reset on axis 7) must reset the
+## drone and let it take off again - the user found it stuck on the
+## ground after a switch reset, while R worked (2026-10-06).
+func _test_reset_switch() -> void:
+	var keep := {}
+	for f in ["arm_source", "arm_axis", "arm_axis_on_value", "arm_axis_off_value", "arm_is_switch", "axis_throttle",
+			"throttle_calibrated", "throttle_raw_low", "throttle_raw_high", "invert_throttle", "reset_source",
+			"reset_axis", "reset_axis_on_value", "reset_axis_off_value", "axis_roll", "axis_pitch", "axis_yaw"]:
+		keep[f] = InputManager.get(f)
+	var keep_joy = InputManager.test_joy
+	var axes: Array = [0.0, 0.0, -1.0, 0.0, -1.0, 0.0, 0.0, 1.0]
+	InputManager.test_joy = {"axes": axes, "buttons": [false, false, false, false]}
+	InputManager.axis_roll = 0
+	InputManager.axis_pitch = 1
+	InputManager.axis_throttle = 2
+	InputManager.axis_yaw = 3
+	InputManager.invert_throttle = false
+	InputManager.throttle_calibrated = true
+	InputManager.throttle_raw_low = -1.0
+	InputManager.throttle_raw_high = 1.0
+	InputManager.arm_source = "axis"
+	InputManager.arm_axis = 4
+	InputManager.arm_axis_on_value = 1.0
+	InputManager.arm_axis_off_value = -1.0
+	InputManager.arm_is_switch = true
+	InputManager.reset_source = "axis"
+	InputManager.reset_axis = 7
+	InputManager.reset_axis_on_value = -1.0
+	InputManager.reset_axis_off_value = 1.0
+	InputManager._forget_axes()
+	InputManager._joy_active = false
+	Settings.game_mode = Settings.MODE_FREESTYLE
+	InputManager.self_level = true
+	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
+	await _wait(2.0)
+	var d: Drone = _drone()
+	var y0: float = d.global_position.y
+	axes[4] = 1.0 # arm
+	await _wait(0.3)
+	axes[2] = 0.3 # 65 % throttle
+	await _wait(1.0)
+	var climbed1: float = d.global_position.y - y0
+	# A two-position switch stays ON after the reset - the drone must
+	# still fly (it used to be reset every frame while the switch was on).
+	axes[7] = -1.0
+	axes[2] = -1.0
+	await _wait(0.5)
+	var back: bool = d.global_position.distance_to(d._spawn_transform.origin) < 1.0
+	var y1: float = d.global_position.y
+	axes[2] = 0.3
+	await _wait(1.2)
+	var climbed2: float = d.global_position.y - y1
+	_check(climbed1 > 1.0 and back and climbed2 > 1.0, "radio: the reset switch resets the drone once and it takes off again, switch still on",
+		"first climb %.2f m, back at spawn %s, armed %s, climb after reset %.2f m" % [climbed1, back, InputManager.armed, climbed2])
+	# Flipping it off and on again resets again.
+	axes[2] = -1.0
+	axes[7] = 1.0
+	await _wait(0.2)
+	axes[7] = -1.0
+	await _wait(0.1)
+	_check(d.global_position.distance_to(d._spawn_transform.origin) < 1.0, "radio: flipping the reset switch again resets again")
+	axes[7] = 1.0
+	axes[2] = -1.0
+	axes[4] = -1.0
+	await _wait(0.2)
+	for f in keep:
+		InputManager.set(f, keep[f])
+	InputManager.test_joy = keep_joy
+	InputManager._joy_active = false
+	InputManager.armed = false
 
 ## The optional realism settings (battery sag, prop damage, wind) through
 ## the real input path: keyboard arm and throttle, R to reset.

@@ -625,7 +625,14 @@ func _physics_process(delta: float) -> void:
 	if InputManager.armed:
 		flight_time += delta
 
-	if InputManager.reset_key_pressed():
+	# Reset once when R or the radio's reset control turns ON - not every
+	# frame while it stays on: a reset on a two-position switch is left in
+	# the ON position, and the drone sat pinned to the spawn until the
+	# switch was flipped back (the user thought it was broken, 2026-10-06).
+	var reset_on: bool = InputManager.reset_key_pressed()
+	var reset_edge: bool = reset_on and not _reset_was_on
+	_reset_was_on = reset_on
+	if reset_edge:
 		reset_to_spawn()
 		return
 
@@ -1055,6 +1062,8 @@ func flip_upright() -> void:
 	angular_velocity = Vector3.ZERO
 	reset_physics_interpolation()
 	_reset_controller()
+
+var _reset_was_on: bool = false
 
 func reset_to_spawn() -> void:
 	battery.reset()
