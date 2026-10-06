@@ -12,9 +12,19 @@ extends RefCounted
 ## which way the car faces - so each kind is built for 8 headings and a
 ## car uses the nearest one (at most 22.5 degrees off - not visible).
 ## Collision: one box per car.
+##
+## Far from where the drone can fly (2026-10-04, RAM): a chunk more than
+## FAR_LOD outside the map's reset border can only ever be seen from
+## that far away - its cars are a seven-box stand-in (~250 vertices
+## instead of ~1,800: body, glasshouse, roof, four wheels, same paint and
+## baked light) and get no collision (the drone can't reach them). A
+## chunk farther out than Geo.DETAIL_RANGE (where car batches stop being
+## drawn) is never drawn at all and is left out. Harbour: see
+## notes/r2-flight.md for the numbers.
 
 const CHUNK: float = 128.0
 const BINS: int = 8
+const FAR_LOD: float = 120.0
 
 var geo: Geo ## the map's Geo, for its light settings
 var _items: Dictionary = {} # Vector2i chunk -> Array of [kind, bin, Transform3D, Color]
@@ -76,10 +86,29 @@ func commit(root: Node3D) -> void:
 		_items[key] = kept
 	if OS.has_environment("SH_PERF"):
 		print("FLEET dropped %d" % dropped)
+	var n_verts: int = 0
+	var n_far: int = 0
+	var n_gone: int = 0
+	# The flight area: BuiltMap.border() = [warn r, reset r, .., centre].
+	var area_c := Vector2.ZERO
+	var area_r: float = INF
+	if root.has_method("border"):
+		var bd: Array = root.border()
+		area_r = bd[1]
+		area_c = bd[4] if bd.size() > 4 else Vector2.ZERO
 	var holder := Node3D.new()
 	holder.name = "Fleet"
 	root.add_child(holder)
 	for key in _items:
+		var rect := Rect2(Vector2(key) * CHUNK, Vector2(CHUNK, CHUNK))
+		var near_pt := Vector2(clampf(area_c.x, rect.position.x, rect.end.x), clampf(area_c.y, rect.position.y, rect.end.y))
+		var outside: float = area_c.distance_to(near_pt) - area_r
+		if outside > Geo.DETAIL_RANGE:
+			n_gone += _items[key].size()
+			continue
+		var far: bool = outside > FAR_LOD
+		if far:
+			n_far += _items[key].size()
 		# Per material: the chunk's vertices, normals, colours, UVs - each
 		# car's model arrays transformed and appended in bulk (C++), not
 		# SurfaceTool.append_from (which re-read the source mesh for every
@@ -90,18 +119,19 @@ func commit(root: Node3D) -> void:
 		for it in _items[key]:
 			var xf: Transform3D = it[2]
 			var rot := Transform3D(xf.basis, Vector3.ZERO)
-			for surf: Array in _surfaces(it[0], it[1], it[3]):
+			for surf: Array in _surfaces(it[0], it[1], it[3], far):
 				var mat: Material = surf[0]
 				# (Pieces collected here and joined once below: a packed array
 				# held in an Array is a value - appending to it in place
 				# appends to a copy.)
 				if not acc.has(mat):
-					acc[mat] = [[], [], [], []]
+					acc[mat] = [[], [], []]
 				var a: Array = acc[mat]
 				a[0].append(xf * (surf[1] as PackedVector3Array))
 				a[1].append(rot * (surf[2] as PackedVector3Array))
 				a[2].append(surf[3])
-				a[3].append(surf[4])
+			if far:
+				continue
 			var spec: Array = Vehicles.CAR_SPECS.get(it[0], Vehicles.CAR_SPECS.sedan)
 			var p: Vector3 = it[2].origin
 			var b := Basis(Vector3.UP, it[4])
@@ -116,20 +146,20 @@ func commit(root: Node3D) -> void:
 			var vs := PackedVector3Array()
 			var ns := PackedVector3Array()
 			var cs2 := PackedColorArray()
-			var uvs := PackedVector2Array()
 			for i in range(a[0].size()):
 				vs.append_array(a[0][i])
 				ns.append_array(a[1][i])
 				cs2.append_array(a[2][i])
-				uvs.append_array(a[3][i])
 			var arrays: Array = []
 			arrays.resize(Mesh.ARRAY_MAX)
 			arrays[Mesh.ARRAY_VERTEX] = vs
 			arrays[Mesh.ARRAY_NORMAL] = ns
 			arrays[Mesh.ARRAY_COLOR] = cs2
-			arrays[Mesh.ARRAY_TEX_UV] = uvs
+			# No UVs: every vehicle material is flat or world-triplanar. And
+			# compressed (Geo.COMPRESS): 16-bit positions in the chunk's box,
+			# octahedral normals, colour - 16 bytes a vertex (24 before).
 			var mesh := ArrayMesh.new()
-			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, Geo.COMPRESS)
 			mesh.surface_set_material(0, mat)
 			var mi := MeshInstance3D.new()
 			mi.mesh = mesh
@@ -138,6 +168,9 @@ func commit(root: Node3D) -> void:
 			mi.set_meta("geo_detail", true)
 			mi.set_meta("geo_batch", true)
 			holder.add_child(mi)
+			n_verts += vs.size()
+	if OS.has_environment("SH_PERF"):
+		print("FLEET %d vertices; %d far cars (stand-ins), %d never drawn (left out)" % [n_verts, n_far, n_gone])
 	_items.clear()
 
 ## The four corners of a car's footprint, checked like its centre.
@@ -156,11 +189,11 @@ var _surf_cache: Dictionary = {}
 
 ## One model as plain arrays per surface, read once:
 ## [[material, vertices, normals, colours, uvs], ...] - unindexed.
-func _surfaces(kind: String, bin: int, paint: Color) -> Array:
-	var mk: String = "%s|%d|%s" % [kind, bin, paint.to_html(false)]
+func _surfaces(kind: String, bin: int, paint: Color, far: bool = false) -> Array:
+	var mk: String = "%s|%d|%s|%s" % [kind, bin, paint.to_html(false), far]
 	if _surf_cache.has(mk):
 		return _surf_cache[mk]
-	var model: ArrayMesh = _model(kind, bin, paint)
+	var model: ArrayMesh = _model(kind, bin, paint, far)
 	var out: Array = []
 	for s in range(model.get_surface_count()):
 		var arr: Array = model.surface_get_arrays(s)
@@ -197,13 +230,13 @@ func _surfaces(kind: String, bin: int, paint: Color) -> Array:
 
 ## One car model: the kind at a heading, its body in `paint` (the paint
 ## is multiplied into the body's baked vertex colours).
-func _model(kind: String, bin: int, paint: Color) -> ArrayMesh:
-	var mk: String = "%s|%d|%s" % [kind, bin, paint.to_html(false)]
+func _model(kind: String, bin: int, paint: Color, far: bool = false) -> ArrayMesh:
+	var mk: String = "%s|%d|%s|%s" % [kind, bin, paint.to_html(false), far]
 	if _models.has(mk):
 		return _models[mk]
-	var pk: String = "%s|%d" % [kind, bin]
+	var pk: String = "%s|%d|%s" % [kind, bin, far]
 	if not _parts.has(pk):
-		_parts[pk] = _build(kind, bin)
+		_parts[pk] = _build(kind, bin, far)
 	var pair: Array = _parts[pk]
 	var m := ArrayMesh.new()
 	var body: ArrayMesh = pair[0]
@@ -223,7 +256,7 @@ func _model(kind: String, bin: int, paint: Color) -> ArrayMesh:
 	return m
 
 ## [painted body mesh, everything else] for one kind at one heading.
-func _build(kind: String, bin: int) -> Array:
+func _build(kind: String, bin: int, far: bool = false) -> Array:
 	var g := Geo.new()
 	g.sun_dir = geo.sun_dir
 	g.sun = geo.sun
@@ -242,7 +275,10 @@ func _build(kind: String, bin: int) -> Array:
 	if _paint_mat == null:
 		_paint_mat = Geo.flat_mat(Color.WHITE, 0.35, 0.3)
 	g.add_material("fleet_paint", _paint_mat)
-	Vehicles.car(g, Vector3.ZERO, bin * TAU / BINS, "fleet_paint", kind)
+	if far:
+		_stand_in(g, kind, bin * TAU / BINS)
+	else:
+		Vehicles.car(g, Vector3.ZERO, bin * TAU / BINS, "fleet_paint", kind)
 	var all: ArrayMesh = g.build_mesh()
 	var a := ArrayMesh.new()
 	var b := ArrayMesh.new()
@@ -251,3 +287,27 @@ func _build(kind: String, bin: int) -> Array:
 		target.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, all.surface_get_arrays(s))
 		target.surface_set_material(target.get_surface_count() - 1, all.surface_get_material(s))
 	return [a, b]
+
+## The far stand-in: Vehicles.car's proportions (CAR_SPECS) in seven
+## boxes - lower body, glasshouse, roof, four wheels.
+static func _stand_in(g: Geo, kind: String, yaw: float) -> void:
+	var s: Array = Vehicles.CAR_SPECS.get(kind, Vehicles.CAR_SPECS.sedan)
+	var L: float = s[0]
+	var W: float = s[1]
+	var H: float = s[2]
+	var belt: float = s[3]
+	var wr: float = s[9]
+	var clear: float = wr * 0.7
+	var zf: float = -L * 0.5
+	var zws: float = zf + s[5]
+	var zrr: float = minf(zws + s[6] + s[7], L * 0.5 - 0.05)
+	var t := Transform3D(Basis(Vector3.UP, yaw), Vector3.ZERO)
+	var part := func(c: Vector3, size: Vector3, mat: String) -> void:
+		g.box_xf(t * Transform3D(Basis(), c), size, mat, false, false)
+	part.call(Vector3(0, (clear + belt) * 0.5, 0), Vector3(W, belt - clear, L - 0.1), "fleet_paint")
+	var gz0: float = zws + s[6] * 0.5
+	part.call(Vector3(0, (belt + H - 0.06) * 0.5, (gz0 + zrr) * 0.5), Vector3(W - 0.16, H - 0.06 - belt, zrr - gz0), "veh_glass")
+	part.call(Vector3(0, H - 0.03, (gz0 + zrr) * 0.5), Vector3(W - 0.2, 0.06, zrr - gz0 - 0.1), "fleet_paint")
+	for zc in [zf + s[10], L * 0.5 - s[11]]:
+		for sx in [-1.0, 1.0]:
+			part.call(Vector3(sx * (W * 0.5 - 0.11), wr, zc), Vector3(0.2, wr * 2.0, wr * 2.0), "veh_tyre")

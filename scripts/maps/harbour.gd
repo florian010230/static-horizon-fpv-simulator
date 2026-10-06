@@ -51,6 +51,11 @@ func map_env() -> Dictionary:
 func border() -> Array:
 	return [760.0, 850.0, 260.0, 320.0, Vector2(-100, -380)]
 
+## Loaded from the map cache after the first build (MapCache): nothing
+## the script keeps is needed after build().
+func cacheable() -> bool:
+	return true
+
 func preview_views() -> Array:
 	return [
 		["overview", Vector3(-330, 140, 180), Vector3(-120, 0, -330)],
@@ -68,6 +73,8 @@ func preview_views() -> Array:
 		["silos", Vector3(-205, 5, -40), Vector3(-110, 18, -90)],
 		["tanks", Vector3(400, 40, -120), Vector3(570, 8, -150)],
 		["horizon", Vector3(-100, 90, -820), Vector3(-100, 0, -2200)],
+		["town_houses", Vector3(-250, 30, -700), Vector3(-200, 10, -790)],
+		["town_street", Vector3(-290, 6, -640), Vector3(-290, 8, -800)],
 	]
 
 func build() -> void:
@@ -108,6 +115,11 @@ func build() -> void:
 	rails = Rails.new(geo)
 	roads = Roads.new(geo, rng, fleet)
 	city = City.new(geo, rng, fleet)
+	# Real town houses (CityHouseCreator) in the blocks around the spawn; the
+	# cheap boxes stay further out. ~22 ms a house, so a capped count.
+	city.house_centre = Vector2(-290, -790)
+	city.house_radius = 110.0
+	city.house_cap = 40
 
 	_land_and_water()
 	_railway()

@@ -31,6 +31,8 @@ func preview_views() -> Array:
 		["hole", Vector3(-8, 11, 8), Vector3(-8, 3, -1)],
 		["ramp", Vector3(33, 1.6, 17), Vector3(33, 3.5, -10)],
 		["roof", Vector3(-35, 16, -25), Vector3(10, 12, 10)],
+		["town_houses", Vector3(-80, 12, 10), Vector3(-100, 10, 48)],
+		["town_street", Vector3(-60, 5, 30), Vector3(-130, 8, 46)],
 	]
 
 func build() -> void:
@@ -106,7 +108,7 @@ func _level_contents(lvl: int) -> void:
 	for side in [-1.0, 1.0]:
 		for i in range(22):
 			var x: float = -27 + i * 2.6
-			geo.box(Vector3(x, y + 0.02, side * 13.5), Vector3(0.1, 0.02, 5.0), "paint_line", 0.0, false, false)
+			geo.box(Vector3(x, y + 0.025, side * 13.5), Vector3(0.1, 0.04, 5.0), "paint_line", 0.0, false, false) # (4.5 cm: 3 cm over the deck flickered)
 			if rng.randf() < 0.3 and not _in_hole(lvl, Vector2(x + 1.3, side * 13.5), 2.5):
 				_car(Vector3(x + 1.3, y, side * 13.5), rng.randf_range(-0.1, 0.1))
 	# Rubble under the collapsed holes above.
@@ -119,8 +121,10 @@ func _level_contents(lvl: int) -> void:
 
 func _car(p: Vector3, yaw: float) -> void:
 	var paint: String = ["car_red", "car_blue", "car_grey", "car_white"][rng.randi() % 4]
-	geo.box(p + Vector3(0, 0.55, 0), Vector3(1.8, 0.7, 4.3), paint, PI * 0.5 + yaw)
-	geo.box(p + Vector3(0, 1.12, 0), Vector3(1.6, 0.5, 2.2), "glass", PI * 0.5 + yaw)
+	# Nose into the bay (lengthwise along its 5 m lines - turned across, each
+	# car reached into the next bay and the next car).
+	geo.box(p + Vector3(0, 0.55, 0), Vector3(1.8, 0.7, 4.3), paint, yaw)
+	geo.box(p + Vector3(0, 1.12, 0), Vector3(1.6, 0.5, 2.2), "glass", yaw)
 
 ## Two-lane ramp bay (see header).
 func _ramps() -> void:
@@ -155,6 +159,11 @@ func _stair_tower(o: Vector3) -> void:
 func _surroundings() -> void:
 	var roads := Roads.new(geo, rng, fleet)
 	var city := City.new(geo, rng, fleet)
+	# Real town houses (CityHouseCreator) in the blocks round the garage; the
+	# cheap boxes stay further out. ~22 ms a house, so a capped count.
+	city.house_centre = Vector2(-40, 0)
+	city.house_radius = 110.0
+	city.house_cap = 40
 	roads.junction(Vector3(60, 0, 31), Vector2(10, 10), ["w", "e", "n"], 2.5)
 	var w := Route.from(Vector3(55, 0, 31), 180.0).straight(3055.0, 20.0)
 	var e := Route.from(Vector3(65, 0, 31), 0.0).straight(3000.0, 20.0)

@@ -30,6 +30,7 @@ static var _sun := Vector4(0, -1, 0, 0) # global_shader_parameter_get is editor-
 static func setup(scene: Node, env: Environment) -> void:
 	_set_fog_from(env)
 	set_grade(env.get_meta("grade", Vector4(1.08, 1.12, 0.0, 0.0)) if env else Vector4(1.08, 1.12, 0.0, 0.0))
+	set_detail(Settings.graphics_quality)
 	var cache: Dictionary = {}
 	_convert(scene, cache)
 
@@ -62,6 +63,46 @@ static func _set_fog_from(env: Environment) -> void:
 		env.glow_enabled = false
 	RenderingServer.global_shader_parameter_set("sh_fog", env.get_meta("sh_fog"))
 	RenderingServer.global_shader_parameter_set("sh_fog_color", env.get_meta("sh_fog_color"))
+
+## Surface detail per graphics quality (world_common sh_surface_detail):
+## [close-up grain, its fade distance m, large-scale wear]. Low: none
+## (no extra texture reads at all).
+const DETAIL: Array[Vector4] = [Vector4(0, 1, 0, 0), Vector4(0.2, 30, 0.13, 0), Vector4(0.22, 50, 0.14, 0)]
+static var _detail_tex: ImageTexture
+
+static func set_detail(quality: int) -> void:
+	if _detail_tex == null:
+		_detail_tex = _make_detail_texture()
+	RenderingServer.global_shader_parameter_set("sh_detail_tex", _detail_tex)
+	RenderingServer.global_shader_parameter_set("sh_detail", DETAIL[clampi(quality, 0, 2)])
+
+## 256x256 tileable noise: R fine grain, G finer speckle, B/A soft blotches.
+static func _make_detail_texture() -> ImageTexture:
+	var t0: int = Time.get_ticks_msec()
+	var chans: Array = []
+	var specs: Array = [[FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 0.05, 4, 3], [FastNoiseLite.TYPE_VALUE, 0.12, 2, 17],
+		[FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 0.012, 4, 29], [FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 0.02, 3, 41]]
+	for sp: Array in specs:
+		var n := FastNoiseLite.new()
+		n.noise_type = sp[0]
+		n.frequency = sp[1]
+		n.fractal_octaves = sp[2]
+		n.seed = sp[3]
+		var img: Image = n.get_seamless_image(256, 256)
+		img.convert(Image.FORMAT_L8)
+		chans.append(img.get_data())
+	var data := PackedByteArray()
+	data.resize(256 * 256 * 4)
+	for i in range(256 * 256):
+		data[i * 4] = chans[0][i]
+		data[i * 4 + 1] = chans[1][i]
+		data[i * 4 + 2] = chans[2][i]
+		data[i * 4 + 3] = chans[3][i]
+	var out := Image.create_from_data(256, 256, false, Image.FORMAT_RGBA8, data)
+	out.generate_mipmaps()
+	if OS.has_environment("SH_LOADTIME"):
+		print("LOAD detail texture %d ms" % (Time.get_ticks_msec() - t0))
+	return ImageTexture.create_from_image(out)
 
 ## Sun direction (light travel) and the baked light's parts (Geo.shade).
 static func set_light(sun_dir: Vector3, ambient: float, sky: float, sun: float, tint: Color = Color.WHITE) -> void:
@@ -188,7 +229,10 @@ static func _shader(cull: int, blend: bool, scissor: bool) -> Shader:
 ## ground) and installs it. Awaitable; does nothing in --headless (no
 ## GPU). Hidden for the capture: the drone and nodes with meta
 ## "dynamic" (moving things - their shadow would stay behind).
-static func capture(scene: Node3D, sun_dir: Vector3, region: Rect2, res: int) -> void:
+## cache_file: where a map from the map cache keeps its shadow map (the
+## image only - the projection is recomputed); read instead of rendering
+## when it exists, written after a render.
+static func capture(scene: Node3D, sun_dir: Vector3, region: Rect2, res: int, cache_file: String = "") -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	var fwd: Vector3 = sun_dir.normalized()
@@ -213,6 +257,16 @@ static func capture(scene: Node3D, sun_dir: Vector3, region: Rect2, res: int) ->
 	RenderingServer.global_shader_parameter_set("sh_shadow_r2", Vector4(fwd.x / depth, fwd.y / depth, fwd.z / depth, -z0 / depth))
 	var texel: float = size / res
 	RenderingServer.global_shader_parameter_set("sh_shadow_info", Vector4(0.25 / depth + texel * 0.5 / depth, texel * 1.2, 1.0, 0.0))
+	if cache_file != "" and FileAccess.file_exists(cache_file):
+		var t0: int = Time.get_ticks_msec()
+		var f := FileAccess.open(cache_file, FileAccess.READ)
+		var n: int = f.get_32()
+		var raw: PackedByteArray = f.get_buffer(f.get_length() - 4).decompress(n * n * 2, FileAccess.COMPRESSION_ZSTD)
+		if n == res and raw.size() == n * n * 2:
+			RenderingServer.global_shader_parameter_set("sh_shadow_map", ImageTexture.create_from_image(Image.create_from_data(n, n, false, Image.FORMAT_RG8, raw)))
+			if OS.has_environment("SH_LOADTIME"):
+				print("LOAD shadow map from the map cache: %d ms" % (Time.get_ticks_msec() - t0))
+			return
 
 	var vp := SubViewport.new()
 	vp.size = Vector2i(res, res)
@@ -256,6 +310,11 @@ static func capture(scene: Node3D, sun_dir: Vector3, region: Rect2, res: int) ->
 	vp.queue_free()
 	img.convert(Image.FORMAT_RG8)
 	RenderingServer.global_shader_parameter_set("sh_shadow_map", ImageTexture.create_from_image(img))
+	if cache_file != "":
+		var f := FileAccess.open(cache_file, FileAccess.WRITE)
+		if f:
+			f.store_32(res)
+			f.store_buffer(img.get_data().compress(FileAccess.COMPRESSION_ZSTD))
 
 static func _prepare(node: Node, saved: Array) -> void:
 	if node is CanvasLayer or node is SubViewport:

@@ -45,7 +45,10 @@ static func scatter(map: Node3D, geo: Geo, land: TerrainCreator, rng: RandomNumb
 			if not free:
 				continue
 			var lo: float = INF
-			for o: Vector2 in [Vector2.ZERO, Vector2(r, 0), Vector2(-r, 0), Vector2(0, r), Vector2(0, -r)]:
+			# (the footprint's corners too: on a steep slope the ground drops
+			# away fastest there, and the rock would hang over it)
+			for o: Vector2 in [Vector2.ZERO, Vector2(r, 0), Vector2(-r, 0), Vector2(0, r), Vector2(0, -r),
+					Vector2(r, r) * 0.8, Vector2(r, -r) * 0.8, Vector2(-r, r) * 0.8, Vector2(-r, -r) * 0.8]:
 				lo = minf(lo, land.ground(q.x + o.x, q.y + o.y))
 			if geo.blocked(q, r, lo + 0.2, lo + size):
 				continue

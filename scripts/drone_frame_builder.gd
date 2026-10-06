@@ -157,12 +157,13 @@ static func _freestyle(b: Dictionary, p: Dictionary) -> void:
 	_box(_st(b, "led"), Transform3D(Basis(), Vector3(0, -0.001 * s, 0.045 * s)), Vector3(0.02 * s, 0.002 * s, 0.004 * s))
 	# Antennas: VTX on a TPU mount at the back, receiver whips in a V.
 	var ant := Vector3(0, y_top, 0.05 * s)
-	_box(_st(b, "accent"), Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-25.0)), ant + Vector3(0, 0.004 * s, 0)), Vector3(0.012 * s, 0.01 * s, 0.008 * s))
-	var whip := Basis(Vector3.RIGHT, deg_to_rad(-8.0 if race else -25.0))
+	_box(_st(b, "accent"), Transform3D(Basis(Vector3.RIGHT, deg_to_rad(25.0)), ant + Vector3(0, 0.004 * s, 0)), Vector3(0.012 * s, 0.01 * s, 0.008 * s))
+	# (+x rotation tips the antenna toward +z, the back of the quad.)
+	var whip := Basis(Vector3.RIGHT, deg_to_rad(8.0 if race else 25.0))
 	_cyl(_st(b, "dark"), Transform3D(whip, ant + Vector3(0, 0.008 * s, 0)), 0.0016 * s, 0.0016 * s, 0.05 * s, 6)
 	_cyl(_st(b, "accent"), Transform3D(whip, ant + Vector3(0, 0.008 * s, 0) + whip * Vector3(0, 0.05 * s, 0)), 0.004 * s, 0.003 * s, 0.012 * s, 10)
 	for sx in [-1.0, 1.0]:
-		var v := Basis(Vector3.FORWARD, sx * deg_to_rad(40.0)) * Basis(Vector3.RIGHT, deg_to_rad(-60.0))
+		var v := Basis(Vector3.FORWARD, sx * deg_to_rad(40.0)) * Basis(Vector3.RIGHT, deg_to_rad(60.0))
 		_cyl(_st(b, "dark"), Transform3D(v, Vector3(sx * 0.008 * s, t_bot + 0.004 * s, 0.045 * s)), 0.0007 * s, 0.0007 * s, 0.035 * s, 4)
 	for i in range(4):
 		_motor(b, motors[i] + Vector3(0, t_bot, 0), mr, p.motor_height * 0.85, p.prop_radius, 3, -1.0 if i == 0 or i == 3 else 1.0)
@@ -250,7 +251,7 @@ static func _whoop(b: Dictionary, p: Dictionary) -> void:
 	_box(_st(b, "label"), Transform3D(Basis(), Vector3(0, 0.0066, 0.0122)), Vector3(0.0121, 0.0042, 0.018))
 	_cyl(_st(b, "strap"), Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0.003, 0.004, -0.004)), 0.0009, 0.0009, 0.0035, 6)
 	# Copper-pipe antenna standing at the back.
-	_cyl(_st(b, "copper"), Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-15.0)), Vector3(0, 0.0, 0.0165)), 0.0011, 0.0011, 0.016, 8)
+	_cyl(_st(b, "copper"), Transform3D(Basis(Vector3.RIGHT, deg_to_rad(15.0)), Vector3(0, 0.0, 0.0165)), 0.0011, 0.0011, 0.016, 8)
 	for i in range(4):
 		_motor(b, motors[i] + Vector3(0, -0.0005, 0), mr, p.motor_height, pr * 0.97, 3, -1.0 if i == 0 or i == 3 else 1.0)
 

@@ -12,7 +12,8 @@ extends RefCounted
 ##                                          "placed": [[transform, shape key], ...]}
 ## trees: Array of [pos: Vector3, species: String ("" = garden mix),
 ##        seed: int, extra: String ("random" default, "none", or one of EXTRAS),
-##        plain: bool (true = no odd variants such as the copper beech - woods)]
+##        plain: bool (true = no odd variants such as the copper beech - woods),
+##        size: float (1.0 default; scales the tree - tall woodland spruces)]
 ## Trees standing in something solid (geo.blocked) or on a road are
 ## dropped. Call it from build(), after the buildings.
 ##
@@ -69,7 +70,7 @@ static func plant(map: Node3D, geo: Geo, trees: Array) -> Dictionary:
 		var v: Dictionary = _variant(sp, vi)
 		# 5 % steps, the same the collision shapes are shared by - so the
 		# hitbox is exactly the drawn tree.
-		var sc: float = snappedf(rng.randf_range(0.85, 1.12), 0.05)
+		var sc: float = snappedf(rng.randf_range(0.85, 1.12) * (float(t[5]) if t.size() > 5 else 1.0), 0.05)
 		var q := Vector2(p.x, p.z)
 		if geo.blocked(q, v.trunk_r * sc + 0.15, p.y + 0.3, p.y + v.trunk_h * sc) or geo.on_lane(q, 1.0):
 			continue

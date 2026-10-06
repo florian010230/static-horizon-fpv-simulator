@@ -42,6 +42,9 @@ const TOWN_Y: float = 14.0
 
 var rng := RandomNumberGenerator.new()
 var rails: Rails
+## TreeCreator entries from _paradies, _decay and _forest, planted last
+## in build() (after everything they must keep out of).
+var _trees: Array = []
 var _noise := FastNoiseLite.new()
 
 func map_env() -> Dictionary:
@@ -54,8 +57,10 @@ func map_env() -> Dictionary:
 func border() -> Array:
 	return [430.0, 520.0, 170.0, 230.0]
 
+var _views: Array = []
+
 func preview_views() -> Array:
-	return [
+	return _views + [
 		["overview", Vector3(180, 85, 230), Vector3(-10, 20, 20)],
 		["furnace_row", Vector3(-150, 22, 74), Vector3(100, 18, 40)],
 		["moller_under", Vector3(-100, 3.0, 7), Vector3(100, 3.0, 7)],
@@ -67,6 +72,19 @@ func preview_views() -> Array:
 		["station", Vector3(320, 12, 200), Vector3(150, 4, 170)],
 		["town", Vector3(0, 40, -170), Vector3(0, 14, -290)],
 		["horizon", Vector3(0, 60, 0), Vector3(-600, 20, 0)],
+		# Trees: the Paradies birch wood, young trees in the works, the hill woods.
+		["paradies", Vector3(-212, 6, 150), Vector3(-290, 3, 95)],
+		["works_trees", Vector3(150, 6, -170), Vector3(260, 2, -120)],
+		["hill_wood", Vector3(-420, 30, 260), Vector3(-700, 20, 450)],
+		["rolling_mill", Vector3(330, 30, 140), Vector3(292, 8, 40)],
+		["mill_inside", Vector3(292, 6, 98), Vector3(292, 6, -10)],
+		["mill_hole", Vector3(310, 40, -20), Vector3(292, 4, -6)],
+		["mill_washroom", Vector3(302.5, 1.6, 93.0), Vector3(306.8, 0.6, 103.5)],
+		["crane_cab", Vector3(292, 15, 46), Vector3(298, 14.5, 52)],
+		["fence", Vector3(-60, 3, 214), Vector3(40, 1, 205)],
+		["car_park", Vector3(130, 10, 130), Vector3(165, 0, 99)],
+		["heap", Vector3(250, 40, 0), Vector3(432, 10, -96)],
+		["furnace_low", Vector3(-70, 4, 60), Vector3(60, 8, 40)],
 	]
 
 func build() -> void:
@@ -92,11 +110,24 @@ func build() -> void:
 	_sinter_plant()
 	_east_works()
 	_station()
+	_rolling_mill()
+	_sidings()
+	_fence()
+	_ufo()
 	_paradies()
 	_decay()
+	_abandon()
 	YardProps.scatter(geo, SITE.grow(-10.0), 0.05, 45, rng, [], true)
 	MapProps.town(geo, TOWN, _height, rng, true)
 	_forest()
+	# Trees sink to the hillside under them (their downhill side would
+	# stand in the air): the terrain as the floor just while planting.
+	geo.floor_fn = _height
+	var t0: int = Time.get_ticks_msec()
+	var info: Dictionary = TreeCreator.plant(self, geo, _trees)
+	geo.floor_fn = Callable()
+	if OS.has_environment("SH_PERF"):
+		print("STEELMILL trees kept %d of %d, %d ms" % [info.kept, _trees.size(), Time.get_ticks_msec() - t0])
 
 # --- materials ----------------------------------------------------------------
 
@@ -109,9 +140,9 @@ func _materials() -> void:
 	geo.add_material("concrete", Geo.tex_mat(MapTextures.get_tex("old_concrete"), Color.WHITE, 8.0))
 	geo.add_material("brick", Geo.tex_mat(MapTextures.get_tex("dark_brick"), Color.WHITE, 3.0))
 	geo.add_material("glass", Geo.flat_mat(Color(0.12, 0.14, 0.15), 0.15, 0.4))
-	geo.add_material("slag_ground", Geo.ground_mat(MapTextures.get_tex("slag"), Color.WHITE, 10.0, 1, 0.5))
+	geo.add_material("slag_ground", Geo.ground_mat(MapTextures.get_tex("slag"), Color(1.6, 1.5, 1.38), 10.0, 1, 0.5))
 	geo.add_material("slag", Geo.tex_mat(MapTextures.get_tex("slag"), Color.WHITE, 10.0))
-	geo.add_material("weeds", Geo.ground_mat(MapTextures.get_tex("meadow"), Color(0.9, 0.9, 0.8), 10.0, 3, 0.4))
+	geo.add_material("weeds", Geo.ground_mat(MapTextures.get_tex("meadow"), Color(0.82, 0.88, 0.62), 10.0, 3, 0.4))
 	geo.add_material("ore", Geo.tex_mat(MapTextures.get_tex("slag"), Color(1.6, 0.75, 0.5), 6.0))
 	geo.add_material("coal", Geo.tex_mat(MapTextures.get_tex("slag"), Color(0.45, 0.45, 0.47), 6.0))
 	geo.add_material("rail", Geo.flat_mat(Color(0.45, 0.35, 0.3), 0.5, 0.6))
@@ -119,6 +150,13 @@ func _materials() -> void:
 	geo.add_material("yellow", Geo.flat_mat(Color(0.75, 0.55, 0.12), 0.6, 0.2))
 	geo.add_material("water", Geo.water_mat(Color(0.16, 0.26, 0.24), 0.9))
 	geo.add_material("terrain", Geo.tex_mat(MapTextures.get_tex("forest_floor"), Color.WHITE, 12.0))
+	geo.add_material("tag", Geo.flat_mat(Color.WHITE, 0.6))
+	geo.add_material("puddle", Geo.ground_flat(Color(0.2, 0.24, 0.27), 4))
+	geo.add_material("apron", Geo.ground_mat(MapTextures.get_tex("old_concrete"), Color(0.9, 0.88, 0.84), 6.0, 2, 0.4))
+	geo.add_material("rubble", Geo.tex_mat(MapTextures.get_tex("old_concrete"), Color(0.8, 0.78, 0.74), 2.0))
+	geo.add_material("rubble_brick", Geo.tex_mat(MapTextures.get_tex("dark_brick"), Color(0.9, 0.85, 0.8), 3.0))
+	geo.add_material("ufo", Geo.flat_mat(Color.WHITE, 0.25, 0.6))
+	geo.add_material("glow_green", Geo.glow_mat(Color(0.35, 1.0, 0.5), 1.6))
 	geo.add_material("platform", Geo.ground_mat(MapTextures.get_tex("paving_slabs"), Color.WHITE, 3.0, 2))
 
 # --- ground -------------------------------------------------------------------
@@ -127,6 +165,13 @@ func _materials() -> void:
 ## railway and the roads (all of them leave the map along it), the town
 ## on a terrace up the north slope, the river along the south.
 func _height(x: float, z: float) -> float:
+	var hd: float = Vector2(x, z).distance_to(HEAP)
+	var heap: float = 0.0
+	if hd < 95.0:
+		heap = 36.0 * pow(1.0 - smoothstep(10.0, 95.0, hd), 1.2) + _noise.get_noise_2d(x * 4.0, z * 4.0) * 1.5 * (1.0 - smoothstep(60.0, 95.0, hd))
+	return _height0(x, z) + heap
+
+func _height0(x: float, z: float) -> float:
 	var n: float = _noise.get_noise_2d(x, z) * 0.5 + 0.5
 	if z < -205.0:
 		var t: float = smoothstep(-205.0, -238.0, z)
@@ -140,16 +185,26 @@ func _height(x: float, z: float) -> float:
 		return bank + far * (1.0 if z > 300.0 else 0.0)
 	return -0.2
 
+## Ground surfaces (slag fill, weeds, aprons, puddles) lit like open
+## ground: no near-ground AO (it held the whole works at its darkest).
+func _ground_light(on: bool) -> void:
+	geo.light_fn = (func(nn: Vector3, p: Vector3) -> Color: return geo.shade(nn, p.y + 50.0)) if on else Callable()
+
 func _ground() -> void:
-	var tshade := func(nn: Vector3, p: Vector3) -> Color: return geo.shade(nn, p.y + 50.0)
+	# (the slag heap dark grey-brown, the rest the woodland floor)
+	var tshade := func(nn: Vector3, p: Vector3) -> Color: return geo.shade(nn, p.y + 50.0) * Color(1, 1, 1).lerp(Color(0.48, 0.44, 0.42), 1.0 - smoothstep(70.0, 95.0, Vector2(p.x, p.z).distance_to(HEAP)))
 	var inner := Rect2(-1300, -900, 2600, 1600)
 	Terrain.build(self, inner, 8.0, _height, geo._mats["terrain"], tshade)
 	Terrain.far_ring(self, inner, Rect2(-4200, -4200, 8400, 8400), 64.0, _height, geo._mats["terrain"], tshade)
 	# The works' surface: slag fill, weedy patches.
+	_ground_light(true)
 	geo.slab(SITE, 0.0, 0.5, "slag_ground")
 	for i in range(55):
 		var c := Vector2(rng.randf_range(SITE.position.x, SITE.end.x), rng.randf_range(SITE.position.y, SITE.end.y))
-		geo.slab(Rect2(c, Vector2(rng.randf_range(8, 30), rng.randf_range(8, 30))), 0.12, 0.1, "weeds", false)
+		var wr := Rect2(c, Vector2(rng.randf_range(8, 30), rng.randf_range(8, 30))).intersection(SITE)
+		if wr.has_area():
+			geo.slab(wr, 0.12, 0.1, "weeds", false)
+	_ground_light(false)
 	# The Saar, running on out of sight both ways.
 	geo.slab(Rect2(-4200, 236, 8400, 92), -2.2, 0.1, "water", false)
 	# Quay wall along the works bank.
@@ -239,7 +294,7 @@ func _station() -> void:
 ## length of the valley out of sight; the town's main street runs on
 ## along the hillside terrace both ways; the works road from the valley
 ## road down past the gas holder, over the iron line, to the visitors'
-## car park.
+## old staff car park.
 func _roads() -> void:
 	var roads := Roads.new(geo, rng, fleet)
 	var river := Route.from(Vector3(-3000, 0, 214), 0.0).straight(6000.0, 12.0)
@@ -253,13 +308,15 @@ func _roads() -> void:
 	for x0 in [TOWN.end.x, TOWN.position.x]:
 		var dir: float = 0.0 if x0 > 0.0 else 180.0
 		roads.road(Route.from(Vector3(x0, TOWN_Y, -255), dir).straight(2600.0, 12.0), 7.0, {"old": true, "detail": 500.0})
-	# Visitors' car park at the end of the works road.
+	# The old staff car park at the end of the works road: empty for
+	# thirty years, weeds through the cracks, one burnt-out wreck.
 	var cp := Rect2(139, 82, 56, 34)
 	geo.slab(cp, 0.06, 0.1, "rd_asphalt_old", false)
-	for row in range(2):
-		for k in range(9):
-			if rng.randf() < 0.7:
-				fleet.car(Vector3(cp.position.x + 4.0 + k * 5.6, 0.1, cp.position.y + 5.0 + row * 24.0), PI if row == 0 else 0.0, Fleet.random_paint(rng), ["sedan", "hatch", "estate", "suv", "van"][rng.randi() % 5])
+	for k in range(6):
+		var wq := Vector2(rng.randf_range(cp.position.x, cp.end.x - 8.0), rng.randf_range(cp.position.y, cp.end.y - 6.0))
+		geo.slab(Rect2(wq, Vector2(rng.randf_range(4, 9), rng.randf_range(3, 6))).intersection(cp), 0.12, 0.05, "weeds", false)
+	Vehicles.ensure_materials(geo)
+	Vehicles.car(geo, Vector3(cp.position.x + 20.0, 0.11, cp.position.y + 12.0), 0.5, "veh_rust", "sedan", true)
 
 # --- Möllerhalle -------------------------------------------------------------------
 
@@ -547,10 +604,15 @@ func _east_works() -> void:
 ## The south-west corner where the works were left to nature: roofless
 ## concrete ruins, an old bunker frame to fly through, birch woods.
 func _paradies() -> void:
-	var trees: Array = []
+	# Birch, the pioneer that takes back every abandoned works first; the
+	# odd maple among them, and now and then something hung in a tree.
+	# (Three draws of the map's rng per tree, as always - the props and
+	# the town after this keep their layout; the rest from trng.)
+	var trng := RandomNumberGenerator.new()
+	trng.seed = 90
 	for k in range(90):
 		var p := Vector3(rng.randf_range(-330, -220), 0.05, rng.randf_range(40, 150))
-		trees.append([p, 1, rng.randf_range(0.6, 1.0)])
+		_trees.append([p, "birch" if trng.randf() < 0.8 else "maple", trng.randi(), "random", true, lerpf(0.75, 1.1, rng.randf())])
 	for k in range(5):
 		var c := Vector3(-300 + k * 22, 0, 60 + (k % 2) * 50)
 		var w: float = rng.randf_range(10, 16)
@@ -566,7 +628,6 @@ func _paradies() -> void:
 		for s in [-1.0, 1.0]:
 			geo.box(b + Vector3(0, y, s * 6.0), Vector3(17.2, 1.0, 1.0), "concrete")
 			geo.box(b + Vector3(s * 8.0, y, 0), Vector3(1.0, 1.0, 13.2), "concrete")
-	Forest.plant(self, trees)
 
 func _decay() -> void:
 	Vehicles.ensure_materials(geo)
@@ -580,11 +641,15 @@ func _decay() -> void:
 		geo.lathe(q, [Vector2(sc, 0), Vector2(sc * 0.5, sc * 0.4), Vector2(0.1, sc * 0.55)], ["slag", "rust_dark", "concrete"][rng.randi() % 3], 7)
 		for k2 in range(rng.randi_range(0, 4)):
 			geo.cylinder(q + Vector3(sc + k2 * 0.7, 0, 1.0), q + Vector3(sc + k2 * 0.7, 0.9, 1.0), 0.3, "rust", 8)
-	# Young trees inside the works, wherever they found ground.
-	var trees: Array = []
+	# Young trees inside the works, wherever they found ground: slender
+	# birches at half size, small maples, bushes of scrub.
+	var trng := RandomNumberGenerator.new()
+	trng.seed = 160
 	for k in range(160):
-		trees.append([Vector3(rng.randf_range(-330, 330), 0.05, rng.randf_range(-190, 205)), 1, rng.randf_range(0.5, 0.8)])
-	Forest.plant(self, trees)
+		var p := Vector3(rng.randf_range(-330, 330), 0.05, rng.randf_range(-190, 205))
+		var f: float = rng.randf() # the old size draw: keeps the map's rng in step
+		var sp: String = "birch" if f < 0.55 else ("maple" if f < 0.75 else "bush")
+		_trees.append([p, sp, trng.randi(), "none", true, trng.randf_range(0.8, 1.1) if sp == "bush" else trng.randf_range(0.45, 0.7)])
 
 func _forest() -> void:
 	var trees: Array = []
@@ -599,10 +664,16 @@ func _forest() -> void:
 			continue
 		if z > 232.0 and z < 335.0:
 			continue # the river
+		if Vector2(x, z).distance_to(HEAP) < 80.0 and frng.randf() < 0.9:
+			continue # the slag heap: barely anything grows on it
 		if absf(z + 255.0) < 8.0 or absf(z - MAIN_Z) < 14.0 or absf(z - 214.0) < 8.0 or absf(z + 200.0) < 8.0:
 			continue # town street, railway, roads
-		trees.append([Vector3(x, _height(x, z) - 0.2, z), 0 if frng.randf() < 0.55 else 1, frng.randf_range(0.9, 1.5)])
-	Forest.plant(self, trees)
+		# Woodland sizes: spruces 12-20 m, broadleaves 10-15 m.
+		if frng.randf() < 0.55:
+			trees.append([Vector3(x, _height(x, z) - 0.2, z), "spruce", frng.randi(), "none", true, frng.randf_range(1.5, 2.0)])
+		else:
+			trees.append([Vector3(x, _height(x, z) - 0.2, z), "maple" if frng.randf() < 0.6 else "birch", frng.randi(), "none", true, frng.randf_range(1.2, 1.5)])
+	_trees.append_array(trees)
 
 # --- shared builders ------------------------------------------------------------
 
@@ -734,3 +805,364 @@ func _in_door(list: Array, along: float, bay: float, y0: float) -> bool:
 		if absf(along - d[0]) < (d[1] + bay) * 0.5 - 0.5 and y0 < d[2]:
 			return true
 	return false
+
+# --- abandonment (Round 2) ------------------------------------------------------
+
+## Things the works left behind and the decades did to them: the
+## rolling mill, the sidings, the fence, rubble, puddles, sprayed walls,
+## birches everywhere, the slag heap - and what lies in it.
+const RM := Vector3(292, 0, 40) ## the rolling mill: centre of its floor
+const RM_W: float = 34.0 ## across (x)
+const RM_L: float = 128.0 ## along (z)
+const RM_H: float = 21.0
+const HEAP := Vector2(432, -96) ## the slag heap north-east of the works
+const UFO_AT := Vector3(368.0, 0.0, -84.0) ## (y from the heap)
+
+## Garden gnome spots (Collectibles): 0 in the UFO's hatch, 1 in the
+## rolling mill crane's cab, 2 on the coal bunker frame in the Paradies.
+const GNOMES: Array[Transform3D] = [
+	Transform3D(Basis(Vector3.UP, 1.2), Vector3(367.6, 8.73, -83.5)),
+	Transform3D(Basis(Vector3.UP, 0.0), Vector3(298.0, 14.11, 52.0)),
+	Transform3D(Basis(Vector3.UP, 0.8), Vector3(-255.0, 15.5, 112.0)),
+]
+
+## Map load cache (MapCache): nothing the script needs after build()
+## but the preview views (and the noise seed for _height).
+func cacheable() -> bool:
+	return true
+
+func cache_state() -> Dictionary:
+	return {"views": _views}
+
+func restore_state(state: Dictionary) -> void:
+	_views = state.views
+	_noise.seed = 31
+	_noise.frequency = 0.005
+	_noise.fractal_octaves = 4
+
+func after_build() -> void:
+	for i in range(GNOMES.size()):
+		Collectibles.gnome(self, "steelmill", i, GNOMES[i])
+
+## Graffiti: a few overlapping blobs of colour on a wall (bubble letters
+## seen from a drone), at p on a wall facing n (horizontal), w x h metres.
+func _tag(p: Vector3, n: Vector3, w: float, h: float, r: RandomNumberGenerator) -> void:
+	var cols: Array = [Color(0.95, 0.3, 0.6), Color(0.2, 0.75, 0.9), Color(0.95, 0.85, 0.2), Color(0.35, 0.85, 0.35), Color(0.6, 0.35, 0.85), Color(0.95, 0.5, 0.15)]
+	var yaw: float = atan2(n.x, n.z)
+	var xf := Transform3D(Basis(Vector3.UP, yaw), p + n * 0.04)
+	var c1: Color = cols[r.randi() % cols.size()]
+	var c2: Color = cols[r.randi() % cols.size()]
+	var letters: int = r.randi_range(3, 5)
+	var lw: float = w / letters
+	geo.tint = Color(0.08, 0.08, 0.1) # the outline first, a little bigger
+	for k in range(letters):
+		var x: float = -w * 0.5 + (k + 0.5) * lw
+		var lh: float = h * r.randf_range(0.75, 1.0)
+		geo.box_xf(xf * Transform3D(Basis(Vector3.BACK, r.randf_range(-0.2, 0.2)), Vector3(x, r.randf_range(-0.1, 0.1) * h, 0.0)), Vector3(lw * 1.02, lh * 1.08, 0.02), "tag", false, false)
+		geo.tint = c1 if k % 2 == 0 else c2
+		geo.box_xf(xf * Transform3D(Basis(Vector3.BACK, r.randf_range(-0.2, 0.2)), Vector3(x, r.randf_range(-0.1, 0.1) * h, 0.012)), Vector3(lw * 0.88, lh * 0.92, 0.02), "tag", false, false)
+		geo.tint = Color(0.08, 0.08, 0.1)
+	geo.tint = Color(0.97, 0.97, 0.95) # highlights
+	for k in range(letters):
+		geo.box_xf(xf * Transform3D(Basis(), Vector3(-w * 0.5 + (k + 0.3) * lw, h * 0.25, 0.025)), Vector3(lw * 0.18, h * 0.12, 0.02), "tag", false, false)
+	geo.tint = Color.WHITE
+
+## A puddle: an irregular patch of standing water on the ground at y.
+func _puddle(c: Vector3, rx: float, rz: float, r: RandomNumberGenerator) -> void:
+	var pts: Array[Vector3] = []
+	var a0: float = r.randf() * TAU
+	for k in range(14):
+		var a: float = a0 + TAU * k / 14.0
+		var f: float = r.randf_range(0.7, 1.15)
+		pts.append(c + Vector3(cos(a) * rx * f, 0.0, sin(a) * rz * f))
+	geo.polygon(pts, "puddle", false)
+
+## Rubble where a wall came down: a heap and broken blocks round it.
+func _rubble(c: Vector3, r_: float, r: RandomNumberGenerator, mat: String = "concrete") -> void:
+	geo.lathe(c + Vector3(0, -0.2, 0), [Vector2(r_, 0), Vector2(r_ * 0.55, r_ * 0.3), Vector2(0.15, r_ * 0.42)], "rubble", 9)
+	for k in range(r.randi_range(4, 8)):
+		var a: float = r.randf() * TAU
+		var d: float = r.randf_range(r_ * 0.6, r_ * 1.3)
+		var s := Vector3(r.randf_range(0.4, 1.4), r.randf_range(0.25, 0.7), r.randf_range(0.4, 1.6))
+		var q: Vector3 = c + Vector3(cos(a) * d, 0.0, sin(a) * d)
+		# on the floor it lies on, or sunk into the slope under it
+		var lo: float = INF
+		for o: Vector2 in [Vector2(-0.8, -0.8), Vector2(0.8, -0.8), Vector2(-0.8, 0.8), Vector2(0.8, 0.8)]:
+			lo = minf(lo, _height(q.x + o.x * s.x, q.z + o.y * s.z))
+		q.y = maxf(c.y + 0.2, lo) + s.y * 0.15
+		geo.box_xf(Transform3D(Basis(Vector3.UP, r.randf() * TAU) * Basis(Vector3.RIGHT, r.randf_range(-0.25, 0.25)), q), s, "rubble" if mat != "brick" and r.randf() < 0.7 else "rubble_brick")
+
+## The rolling mill: 128 m long, steel frame, brick below, rusted
+## sheeting above with half the panels gone, the roof holed and fallen
+## in over a third of its length, the north gable down. Inside: the
+## crane runway with a dead overhead crane, four roll stands, rubble,
+## puddles, birches in the light under the hole, sprayed walls, and in
+## the south-east corner the washroom with its toilet.
+func _rolling_mill() -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = 1986
+	var c: Vector3 = RM
+	var hw: float = RM_W * 0.5
+	var hl: float = RM_L * 0.5
+	var fl: float = 0.18 # floor top
+	geo.slab(Rect2(c.x - hw, c.z - hl, RM_W, RM_L), fl, 0.3, "concrete")
+	var bays: int = int(RM_L / 8.0)
+	var collapse := Vector2(c.z - hl + 8.0, c.z - hl + 48.0) # roof gone (north third)
+	# Columns, the crane runway on brackets, the walls between.
+	for b in range(bays + 1):
+		var z: float = c.z - hl + b * 8.0
+		for s in [-1.0, 1.0]:
+			var x: float = c.x + s * hw
+			geo.box(Vector3(x, fl + RM_H * 0.5, z), Vector3(0.7, RM_H, 0.7), "paint")
+			geo.box(Vector3(x - s * 0.9, fl + RM_H - 4.5, z), Vector3(1.4, 0.6, 0.7), "paint") # runway bracket
+	for s in [-1.0, 1.0]:
+		var rx: float = c.x + s * (hw - 1.2)
+		geo.box(Vector3(rx, fl + RM_H - 3.9, c.z), Vector3(0.6, 0.8, RM_L), "rust_dark") # runway girder
+		geo.box(Vector3(rx, fl + RM_H - 3.4, c.z), Vector3(0.12, 0.2, RM_L), "rail", false)
+	for b in range(bays):
+		var z: float = c.z - hl + (b + 0.5) * 8.0
+		for s in [-1.0, 1.0]:
+			var x: float = c.x + s * hw
+			var n := Vector3(s, 0, 0)
+			var opening: bool = (b == 3 and s > 0.0) or (b == 9 and s < 0.0) or (b == 12 and s > 0.0)
+			if not opening:
+				var hb: float = 4.0 if r.randf() > 0.15 else r.randf_range(1.2, 2.6) # broken down in places
+				geo.box(Vector3(x, fl + hb * 0.5, z), Vector3(0.4, hb, 7.3), "brick")
+				if hb < 4.0:
+					_rubble(Vector3(x + s * 2.2, 0.0, z), 1.6, r, "brick")
+				elif r.randf() < 0.45:
+					_tag(Vector3(x, fl + r.randf_range(1.6, 2.4), z + r.randf_range(-1.5, 1.5)), n, r.randf_range(3.0, 5.5), r.randf_range(1.2, 1.8), r)
+				if r.randf() < 0.3:
+					_tag(Vector3(x, fl + 2.0, z), -n, r.randf_range(3.0, 5.0), 1.4, r)
+			# Window band (most panes gone) and sheeting above.
+			for k in range(3):
+				if r.randf() < 0.3:
+					geo.box(Vector3(x, fl + 5.0 + k * 1.0, z), Vector3(0.06, 0.9, 7.3), "glass", 0.0, true, false)
+			var y: float = fl + 7.5
+			while y < fl + RM_H - 0.5:
+				if r.randf() > (0.75 if z > collapse.x and z < collapse.y else 0.35):
+					geo.box(Vector3(x, y + 1.0, z), Vector3(0.12, 2.0, 7.3), "corrugated")
+				y += 2.0
+	# Roof: a truss per frame, panels between (the north third fallen in).
+	for b in range(bays + 1):
+		var z: float = c.z - hl + b * 8.0
+		var fallen: bool = z > collapse.x + 1.0 and z < collapse.y - 1.0
+		if fallen:
+			if b % 2 == 0:
+				# a truss that came down: one end still on its column, the
+				# other on the floor
+				var top := Vector3(c.x + hw - 0.4, fl + RM_H - 0.4, z)
+				var foot := Vector3(c.x - hw + 6.0, fl - 0.15, z + r.randf_range(-2.0, 2.0))
+				geo.beam(top, foot, Vector2(0.5, 1.4), "rust_dark")
+				_rubble(foot + Vector3(1.5, 0, 0), 2.2, r)
+			continue
+		geo.beam(Vector3(c.x - hw, fl + RM_H + 0.2, z), Vector3(c.x, fl + RM_H + 2.6, z), Vector2(0.4, 1.0), "rust_dark")
+		geo.beam(Vector3(c.x, fl + RM_H + 2.6, z), Vector3(c.x + hw, fl + RM_H + 0.2, z), Vector2(0.4, 1.0), "rust_dark")
+	for b in range(bays):
+		var z: float = c.z - hl + (b + 0.5) * 8.0
+		if z > collapse.x and z < collapse.y:
+			continue
+		for s in [-1.0, 1.0]:
+			for k in range(2):
+				if r.randf() < 0.3:
+					continue # a hole in the roof
+				var u0: float = k * 0.5
+				var x0: float = c.x + s * hw * u0
+				var x1: float = c.x + s * hw * (u0 + 0.5)
+				var y0: float = fl + RM_H + 0.7 + 2.4 * (1.0 - u0)
+				var y1: float = fl + RM_H + 0.7 + 2.4 * (1.0 - u0 - 0.5)
+				geo.beam(Vector3(x0, y0, z), Vector3(x1, y1, z), Vector2(8.0, 0.15), "corrugated")
+	# Fallen roof sheets on the floor under the hole.
+	for k in range(9):
+		var q := Vector3(c.x + r.randf_range(-hw + 3.0, hw - 3.0), 0.0, r.randf_range(collapse.x, collapse.y))
+		geo.box_xf(Transform3D(Basis(Vector3.UP, r.randf() * TAU) * Basis(Vector3.RIGHT, r.randf_range(0.1, 0.4)), q + Vector3(0, fl + 0.4, 0)), Vector3(3.8, 0.1, 1.6), "corrugated")
+	# Gables: the south one with the big door, the north one down to a
+	# stump and a heap.
+	var gz: float = c.z + hl
+	for sx in [-1.0, 1.0]:
+		geo.box(Vector3(c.x + sx * (hw + 7.0) * 0.5, fl + RM_H * 0.5, gz), Vector3(hw - 7.0, RM_H, 0.4), "brick")
+	geo.box(Vector3(c.x, fl + 12.0 + (RM_H - 12.0) * 0.5, gz), Vector3(14.0, RM_H - 12.0, 0.4), "corrugated")
+	_tag(Vector3(c.x - 12.0, fl + 2.2, gz), Vector3(0, 0, 1), 5.5, 1.8, r)
+	_tag(Vector3(c.x + 12.0, fl + 2.6, gz), Vector3(0, 0, 1), 4.0, 1.6, r)
+	var nz: float = c.z - hl
+	for k in range(5):
+		var x: float = c.x - hw + 3.4 + k * 6.8
+		geo.box(Vector3(x, fl + 1.2 + (k % 2) * 0.7, nz), Vector3(5.2, 2.4 + (k % 2) * 1.4, 0.4), "brick")
+	for k in range(3):
+		_rubble(Vector3(c.x - hw + 6.0 + k * 11.0, 0.0, nz + 3.5), 3.0, r, "brick")
+	# The overhead crane, parked over the roll stands: bridge girders on the
+	# runway, the crab, the cab hanging under one end (a gnome inside).
+	var cz: float = c.z + 12.0
+	var ry: float = fl + RM_H - 3.3
+	for dz in [-1.6, 1.6]:
+		geo.box(Vector3(c.x, ry + 0.9, cz + dz), Vector3(RM_W - 1.6, 1.5, 0.7), "yellow")
+	geo.box(Vector3(c.x + 4.0, ry + 2.2, cz), Vector3(4.0, 1.2, 4.0), "yellow")
+	geo.beam(Vector3(c.x + 4.0, ry + 1.6, cz), Vector3(c.x + 4.0, fl + 4.5, cz), Vector2(0.1, 0.1), "rail", false)
+	geo.box(Vector3(c.x + 4.0, fl + 4.2, cz), Vector3(1.4, 0.6, 0.8), "rust_dark")
+	geo.box(Vector3(c.x + 6.0, ry - 0.3, cz), Vector3(0.3, 2.2, 3.6), "yellow") # cab hanger, from both girders
+	var cab := Vector3(c.x + 6.0, ry - 2.6, cz) # floor centre at ry - 3.9 + 0.1
+	geo.box(cab + Vector3(0, -1.25, 0), Vector3(2.2, 0.15, 2.2), "yellow") # floor
+	geo.box(cab + Vector3(0, 1.0, 0), Vector3(2.4, 0.2, 2.4), "yellow") # roof
+	for e: Array in [[Vector3(-1.1, 0, 0), Vector3(0.1, 2.2, 2.2)], [Vector3(0, 0, -1.1), Vector3(2.2, 2.2, 0.1)]]:
+		geo.box(cab + e[0] - Vector3(0, 0.1, 0), e[1], "yellow")
+	for e: Vector3 in [Vector3(1.1, -0.1, -1.1), Vector3(1.1, -0.1, 1.1), Vector3(-1.1, -0.1, 1.1)]:
+		geo.box(cab + e, Vector3(0.12, 2.2, 0.12), "yellow")
+	# Four roll stands down the middle: two housings each, rolls between.
+	for k in range(4):
+		var sz: float = c.z - 6.0 + k * 9.0
+		for s in [-1.0, 1.0]:
+			geo.box(Vector3(c.x + s * 2.4, fl + 2.6, sz), Vector3(1.4, 5.2, 3.2), "rust_dark")
+		for y in [1.9, 3.0]:
+			geo.cylinder(Vector3(c.x - 1.7, fl + y, sz), Vector3(c.x + 1.7, fl + y, sz), 0.45, "rust", 12)
+		geo.box(Vector3(c.x, fl + 5.5, sz), Vector3(6.2, 0.6, 3.4), "rust_dark")
+	geo.box(Vector3(c.x, fl + 0.5, c.z + 26.0), Vector3(3.0, 1.0, 22.0), "rust_dark") # roller table
+	# Puddles and rubble on the floor; birches in the light under the hole.
+	for k in range(8):
+		_puddle(Vector3(c.x + r.randf_range(-hw + 4, hw - 4), fl + 0.01, c.z + r.randf_range(-hl + 6, hl - 6)), r.randf_range(1.5, 4.0), r.randf_range(1.0, 2.8), r)
+	for k in range(4):
+		_rubble(Vector3(c.x + r.randf_range(-hw + 4, hw - 4), fl, c.z + r.randf_range(-20, hl - 8)), r.randf_range(1.0, 2.0), r)
+	for k in range(9):
+		var q := Vector3(c.x + r.randf_range(-hw + 3, hw - 3), fl, r.randf_range(collapse.x + 2.0, collapse.y - 2.0))
+		_trees.append([q, "birch" if k % 4 != 3 else "bush", r.randi(), "none", true, r.randf_range(0.55, 0.85)])
+	# The washroom (Kaue) in the south-east corner: brick walls, a door
+	# gap toward the hall, a basin trough - and the toilet.
+	var wr := Vector3(c.x + hw - 3.8, fl, c.z + hl - 4.2) # room centre
+	geo.box(Vector3(wr.x - 3.4, fl + 1.5, wr.z), Vector3(0.25, 3.0, 7.6), "brick") # west wall
+	geo.box(Vector3(wr.x + 0.8, fl + 1.5, wr.z - 3.7), Vector3(5.6, 3.0, 0.25), "brick") # north wall: door at its west end
+	geo.box(Vector3(wr.x - 2.65, fl + 2.6, wr.z - 3.7), Vector3(1.25, 0.8, 0.25), "brick") # lintel over the door
+	geo.box(Vector3(wr.x - 0.3, fl + 3.1, wr.z), Vector3(6.7, 0.2, 7.6), "concrete") # ceiling
+	geo.tint = Color(0.85, 0.88, 0.86)
+	geo.box(Vector3(wr.x - 3.2, fl + 0.9, wr.z + 1.6), Vector3(0.5, 0.25, 3.0), "tag") # wash trough
+	geo.tint = Color(0.75, 0.78, 0.76)
+	geo.box(Vector3(wr.x + 0.6, fl + 1.1, wr.z + 1.0), Vector3(0.06, 2.2, 1.6), "tag") # cubicle partition
+	geo.tint = Color.WHITE
+	ToiletCreator.build(geo, Transform3D(Basis(Vector3.UP, PI), Vector3(wr.x + 1.6, fl, c.z + hl - 0.25)), r, {"floater": "battleship"})
+	_tag(Vector3(wr.x - 3.27, fl + 1.8, wr.z - 1.5), Vector3(1, 0, 0), 2.2, 0.9, r)
+
+## The overgrown sidings: two tracks off the main line's north track into
+## the old exchange yard, wagons left standing in rows, buffer stops,
+## birches and scrub between the rails.
+func _sidings() -> void:
+	var west := Route.from(Vector3(3200, 0, MAIN_Z - 4.0), 180.0).straight(6400.0, 12.0)
+	var s1: Route = rails.turnout(west, west.dist_at_x(470.0), -1.0)
+	_s_curve(s1, -1.0, 24.0, 300.0)
+	s1.straight(absf(s1.end().x - 110.0), 12.0)
+	rails.track(s1, 1)
+	rails.buffer_stop(s1)
+	var r := RandomNumberGenerator.new()
+	r.seed = 77
+	geo.tint = Color(0.78, 0.6, 0.48) # decades of rust over the paint
+	rails.train(s1, s1.dist_at_x(330.0), ["box", "box", "hopper", "tank", "box", "flat_empty", "hopper", "hopper", "box"], r)
+	geo.tint = Color.WHITE
+	# The weeds and the trees that came up between the wagons.
+	var d: float = s1.dist_at_x(400.0)
+	while d < s1.length() - 6.0:
+		var q: Vector3 = s1.sample(d)[0]
+		for side in [-1.0, 1.0]:
+			if r.randf() < 0.45:
+				var t := Vector3(q.x + r.randf_range(-3, 3), 0.0, q.z + side * r.randf_range(3.5, 7.5))
+				_trees.append([t, "birch" if r.randf() < 0.6 else "bush", r.randi(), "drone" if absf(t.x - 150.0) < 6.0 and side < 0.0 else "none", true, r.randf_range(0.45, 0.8)])
+		if r.randf() < 0.6:
+			_ground_light(true)
+			geo.slab(Rect2(q.x + r.randf_range(-8, 2), q.z + r.randf_range(-7, 1), r.randf_range(3, 7), r.randf_range(3, 6)), 0.11, 0.1, "weeds", false)
+			_ground_light(false)
+		d += 12.0
+	_views.append(["sidings", Vector3(360, 6, 128), Vector3(200, 2, 142)])
+
+## Fence along the river road: concrete posts, chain-link panels -
+## bent, fallen and missing ones; a torn gate where the works road was.
+func _fence() -> void:
+	IndustryCreator.ensure_materials(geo)
+	if not geo.has_material("ind_mesh"):
+		var mesh: StandardMaterial3D = Geo.tex_mat(IndustryCreator._mesh_tex(), Color(0.55, 0.5, 0.45), 0.6)
+		mesh.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mesh.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		geo.add_material("ind_mesh", mesh)
+	var r := RandomNumberGenerator.new()
+	r.seed = 5
+	var z: float = 205.0
+	var x: float = -330.0
+	while x < 330.0:
+		geo.box(Vector3(x, 1.05, z), Vector3(0.15, 2.4, 0.15), "concrete")
+		var f: float = r.randf()
+		if f < 0.68:
+			geo.box(Vector3(x + 1.5, 1.15, z), Vector3(2.9, 2.0, 0.04), "ind_mesh", 0.0, true, false)
+			for y in [0.18, 2.12]:
+				geo.cylinder(Vector3(x + 0.08, y, z), Vector3(x + 2.92, y, z), 0.025, "rust", 6, false)
+		elif f < 0.82:
+			# a panel kicked in, lying on the slag
+			geo.box_xf(Transform3D(Basis(Vector3.RIGHT, -1.45), Vector3(x + 1.5, 0.08, z - 1.0)), Vector3(2.9, 2.0, 0.04), "ind_mesh", true, false)
+		x += 3.0
+
+## The slag heap's UFO: a saucer gone in nose first, half of it in the
+## slag, its hatch open, the landing light still blinking green.
+func _ufo() -> void:
+	var g: float = INF
+	for k in range(8):
+		g = minf(g, _height(UFO_AT.x + cos(TAU * k / 8.0) * 6.0, UFO_AT.z + sin(TAU * k / 8.0) * 6.0))
+	var o := Vector3(UFO_AT.x, g, UFO_AT.z)
+	var xf := Transform3D(Basis(Vector3.UP, 0.9) * Basis(Vector3.FORWARD, 0.42), o + Vector3(0, 1.2, 0))
+	geo.tint = Color(0.62, 0.63, 0.66) # dusty
+	geo.lathe_xf(xf, [Vector2(0.0, -1.2), Vector2(3.0, -0.9), Vector2(7.0, -0.2), Vector2(7.2, 0.1), Vector2(4.2, 0.9), Vector2(2.4, 1.9), Vector2(0.0, 2.3)], "ufo", 28, false)
+	geo.tint = Color(0.35, 0.95, 0.55)
+	for k in range(10):
+		var a: float = TAU * k / 10.0
+		geo.box_xf(xf * Transform3D(Basis(), Vector3(cos(a) * 6.4, 0.25, sin(a) * 6.4)), Vector3(0.5, 0.25, 0.5), "glow_green", false)
+	geo.tint = Color(0.1, 0.12, 0.14)
+	geo.box_xf(xf * Transform3D(Basis(), Vector3(-1.6, 1.95, 0.0)), Vector3(1.6, 0.12, 1.4), "ufo", false) # the open hatch's hole
+	geo.tint = Color(0.78, 0.8, 0.84)
+	geo.box_xf(xf * Transform3D(Basis(Vector3.BACK, 1.1), Vector3(-2.9, 2.6, 0.0)), Vector3(1.6, 0.1, 1.4), "ufo", false) # the hatch lid, flipped up
+	geo.tint = Color.WHITE
+	# Slag pushed up round where it went in.
+	for k in range(6):
+		var a: float = 0.9 + PI * 0.5 + (k - 2.5) * 0.35
+		_rubble(o + Vector3(cos(a) * 7.5, -0.4, sin(a) * 7.5), 2.0, _local_rng(400 + k), "slag")
+	_views.append(["ufo", o + Vector3(-22, 9, -6), o + Vector3(0, 2, 0)])
+	if OS.has_environment("SH_DUMP"):
+		print("SM ufo hatch floor ", xf * Vector3(-1.6, 2.01, 0.0), " ground ", g)
+	_views.append(["ufo_hatch", (xf * Vector3(-1.6, 3.6, 0.0)) + Vector3(-3, 2, 0), xf * Vector3(-1.6, 1.9, 0.0)])
+
+static func _local_rng(s: int) -> RandomNumberGenerator:
+	var r := RandomNumberGenerator.new()
+	r.seed = s
+	return r
+
+## Decay over the whole works: concrete aprons cracked and weedy,
+## puddles, rubble, sprayed walls on the Möllerhalle columns and the
+## halls, birches on the Möllerhalle deck and the coke ovens' roof.
+func _abandon() -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = 33
+	# Aprons along the furnace row and round the halls.
+	_ground_light(true)
+	for ap: Rect2 in [Rect2(-130, 16, 260, 16), Rect2(-130, 100, 260, 28), Rect2(150, -12, 100, 70), Rect2(-250, -12, 100, 46)]:
+		geo.slab(ap, 0.05, 0.1, "apron", false)
+	for k in range(60):
+		var q := Vector3(r.randf_range(-320, 320), 0.0, r.randf_range(-180, 195))
+		var on_apron: bool = Rect2(-130, 16, 260, 16).has_point(Vector2(q.x, q.z)) or Rect2(-130, 100, 260, 28).has_point(Vector2(q.x, q.z))
+		q.y = 0.06 if on_apron else 0.01
+		if geo.blocked(Vector2(q.x, q.z), 3.0, 0.2, 3.0) or geo.on_lane(Vector2(q.x, q.z), 3.0):
+			continue
+		_puddle(q, r.randf_range(1.5, 5.0), r.randf_range(1.0, 3.5), r)
+	_ground_light(false)
+	for k in range(30):
+		var q := Vector3(r.randf_range(-320, 320), 0.0, r.randf_range(-180, 195))
+		if geo.blocked(Vector2(q.x, q.z), 3.0, 0.3, 4.0) or geo.on_lane(Vector2(q.x, q.z), 3.0):
+			continue
+		_rubble(q, r.randf_range(1.0, 2.5), r)
+	# Sprayed walls: the Möllerhalle's columns, the blower hall, the quay.
+	var m: Rect2 = MOLLER
+	var x: float = m.position.x
+	while x <= m.end.x + 0.1:
+		if r.randf() < 0.35:
+			_tag(Vector3(x, 1.6, m.end.y - 1.0 + 0.6), Vector3(0, 0, 1), 1.1, 1.2, r)
+		x += 8.0
+	for k in range(6):
+		_tag(Vector3(-235.0 + k * 11.0, 1.8, 25.0 + 0.2), Vector3(0, 0, 1), r.randf_range(3.0, 6.0), 1.6, r)
+	for k in range(10):
+		_tag(Vector3(-300.0 + k * 62.0 + r.randf_range(-10, 10), -0.6, 231.0), Vector3(0, 0, 1), r.randf_range(3.0, 6.0), 1.2, r)
+	# Birches on the Möllerhalle deck and the coke ovens' roof.
+	for k in range(14):
+		_trees.append([Vector3(r.randf_range(m.position.x + 4, m.end.x - 4), 15.4, m.get_center().y + r.randf_range(-11, 11)), "birch", r.randi(), "none", true, r.randf_range(0.3, 0.5)])
+	for k in range(8):
+		_trees.append([Vector3(r.randf_range(170, 270), 12.6, -140.0 + r.randf_range(-6, 6)), "birch" if k % 3 != 0 else "bush", r.randi(), "none", true, r.randf_range(0.3, 0.45)])

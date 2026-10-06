@@ -13,6 +13,16 @@ extends BuiltMap
 ## South of the course: safety net, pilot stand, pit tents, car park.
 
 var course: RaceCourse
+## Hedgerow trees from the surrounding farm fields, planted with the tree ring.
+var _field_trees: Array = []
+var _field_polys: Array = []
+var _field_views: Array = []
+
+## FieldCreator wants a TerrainCreator for the ground and its drape grid; this
+## field is dead flat, so a flat stand-in with a grid at the origin answers.
+class FlatLand extends TerrainCreator:
+	func ground(_x: float, _z: float) -> float:
+		return 0.0
 
 func map_env() -> Dictionary:
 	return {"sun_rot": Vector3(-55, 25, 0), "shadow_ground_y": 0.0, "shadow_region": Rect2(-128, -128, 256, 256)}
@@ -27,7 +37,11 @@ func preview_views() -> Array:
 		["ladder", Vector3(45, 3.5, -2), Vector3(45, 4.2, -20)],
 		["dive", Vector3(35, 9, -32), Vector3(35, 4, -45)],
 		["pits", Vector3(-10, 3, 45), Vector3(10, 1, 62)],
-	]
+		# The tree ring round the field.
+		["treeline_n", Vector3(-10, 5, -50), Vector3(-10, 6, -130)],
+		["treeline_e", Vector3(50, 3, 10), Vector3(130, 6, 40)],
+		["fields", Vector3(-20, 55, 60), Vector3(20, 0, -110)],
+	] + _field_views
 
 func build() -> void:
 	geo.ao_height = 1.5
@@ -82,7 +96,30 @@ func build() -> void:
 		if rng.randf() < 0.8:
 			fleet.car(Vector3(-36 + i * 3.0, 0.05, 76), PI if i % 2 else 0.0, Fleet.random_paint(rng), ["estate", "suv", "van", "hatch", "pickup"][rng.randi() % 5])
 	_country_road(rng)
+	_farm_fields()
 	_trees()
+
+## Farm fields round the course (FieldCreator): wheat east, rapeseed north,
+## stubble with round bales west, a mown meadow with bales north-east. All
+## are 25 m or more outside the mown field, so the racing line and its
+## surroundings stay as they were; scenery only (the crops do not collide).
+func _farm_fields() -> void:
+	var land := FlatLand.new()
+	land.set_extent(Rect2(-200, -200, 400, 400), 8.0)
+	land._nx = 51
+	land._nz = 51
+	var frng := RandomNumberGenerator.new()
+	frng.seed = 33
+	for fd: Array in [
+		["wheat", [Vector2(85, -75), Vector2(135, -75), Vector2(135, -5), Vector2(85, -5)], [0, 1]],
+		["rapeseed", [Vector2(-100, -135), Vector2(-20, -135), Vector2(-20, -95), Vector2(-100, -95)], [0]],
+		["stubble", [Vector2(-150, -50), Vector2(-105, -50), Vector2(-105, 30), Vector2(-150, 30)], [0, 3]],
+		["meadow", [Vector2(70, -150), Vector2(130, -150), Vector2(130, -95), Vector2(70, -95)], [1]],
+	]:
+		var fi: Dictionary = FieldCreator.build(geo, land, fd[1], fd[0], frng, {"hedges": fd[2]})
+		_field_trees.append_array(fi.trees)
+		_field_views.append_array(fi.views)
+		_field_polys.append(FieldCreator.poly(fd[1]))
 
 ## The lane from the car park to the country road, which runs past the
 ## field and on out of the map both ways; a farm and a clubhouse.
@@ -141,6 +178,11 @@ func _car(o: Vector3, paint: String) -> void:
 		for dz in [-1.4, 1.4]:
 			geo.cylinder(o + Vector3(dx - 0.1, 0.33, dz), o + Vector3(dx + 0.1, 0.33, dz), 0.32, "net", 10)
 
+## The tree ring round the field (TreeCreator): maples, birches and
+## spruces, grown taller than garden trees (old field-edge trees, the size the
+## old Forest trees here were); few copper beeches (plain), they shout. The
+## odd surprise stays switched on: a race-day field is exactly where a
+## quad ends up stuck in a crown.
 func _trees() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 9
@@ -149,5 +191,14 @@ func _trees() -> void:
 		var a: float = rng.randf() * TAU
 		var r: float = rng.randf_range(100, 190)
 		var p := Vector3(cos(a) * r - 10, 0, sin(a) * r)
-		trees.append([p, rng.randi_range(0, 1), rng.randf_range(0.9, 1.4)])
-	Forest.plant(self, trees)
+		var f: float = rng.randf()
+		var sp: String = "maple" if f < 0.45 else ("birch" if f < 0.7 else "spruce")
+		# (the rng draws happen before the field test: the ring keeps its layout)
+		var entry: Array = [p, sp, rng.randi(), "random", rng.randf() < 0.6, rng.randf_range(1.3, 1.7) * (1.25 if sp == "spruce" else 1.0)]
+		var inside: bool = false
+		for poly: PackedVector2Array in _field_polys:
+			inside = inside or Geometry2D.is_point_in_polygon(Vector2(p.x, p.z), poly)
+		if not inside:
+			trees.append(entry) # not in a crop
+	trees.append_array(_field_trees)
+	TreeCreator.plant(self, geo, trees)

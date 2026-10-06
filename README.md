@@ -58,24 +58,22 @@ of it - then **Play** -> **Choose a Mode** -> **Choose a Map**:
   engine's lights, which do nothing useful on this GPU either. Each
   frame also has its own motor sound - the whoop screams high, the
   3-inch whines, the race snarls around 640 Hz, the 5-inch growls lower.
-- **Village** - a small village that makes sense as a place: a Main
-  Street that comes in from one edge of the map and leaves at the other
-  (toward the next town), 15 two-storey houses on both sides with
-  sidewalks, street lamps and parked cars, a church on a small square
-  at the east end, a road north to an FPV club field (car park,
-  clubhouse, windsock, launch pad, gates, slalom, loop, pipe), a
-  railway on an embankment that crosses the whole map, and a farm track
-  that passes *under* it through the tunnel to a farm (farmhouse, barn,
-  silo, fields). Every house, the church, the barn and the clubhouse can
-  be flown into.
-- **Factory** - a site laid out around an actual process flow: raw
-  material arrives by rail (the track connects off the map, with a
-  level crossing and a buffer stop at the dock) -> dock -> warehouse ->
-  pipe bridge -> production hall (fed by a boiler house under the two
-  chimneys and a tank farm) -> assembly -> out through the gates onto a
-  public road. A perimeter wall with gates, an internal ring road, a
-  staff car park by the office, parked trucks, concrete only inside the
-  site and grass outside it.
+- **Village** (Holderbach) - a small village in a stream valley: a main
+  road that winds through the village past the church square, over a
+  stone arch bridge and out into the haze; side streets with furnished
+  houses and gardens (about one in five can be flown into); a church
+  whose tower you can fly up and out through the belfry arches; a
+  stone railway viaduct with a goods train on it to slalom through; a
+  ruined bando (abandoned farmhouse and barn) beyond the railway; a farm
+  with fields; and the FPV club field where you start, with gates,
+  hoops, a tunnel, a ladder and a dive gate.
+- **Factory** (Werk Lindner) - a working plant on the edge of a town:
+  a production hall open at both ends to fly through, a warehouse with
+  loading docks and lorries, a boiler house with a tall chimney, a
+  tank farm, a pipe rack to fly under, silos with a conveyor gallery, a
+  cooling tower you can fly into from below and out of the top, a rail
+  siding off a main line, an office and a car park. Fenced, with a gate
+  on the public road.
 - **School (whoop only, indoors)** - at real scale: a 45 x 27 x 7.5 m sports
   hall (the standard German "Dreifeldhalle") with two handball/indoor
   football goals with nets, handball + volleyball court lines,
@@ -87,15 +85,15 @@ of it - then **Play** -> **Choose a Mode** -> **Choose a Map**:
   Hoops, basketball rims and the village's loop are solid rings now -
   only their middle is open. Always flies as the whoop.
 
-Nine more maps are generated from code (`scripts/maps/`, see "Generated
-maps" below). The map picker labels every map Low / Medium / High
+The other maps are generated from code (`scripts/maps/`, see "Generated
+maps" below), as are the Village and the Factory. The map picker labels every map Low / Medium / High
 performance and can filter by it:
 
 | Map | Tier | What it is |
 |---|---|---|
-| Abandoned Steel Mill | High | Laid out after the Völklinger Hütte along the Saar: river, main line through Völklingen station, a row of Cowper stoves, six blast furnaces in one line with dust catchers and cast houses over the iron line, skip hoists up from the Möllerhalle bunker building (a 244 m column slalom underneath), the ore monorail from the ore yard, blower hall, coking and sinter plants, gas holder, the town on the hill and the overgrown "Paradies". Hollow gas and blast mains with open joints to fly through. |
+| Abandoned Steel Mill | High | Laid out after the Völklinger Hütte along the Saar: river, main line through Völklingen station, a row of Cowper stoves, six blast furnaces in one line with dust catchers and cast houses over the iron line, skip hoists up from the Möllerhalle bunker building (a 244 m column slalom underneath), the ore monorail from the ore yard, blower hall, coking and sinter plants, gas holder, the town on the hill and the overgrown "Paradies". Hollow gas and blast mains with open joints to fly through. | Abandoned for thirty years: a collapsed rolling-mill hall with a bando inside, rusting sidings, broken windows, birches growing out of the slag, and something odd in the slag heap.
 | Construction Site | High | A city block under construction: an 18-storey concrete frame with open floors, two lattice tower cranes, a 12 m excavation pit with sheet piles and struts, a steel frame, site machines, the city grid round it and an S-Bahn on brick arches. |
-| Mountain Lake | High | An alpine lake under rocky peaks: pine forest to the treeline, a lakeside village, cabin and pier, chapel, dam, waterfall, cable car, mountains to the horizon. |
+| Mountain Lake | High | Kaltensee, an alpine reservoir under rocky peaks: a curved concrete dam with its spillway and a gorge to fly out of, a long avalanche gallery over the shore road, a chapel on an island, a waterfall in a hanging valley, a cable car to a summit station, a lakeside village, a campground and an alpine farm. |
 | Parking Garage | Medium | An abandoned multi-storey car park: 2.7 m decks, two-lane ramps, collapsed slabs, broken parapets, stair towers. |
 | Harbour & Central Station | High | A compact port city where everything connects: container terminal with ship-to-shore and gantry cranes, a rail branch curving into the terminal's loading tracks, a double-track main line through a through-station (real 1:9 turnouts, a 280 m glass train shed), freight sidings, road bridges over the railway, the old harbour basin with a marina and brick warehouses, grain silos, an oil terminal, and a city grid with towers, a tram boulevard and traffic. Rails and roads run out of the map into the haze. |
 | Race Arena (Race mode) | Medium | Indoor league race with glowing LED gates, a tunnel, a scaffold tower gate and a gate hung from the roof trusses before the finish. |
@@ -119,10 +117,14 @@ rates (Settings -> Rates) are Betaflight's own: all four rate types
 (Betaflight, Actual, Quick, KISS) with Betaflight's formulas from
 `rc.c`, per axis, entered as the same numbers the Configurator shows,
 with its three-axis preview graph and presets (`scripts/rates.gd`;
-default Actual 70 / 670 / 0.54) - copy them from your quad. Optional: an analog video look
-(noise, scanlines, colour smear, interference, vignette - under the OSD,
-like real goggles) and wind on outdoor maps (light ~3 m/s or gusty
-~7 m/s; drag works on airspeed, weaker near the ground). Settings has
+default Actual 70 / 670 / 0.54) - copy them from your quad. Optional realism (Settings -> Flight, all off by default):
+battery sag with Betaflight-style LOW BATTERY / LAND NOW warnings, prop
+damage after hard crashes (less thrust, a yaw pull, jitter), and wind on
+outdoor maps (Light / Medium / Strong, 3-10 m/s with gusts and shelter
+behind buildings). Camera look (Settings -> Camera & HUD): Clean,
+Analog, Digital or HDZero - each breaks up like the real system when
+walls, hills or distance come between you and the drone (the OSD shows
+the link quality). Settings has
 five tabs: Graphics, Camera & HUD, Flight, Rates, Radio (with per-radio
 connection tips), every option explained in one line under it.
 All settings are saved (`user://settings.cfg`).
@@ -166,13 +168,49 @@ motor sound (no audio or image assets needed anywhere in the project).
 Not a Betaflight-accurate simulation — a simplified rigid-body model,
 sized/weighted/geared to match real drones and grounded in Betaflight's
 real default rate curve and mode behavior, good enough to feel like
-flying, and to build on. Deliberately no crash/damage simulation - the
-drone is a normal rigid body that collides and tumbles like everything
-else in the scene, nothing more.
+flying, and to build on. Crashes are a normal rigid-body collision; prop damage
+is an optional extra (see above).
 
-See [`DEVLOG.md`](DEVLOG.md) for the development story — what got
-built in what order, what broke, and how each fix was actually verified
-(written as raw material for a future blog post, not just a reference).
+
+## More to find and to know
+
+- **Garden gnomes** hide on the maps (one to three each). Fly into one
+  to pick it up; the **Achievements** button in the main menu shows
+  what you have found and earned (first flight, explorer, race
+  finished, personal bests, gnome spotter and collector).
+- **Race ghost**: your best lap flies along as a see-through copy of
+  your own drone, saved per track and drone (Settings -> Flight ->
+  Race mode to switch it off).
+- **Update check**: on start the menu asks GitHub once whether a newer
+  release exists and shows a small "Version x available" hint in the
+  bottom-right corner - no popup. The **Updates** screen shows what's
+  new. To switch it off: the Updates screen has a "Check for updates
+  when the game starts" toggle (this is the only network request the
+  sim ever makes, and it sends nothing about you).
+- **Faster loading**: a generated map is built once and cached
+  (`user://mapcache`); every later load takes 1-5 seconds instead of
+  10-20, and uses less memory. The cache refreshes by itself after an
+  update. `SH_NOCACHE=1` turns it off.
+- **Closer detail**: ground texture and grass around the drone, sun
+  glare, warmer haze toward the sun, better clouds, dust in the air
+  indoors.
+
+## First start
+
+The sim is free and not signed with a paid certificate, so your system
+warns once:
+
+- **macOS:** open the app once and close the warning, then System
+  Settings -> Privacy & Security -> "Open Anyway" (older macOS:
+  right-click the app -> Open -> Open).
+- **Windows:** if "Windows protected your PC" appears, click "More
+  info" -> "Run anyway".
+- **Linux:** if it doesn't start, make it executable:
+  `chmod +x StaticHorizonFPV.x86_64` (or Properties -> "Allow
+  executing").
+
+Plug in your radio in USB joystick mode, then Settings -> Radio ->
+Calibrate Radio.
 
 ## Previewing it
 
@@ -211,7 +249,7 @@ The same tool has a few task-specific modes:
   later maps half-rendered (the camera positions live in
   `dev_preview_capture.gd`'s `HERO` dict).
 - `godot --path . -- --dev-preview floatcheck` - checks the hand-made
-  scene maps (village/factory/school) for solid pieces floating above
+  scene map (the school) for solid pieces floating above
   the ground, the same check the self-test runs for generated maps (see
   "Nothing floats" below).
 
@@ -239,7 +277,7 @@ map, a radio with an unusual channel layout (sticks on axes 6-9, arm on
 button 40), a full timed race lap (plus that cutting the course
 doesn't count), both game modes, and that every generated map has no
 floating pieces (`BuiltMap.floating_pieces()` - see "Nothing floats"
-below). Current result: ~472 checks, 0 failed (the count varies a little with which radio paths a run exercises).
+below). Current result: ~560 checks, 0 failed (the count varies a little with which radio paths a run exercises); `SH_SELFTEST_ONLY=menu,realism,race,cache` runs just those parts.
 
 ## Requirements
 
@@ -662,19 +700,13 @@ gains stable.
 - `fonts/Oswald-SemiBold.ttf` — the companion website's own brand font
   (converted locally from its `oswald-600.woff2`, since Godot's `FontFile`
   doesn't load WOFF2 directly), used only for the menu's heading.
-- `scenes/Main.tscn` — the village (see "Village layout"). `scripts/main.gd`
-  applies its procedural textures and runs the border check.
-- `scenes/Main2.tscn` — the factory (see "Factory layout").
-  `scripts/main2.gd` applies its textures and runs the border check.
+- `scenes/maps/Village.tscn` / `Factory.tscn` — the village and the
+  factory, generated maps (`scripts/maps/village.gd`, `factory.gd`) since
+  Round 2; the hand-made scenes they replaced are gone.
 - `scenes/Main3.tscn` — the school (whoop only). `scripts/main3.gd`
   forces the whoop profile on entry, applies the wall-bar/locker
   textures and runs the border check.
-- `scenes/SmallHouse.tscn`, `scenes/StreetLamp.tscn`, `scenes/ParkedCar.tscn`
-  (`scripts/parked_car.gd` sets a per-instance color),
-  `scenes/HandballGoal.tscn` — reusable props.
-- `scripts/embankment.gd` (`Embankment`) — a straight earth dam with a
-  trapezoid cross-section, optionally carrying ballast, sleepers and
-  rails; one mesh + one convex collider however long it is.
+- `scenes/HandballGoal.tscn` — a reusable prop (the school).
 - `scripts/classroom_furniture.gd` (`ClassroomFurniture`) — rows of desks
   and chairs as `MultiMesh`es, with one collision box per desk.
 - `scripts/building_styles.gd` (`BuildingStyles`) — the named interior
@@ -693,9 +725,22 @@ gains stable.
   floors with a stairwell hole) and an optional partition with a
   doorway. Looks come from `interior_style`/`exterior_style` (see
   "Rooms you can read at a glance").
+- `scripts/updater.gd`, `updates_screen.gd`, `changelog.gd` — the update
+  check, its screen, and the bundled offline "what's new" notes.
+- `scripts/collectibles.gd`, `achievements.gd`, `achievements_screen.gd`
+  — the garden gnomes and the achievements list.
+- `scripts/fpv_video.gd` + `shaders/fpv_video.gdshader` — the camera
+  looks and the video link model; `looks_fx.gd` (sun glare, dust,
+  grass tufts near the drone).
+- `scripts/battery.gd` — the LiPo pack model (sag, warnings); prop
+  damage and wind live in `scripts/drone.gd`.
+- `scripts/maps/map_cache.gd`, `pieces.gd`, `surface_check.gd` — the map
+  cache, stable piece ids with per-map overrides, and the check that
+  maps have no surfaces poking through each other.
+- `icon.png`, `icon.ico`, `icon.icns` — the app icon (drawn by
+  `tools/make_icon.py` from the logo).
 - `scenes/Tree.tscn` — a single low-poly tree (trunk + foliage, no
-  collision); `Main.tscn` instances it 80 times at fixed, hand-tweakable
-  positions/scales.
+  collision); used by the school.
 - `scripts/dev_preview_capture.gd` — dev-only screenshot tool, see
   "Previewing it" above.
 - `scenes/Drone.tscn` — the quadcopter: collision shape (a small sphere,
@@ -709,9 +754,6 @@ gains stable.
   discs, optional ducts) from primitive meshes only. Shared between
   the real flying `Drone` and the menu's preview stand-in, so both places
   always show the same non-brick model for whichever drone is selected.
-- `scenes/Gate.tscn` / `scenes/Pole.tscn` — reusable fly-through
-  obstacles; instance either one multiple times in `Main.tscn` (with a
-  different position/rotation/scale) to add more.
 - `scenes/InputManager.tscn` — autoloaded singleton for radio/keyboard
   input and calibration (`scripts/input_manager.gd`).
 - `scripts/settings.gd` — autoloaded singleton holding options that
@@ -953,50 +995,6 @@ with the building's own footprint instead of a circle around (0,0),
 which didn't even match where the school stands - it only fires if the
 drone somehow clips out.
 
-## Village layout
-
-	farm fields
-	[farmhouse][barn](silo)            <- farm yard
-		  |  farm track
-	======|===== railway on an embankment, leaves the map both ways
-		  |  underpass (the tunnel)
-		  |           gates / slalom / loop / pipe = FPV club field
-		  |                [car park][clubhouse]
-	-[h][h]--[h][h]------------------------[h]--[h]--[h]---
-	============ Main Street (z=70), leaves the map both ways ============
-	-[h][h][h]-[h]-[h]-[h]-[h]-[tower]-[h][h][h]-(square)[church]
-
-- **Main Street** runs the whole width of the map; inside the village it
-  has curbs, sidewalks on both sides, a dashed centerline, street lamps,
-  parked cars and a zebra crossing to the church square.
-- **Houses** (`SmallHouse.tscn`) are two-storey: a door, glass windows
-  (real collidable panes), one open window per floor to fly in through,
-  an intermediate floor with a stairwell hole, a partition with a
-  doorway, a proper prism roof collider. Facade color, roof color and
-  cladding vary per house via `exterior_tint`/`roof_color`/`exterior_style`.
-- **The tunnel** is now an underpass: the railway embankment
-  (`scripts/embankment.gd`) crosses the map right over it, and the farm
-  track uses it (with short ramps up to its floor).
-- **FPV club field**: a road north from Main Street ends at the club car
-  park and clubhouse; gates, slalom, loop and pipe are on the field.
-
-## Factory layout: built around a process flow
-
-	+------------------- perimeter wall ------------------------+
-	|  ring road ---------------------------------------+       |
-	|  [boiler house + chimneys]                        |       |
-	|  |north yard|         buffer stop                |(tanks) |
-	|  [production] ==pipe== [warehouse]|dock|rail     |        |
-	|       |                            |    |        | road   |
-	|  main road     (assembly road)     |    |        |        |
-	|  [office][car park] [assembly]     |    |        |        |
-	+-- gate ------------ gate --------- rail --------- gate ---+
-	================ public road, both ways off the map ==========
-
-Rail -> dock -> warehouse -> pipe -> production hall (boiler house,
-tank farm) -> assembly -> gates -> public road. Every road connects two
-things; the track connects off the map through a level crossing.
-
 ## Rooms you can read at a glance
 
 The old buildings used one flat color (or one texture) on every face,
@@ -1128,4 +1126,6 @@ hand-placed was moved.
 
 ## License
 
-MIT — do whatever you want with it, contributions welcome.
+PolyForm Noncommercial 1.0.0 (see `LICENSE`): free to use, study, change and share for
+non-commercial purposes; selling it or using it commercially is not allowed.
+Contributions welcome.

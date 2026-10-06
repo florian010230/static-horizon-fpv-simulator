@@ -27,6 +27,7 @@ func preview_views() -> Array:
 		["swings", Vector3(12, 1.2, -4), Vector3(12, 1.2, -10)],
 		["tube", Vector3(-19.5, 0.62, 6), Vector3(-12, 0.62, 6)],
 		["top", Vector3(0, 45, 0.1), Vector3(0, 0, 0)],
+		["trees", Vector3(4, 2.5, 12), Vector3(28, 4, 30)],
 	]
 
 func build() -> void:
@@ -67,6 +68,9 @@ func build() -> void:
 	_shelter(Vector3(-17, 0, 13))
 	_houses()
 	_trees()
+
+func after_build() -> void:
+	Collectibles.gnome(self, "playground", 0, Transform3D(Basis(Vector3.UP, 2.4), Vector3(3.2, 0.0, 15.0)))
 
 func _fence() -> void:
 	var r := FENCE
@@ -237,16 +241,19 @@ func _houses() -> void:
 			for fx in [-w * 0.32, w * 0.32] + ([] if fy < 3.0 else [0.0]):
 				geo.box(c + Vector3(fx, fy, 4.52), Vector3(1.3, 1.3, 0.05), "window", 0.0, false, false)
 
+## Trees (TreeCreator): big maples and birches shading the playground
+## inside the fence, the garden mix round it - now and then a birdhouse
+## or a tyre swing to find.
 func _trees() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
 	var trees: Array = []
 	for p in [Vector2(-20, 14), Vector2(20, 14), Vector2(19, -2), Vector2(-3, -14), Vector2(-20, 1)]:
-		trees.append([Vector3(p.x, 0, p.y), 1, rng.randf_range(0.8, 1.0)])
+		trees.append([Vector3(p.x, 0, p.y), "maple" if rng.randf() < 0.7 else "birch", rng.randi(), "random", true, rng.randf_range(1.0, 1.15)])
 	for i in range(40):
 		var a: float = rng.randf() * TAU
 		var p := Vector2(cos(a) * rng.randf_range(28, 70), sin(a) * rng.randf_range(24, 70))
 		if p.y < -18 and p.y > -44:
 			continue # street and houses
-		trees.append([Vector3(p.x, 0, p.y), rng.randi_range(0, 1), rng.randf_range(0.8, 1.3)])
-	Forest.plant(self, trees, self)
+		trees.append([Vector3(p.x, 0, p.y), "", rng.randi(), "random", false, rng.randf_range(1.1, 1.4)])
+	TreeCreator.plant(self, geo, trees)

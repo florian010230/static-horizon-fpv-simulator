@@ -22,6 +22,12 @@ var sun: DirectionalLight3D
 func build() -> void:
 	pass
 
+## The map's ONE list of per-piece overrides (see Pieces): piece id ->
+## {"seed": n} / {"remove": true} / pinned options. Ids show over every
+## piece with SH_IDS=1.
+func pieces() -> Dictionary:
+	return {}
+
 var _building: bool = false
 var _queued_trees: Array = []
 
@@ -34,6 +40,8 @@ func queue_trees(trees: Array) -> bool:
 
 ## Solid pieces touching nothing (Geo.floating) - the self-test wants none.
 func floating_pieces() -> Array:
+	if from_cache:
+		push_warning("floating_pieces(): %s came from the map cache - Geo holds nothing to check" % name)
 	var g: Callable = Callable(self, "_height") if has_method("_height") else func(_x: float, _z: float) -> float: return 0.0
 	# Judged out to 100 m past the reset border: as close as anyone gets.
 	var b: Array = border()
@@ -63,10 +71,77 @@ func after_build() -> void:
 func border() -> Array:
 	return [200.0, 260.0, 120.0, 170.0]
 
+## Map load cache (MapCache): on for every generated map since
+## 2026-10-04 (Round 2). It works when everything this map needs after
+## build() is either a node under the map or in cache_state(). Handled
+## for every map automatically: the preview views (saved along, see
+## views()), and script variables typed as a scripted node class that
+## build() put under the map (e.g. `var course: RaceCourse`) - found
+## again by class after a cached load (_rebind_nodes); such a node keeps
+## what it needs in node metadata (RaceCourse: its gates). A map that
+## keeps anything else (signals, other node references, data read after
+## the build) either saves it in cache_state() or says false here.
+## Check a map with `SH_SELFTEST_ONLY=cache` (fresh vs cached fingerprint).
+func cacheable() -> bool:
+	return true
+
+## What the map's script needs after build() (preview views, the land for
+## _height...), for a cached load: saved with the cache, handed back to
+## restore_state() instead of running build(). Plain data only.
+func cache_state() -> Dictionary:
+	return {}
+
+func restore_state(_state: Dictionary) -> void:
+	pass
+
+var _cached_views: Array = []
+
+## Named camera views for dev shots and menu thumbnails:
+## [[name, camera position, look-at target], ...] (maps override).
+func preview_views() -> Array:
+	return []
+
+## The preview views (dev shots, menu thumbnails): the map's own, or on a
+## cached load the ones saved with the cache (generated views live in
+## script variables the build fills).
+func views() -> Array:
+	return _cached_views if from_cache else preview_views()
+
+## After a cached load: script variables typed as a scripted node class
+## (`var course: RaceCourse`) point at the map's child of that class again.
+func _rebind_nodes() -> void:
+	for prop in get_property_list():
+		if not (prop.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) or prop.type != TYPE_OBJECT or String(prop.class_name) == "":
+			continue
+		if get(prop.name) != null:
+			continue
+		for c in get_children():
+			var sc: Script = c.get_script()
+			if sc and sc.get_global_name() == prop.class_name:
+				set(prop.name, c)
+				break
+
+## True when this load came from the map cache (build() didn't run; geo
+## holds nothing).
+var from_cache: bool = false
+
 func _ready() -> void:
 	var lt: Array = [Time.get_ticks_usec()] # SH_LOADTIME: phase times
 	_make_environment(map_env())
+	var use_cache: bool = MapCache.enabled(self)
+	if use_cache:
+		var state: Variant = MapCache.restore(self)
+		if state != null:
+			from_cache = true
+			_cached_views = (state as Dictionary).get("_views", [])
+			_rebind_nodes()
+			restore_state(state)
+			lt.append(Time.get_ticks_usec())
+			_finish(lt, "cache")
+			return
+	var keep: Array = get_children()
 	fleet = Fleet.new(geo)
+	geo.pieces = pieces()
 	_building = true
 	build()
 	_building = false
@@ -90,14 +165,31 @@ func _ready() -> void:
 			print("  float ", f[k])
 	lt.append(Time.get_ticks_usec())
 	geo.commit(self)
+	Pieces.show_ids(self, geo)
+	if OS.has_environment("SH_SURFCHECK"):
+		print(SurfaceCheck.report(name, SurfaceCheck.run(self), 30))
 	lt.append(Time.get_ticks_usec())
+	if use_cache:
+		var st: Dictionary = cache_state()
+		st["_views"] = preview_views()
+		var size: int = MapCache.save(self, keep, st)
+		lt.append(Time.get_ticks_usec())
+		if OS.has_environment("SH_LOADTIME"):
+			print("LOAD %s: map cache written, %.1f MB" % [name, size / 1048576.0])
+	_finish(lt, "save" if use_cache else "")
+
+func _finish(lt: Array, how: String) -> void:
 	if ui.has_method("set_drone"):
 		ui.set_drone(drone)
 	after_build()
+	if not OS.has_environment("SH_FLOAT") and not OS.get_cmdline_user_args().has("--selftest"):
+		geo.release_records() # (the floating check is the only later reader)
 	Settings.apply_graphics_settings()
 	lt.append(Time.get_ticks_usec())
 	if OS.has_environment("SH_LOADTIME"):
-		_report_load(lt)
+		_report_load(lt, how)
+	if OS.has_environment("SH_MAPHASH"):
+		print("MAPHASH %s (%s): %s" % [name, "cache" if from_cache else "built", MapCache.fingerprint(self)])
 	if OS.has_environment("SH_PERF"):
 		# Measure the real cost: no frame cap, no vsync.
 		Engine.max_fps = 0
@@ -107,8 +199,12 @@ func _ready() -> void:
 ## (the creators, GDScript), scattering (trees, cars), Geo.commit (meshes
 ## and collision shapes), graphics settings (incl. the shadow map
 ## render), and the first frames (shader compiling on the GPU driver).
-func _report_load(lt: Array) -> void:
+func _report_load(lt: Array, how: String = "") -> void:
 	var names: Array = ["build", "cars", "trees", "commit", "graphics+shadows"]
+	if how == "cache":
+		names = ["cache load", "graphics+shadows"]
+	elif how == "save":
+		names = ["build", "cars", "trees", "commit", "cache save", "graphics+shadows"]
 	var line: String = "LOAD %s: engine up %d ms before _ready;" % [name, int(lt[0] / 1000.0)]
 	for i in range(names.size()):
 		line += " %s %d ms," % [names[i], int((lt[i + 1] - lt[i]) / 1000.0)]

@@ -54,6 +54,9 @@ void fragment() {
 #endif
 	vec3 n = normalize(wnrm) * (FRONT_FACING ? 1.0 : -1.0);
 	vec3 col = c.rgb;
+	if (!water && emission == vec3(0.0)) {
+		col = sh_surface_detail(col, wpos, n, CAMERA_POSITION_WORLD, false);
+	}
 	if (water) {
 		vec2 u1 = wpos.xz * 0.07 + TIME * vec2(0.021, 0.009);
 		vec2 u2 = wpos.xz * 0.12 - TIME * vec2(0.012, 0.027);

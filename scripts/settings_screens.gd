@@ -80,6 +80,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	else:
 		close()
 
+const CAMERA_HINTS: Array[String] = [
+	"A perfect picture, no video link.",
+	"Soft, colourful, noisy; fades into snow behind walls and far away. LQ in the OSD.",
+	"Sharp HD with a little delay; blocky and frozen when the link gets weak. LQ in the OSD.",
+	"Clean 720p, almost no delay; breaks up suddenly at the edge of range. LQ in the OSD.",
+]
 const TAB_NAMES: Array[String] = ["Graphics", "Camera & HUD", "Flight", "Rates", "Radio"]
 const QUALITY_HINTS: Array[String] = [
 	"Low: 55% render resolution, small objects only drawn nearby. For older laptops and integrated graphics.",
@@ -147,9 +153,6 @@ func _build_settings() -> Control:
 	)
 	_fps_value_label.text = _fps_label_text(int(fps_initial))
 	_hint(g2, "Caps the FPS to save battery and heat. Far right = unlimited.")
-	UIKit.gap(g2, 6)
-	_segmented(g2, "Analog video look", ["Off", "Light", "Strong"], Settings.video_effect, func(i: int): Settings.video_effect = i)
-	_hint(g2, "Noise, scanlines and colour bleed like a real analog FPV feed.")
 
 	# Camera & HUD
 	var c1: VBoxContainer = pages[1][0]
@@ -162,6 +165,13 @@ func _build_settings() -> Control:
 	UIKit.gap(c1, 6)
 	_segmented(c1, "Lens", ["Flat", "Light fisheye", "Strong fisheye"], Settings.lens_fisheye, func(i: int): Settings.lens_fisheye = i)
 	_hint(c1, "The barrel distortion of a real wide FPV lens: straight lines bend toward the edges.")
+	UIKit.gap(c1, 6)
+	var cam_hint := _hint_label()
+	_segmented(c1, "Camera", FpvVideo.LOOK_NAMES, Settings.camera_look, func(i: int):
+		Settings.camera_look = i
+		cam_hint.text = CAMERA_HINTS[i])
+	cam_hint.text = CAMERA_HINTS[clampi(Settings.camera_look, 0, 3)]
+	c1.add_child(cam_hint)
 	UIKit.section(c2, "On screen")
 	UIKit.toggle(c2, "OSD (throttle, altitude, speed, time)", Settings.osd_enabled, func(v: bool): Settings.osd_enabled = v)
 	UIKit.toggle(c2, "Crosshair", Settings.crosshair_enabled, func(v: bool): Settings.crosshair_enabled = v)
@@ -173,14 +183,19 @@ func _build_settings() -> Control:
 	# Flight
 	var f1: VBoxContainer = pages[2][0]
 	var f2: VBoxContainer = pages[2][1]
-	UIKit.section(f1, "Simulation")
+	UIKit.section(f1, "Realism")
 	UIKit.toggle(f1, "Battery simulation", Settings.battery_enabled, func(v: bool): Settings.battery_enabled = v)
-	_hint(f1, "The pack drains and sags under load; the OSD shows voltage and mAh.")
+	_hint(f1, "A real pack per drone: it drains, sags under load and loses punch. The OSD shows volts and mAh, LOW BATTERY at 3.5 V per cell. R fits a fresh pack.")
+	UIKit.toggle(f1, "Prop damage", Settings.prop_damage, func(v: bool): Settings.prop_damage = v)
+	_hint(f1, "Hard crashes chip props: less thrust on that motor, vibration, a slight pull. R fits new props.")
 	UIKit.gap(f1, 6)
-	_segmented(f1, "Wind (outdoor maps)", ["Off", "Light", "Gusty"], Settings.wind_level, func(i: int): Settings.wind_level = i)
-	_hint(f1, "Light: about 3 m/s. Gusty: about 7 m/s with gusts.")
+	_segmented(f1, "Wind (outdoor maps)", Settings.WIND_NAMES, Settings.wind_level, func(i: int): Settings.wind_level = i)
+	_hint(f1, "3 / 6 / 10 m/s at 10 m height, with gusts and turbulence. Calmer near the ground and in the lee of buildings.")
 	UIKit.toggle(f1, "Prop wash", Settings.prop_wash, func(v: bool): Settings.prop_wash = v)
 	_hint(f1, "Shaking and lost lift when you dive into your own downwash. Off: a clean catch every time.")
+	UIKit.section(f2, "Race mode")
+	UIKit.toggle(f2, "Ghost of your best lap", Settings.race_ghost, func(v: bool): Settings.race_ghost = v)
+	UIKit.gap(f2, 6)
 	UIKit.section(f2, "Physics")
 	UIKit.toggle(f2, "Performance mode (240 Hz physics)", Settings.performance_mode, func(v: bool): Settings.performance_mode = v)
 	_hint(f2, "A slightly crisper flight controller. Costs CPU - for strong PCs.")

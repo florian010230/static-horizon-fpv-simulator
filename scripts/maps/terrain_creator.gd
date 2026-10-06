@@ -293,6 +293,11 @@ func staged(x: float, z: float, stage: int, gi: int = -1) -> float:
 		var n: Array = _near(l, rivers.size() + li, p, gi)
 		if n.is_empty():
 			continue
+		# A railway viaduct (RailCreator) stands on its piers: the land
+		# under it is shaped by whatever else is there (a road under its
+		# arches keeps its bed). Road bridges keep their old rule.
+		if l.kind == "rail" and l.bridge[n[2]] == 1:
+			continue
 		var edge: float = n[0] - l.half
 		if edge < best_edge:
 			best_edge = edge
@@ -310,10 +315,14 @@ func staged(x: float, z: float, stage: int, gi: int = -1) -> float:
 		h = lerpf(best[1] - ROAD_SINK, h, smoothstep(core, core + ROAD_SLOPE, best[0]))
 	# A road never dams a river: its fill stops at the channel (the bridge
 	# spans it), so the channel and its banks are carved again on top.
+	# And out to the river's grass banks (RiverCreator draws them landing
+	# on the terrain GRASS_OUT past the water): a levelled area (the
+	# village) or a grid triangle reaching from a filled point buried
+	# them - except under a road's own bed (its approach to the bridge).
 	for ch: Array in channels:
 		var n: Array = ch[0]
 		var l: LandLine = ch[1]
-		if n[0] < l.half + BANK + 2.0:
+		if n[0] < l.half + BANK + 2.0 or (n[0] < l.half + RiverCreator.GRASS_OUT + 2.0 and best_edge > road_bed() and not in_plot):
 			h = _river_carve(h, n[0], n[1], l)
 	return h
 
@@ -592,10 +601,26 @@ func _far_at(x: float, z: float) -> float:
 	var h: float = _far_natural(x, z)
 	var p := Vector2(x, z)
 	if _rect.grow(-FAR_STEP * 1.5).has_point(p):
-		return h - 30.0
+		# Well under the detailed ground anywhere its triangles reach: 30 m
+		# under the natural land was not enough over a deep gorge (Mountain
+		# Lake: the ring lay 16 m over the river, a grass lid seen from the
+		# rim - and the grass tufts' capture put tufts on it in mid-air).
+		return minf(h - 30.0, _grid_min(p, FAR_STEP) - 5.0)
 	if _rect.has_point(p):
 		return _far_band(p, h)
 	return h
+
+## The lowest detailed ground within r (a square) of p.
+func _grid_min(p: Vector2, r: float) -> float:
+	var lo: float = INF
+	var ix0: int = maxi(0, floori((p.x - r - _rect.position.x) / _step))
+	var ix1: int = mini(_nx - 1, ceili((p.x + r - _rect.position.x) / _step))
+	var iz0: int = maxi(0, floori((p.y - r - _rect.position.y) / _step))
+	var iz1: int = mini(_nz - 1, ceili((p.y + r - _rect.position.y) / _step))
+	for iz in range(iz0, iz1 + 1):
+		for ix in range(ix0, ix1 + 1):
+			lo = minf(lo, _grid[iz * _nx + ix])
+	return lo
 
 ## A ring vertex in the band where the ring overlaps the detailed rect:
 ## 1.5 m under the ground, and under any road or river within a ring
@@ -613,6 +638,24 @@ func visible_ground(x: float, z: float) -> float:
 	return ground(x, z) if _rect.has_point(Vector2(x, z)) else far_ground(x, z)
 
 var _grid := PackedFloat32Array()
+var _grid_only: bool = false
+
+## The finished ground as plain data, for the map cache (MapCache):
+## ground() answers the same inside the built rect; a land restored from
+## it (from_grid_state) holds the edge's height outside.
+func grid_state() -> Dictionary:
+	return {"grid": _grid, "rect": _rect, "step": _step, "nx": _nx, "nz": _nz, "ponds": _ponds}
+
+static func from_grid_state(d: Dictionary) -> TerrainCreator:
+	var t := TerrainCreator.new()
+	t._grid = d.grid
+	t._rect = d.rect
+	t._step = d.step
+	t._nx = d.nx
+	t._nz = d.nz
+	t._ponds = d.ponds
+	t._grid_only = true
+	return t
 var _rect := Rect2()
 var _step: float = 8.0
 var _nx: int = 0
@@ -624,7 +667,11 @@ func ground(x: float, z: float) -> float:
 	var fx: float = (x - _rect.position.x) / _step
 	var fz: float = (z - _rect.position.y) / _step
 	if _grid.is_empty() or fx < 0.0 or fz < 0.0 or fx >= _nx - 1 or fz >= _nz - 1:
-		return height(x, z)
+		if _grid_only and not _grid.is_empty(): # restored from the map cache: the edge's height
+			fx = clampf(fx, 0.0, _nx - 1.001)
+			fz = clampf(fz, 0.0, _nz - 1.001)
+		else:
+			return height(x, z)
 	var ix: int = int(fx)
 	var iz: int = int(fz)
 	var u: float = fx - ix

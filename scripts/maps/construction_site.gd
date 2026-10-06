@@ -59,6 +59,8 @@ func preview_views() -> Array:
 		["viaduct", Vector3(-60, 4, 280), Vector3(60, 5, 300)],
 		["street", Vector3(0, 10, 110), Vector3(-300, 3, 110)],
 		["horizon", Vector3(0, 80, -300), Vector3(0, 0, -1800)],
+		["town_houses", Vector3(20, 14, 175), Vector3(30, 10, 128)],
+		["town_street", Vector3(-40, 8, 110), Vector3(40, 6, 128)],
 	]
 
 func build() -> void:
@@ -92,6 +94,11 @@ func build() -> void:
 	rails = Rails.new(geo)
 	roads = Roads.new(geo, rng, fleet)
 	city = City.new(geo, rng, fleet)
+	# Real town houses (CityHouseCreator) in the blocks around the spawn; the
+	# cheap boxes stay further out. ~22 ms a house, so a capped count.
+	city.house_centre = Vector2(120, 88)
+	city.house_radius = 130.0
+	city.house_cap = 40
 
 	_ground()
 	_streets_and_blocks()

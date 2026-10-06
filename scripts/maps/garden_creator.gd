@@ -37,7 +37,9 @@ static func ensure_materials(g: Geo) -> void:
 	g.add_material("gd_soil", Geo.flat_mat(Color(0.33, 0.24, 0.17), 0.95))
 	g.detail_prefixes.append("gd_")
 
-static func build(g: Geo, plot: Dictionary, house: Dictionary, r: RandomNumberGenerator) -> Dictionary:
+## o: "fence" pins the boundary ("hedge", "picket_white", "picket_wood",
+## "rails", "wall"); the draw for it still happens (see Pieces).
+static func build(g: Geo, plot: Dictionary, house: Dictionary, r: RandomNumberGenerator, o: Dictionary = {}) -> Dictionary:
 	ensure_materials(g)
 	var gc := GardenCreator.new()
 	gc.geo = g
@@ -45,6 +47,7 @@ static func build(g: Geo, plot: Dictionary, house: Dictionary, r: RandomNumberGe
 	gc.rng = r
 	gc.W = plot.width
 	gc.D = plot.depth
+	gc.pins = o
 	return gc._build(house)
 
 func _build(house: Dictionary) -> Dictionary:
@@ -55,8 +58,11 @@ func _build(house: Dictionary) -> Dictionary:
 	if house.drive != Vector3.INF:
 		gaps.append([(inv * (house.drive as Vector3)).x, 1.9])
 	# One kind of boundary all round the plot, the same height everywhere.
-	var front: String = _pick_style()
-	fence_h = {"hedge": rng.randf_range(1.1, 1.6), "picket_white": 0.95, "picket_wood": 0.95, "rails": 1.1, "wall": 0.75}[front]
+	var front: String = pins.get("fence", _pick_style())
+	# (The hedge's height is drawn for every garden: a pinned fence
+	# must not shift the rest of the garden's numbers.)
+	var hedge_h: float = rng.randf_range(1.1, 1.6)
+	fence_h = {"hedge": hedge_h, "picket_white": 0.95, "picket_wood": 0.95, "rails": 1.1, "wall": 0.75}[front]
 	var hw: float = W * 0.5
 	_edge(Vector3(-hw, 0, 0), Vector3(hw, 0, 0), front, gaps)
 	_edge(Vector3(-hw, 0, -D), Vector3(hw, 0, -D), front, [])
@@ -143,6 +149,7 @@ func _build(house: Dictionary) -> Dictionary:
 	return {"trees": trees, "views": views}
 
 var fence_h: float = 1.0
+var pins: Dictionary = {}
 
 func _pick_style() -> String:
 	var r: float = rng.randf()
@@ -174,8 +181,13 @@ func _flower_bed(c: Vector3, length: float, depth: float, cols: Array, along_z: 
 	var size: Vector3 = Vector3(depth, 0.12, length) if along_z else Vector3(length, 0.12, depth)
 	geo.tint = Color.WHITE
 	_box(c + Vector3(0, 0.05, 0), size, "gd_soil", false)
+	# The edging: four boards standing 3 cm proud of the soil (one box
+	# under the whole bed lay a centimetre below the soil's top and
+	# flickered through it from afar).
 	geo.tint = Color(0.75, 0.62, 0.48)
-	_box(c + Vector3(0, 0.07, 0), size + Vector3(0.1, -0.06, 0.1), "gd_wood", false)
+	for sx in [-1.0, 1.0]:
+		_box(c + Vector3(sx * (size.x * 0.5 + 0.025), 0.07, 0), Vector3(0.05, 0.14, size.z + 0.1), "gd_wood", false)
+		_box(c + Vector3(0, 0.07, sx * (size.z * 0.5 + 0.025)), Vector3(size.x, 0.14, 0.05), "gd_wood", false)
 	geo.tint = Color.WHITE
 	var n: int = maxi(2, int(length / 0.42))
 	for row in [-1.0, 1.0]:
@@ -459,7 +471,7 @@ func _stepping_stones(a: Vector3, b: Vector3) -> void:
 	geo.tint = Color(0.8, 0.78, 0.74)
 	for k in range(n):
 		var p: Vector3 = a.lerp(b, (k + 0.5) / n)
-		_box(p + Vector3(rng.randf_range(-0.1, 0.1), 0.02, 0), Vector3(0.5, 0.05, 0.4), "gd_stone", false, rng.randf_range(-0.3, 0.3))
+		_box(p + Vector3(rng.randf_range(-0.1, 0.1), 0.035, 0), Vector3(0.5, 0.07, 0.4), "gd_stone", false, rng.randf_range(-0.3, 0.3))
 	geo.tint = Color.WHITE
 
 func _world(p: Vector3) -> Vector3:
@@ -631,7 +643,7 @@ func _veg_beds(r: Rect2) -> void:
 		geo.tint = Color(0.75, 0.6, 0.45)
 		_box(c + Vector3(0, 0.2, 0), Vector3(1.2, 0.4, r.size.y - 0.2), "gd_wood")
 		geo.tint = Color.WHITE
-		_box(c + Vector3(0, 0.41, 0), Vector3(1.1, 0.02, r.size.y - 0.3), "gd_soil", false)
+		_box(c + Vector3(0, 0.44, 0), Vector3(1.1, 0.02, r.size.y - 0.3), "gd_soil", false) # (mounded 5 cm over the rim: closer flickered)
 		geo.tint = Color(0.35, 0.6, 0.25)
 		var z: float = -r.size.y * 0.5 + 0.4
 		while z < r.size.y * 0.5 - 0.3:

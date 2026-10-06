@@ -16,7 +16,8 @@ extends RefCounted
 ##   info.views   [[name, eye, target], ...] world-space camera spots
 ##                (outside, the way in, every room) for dev previews
 ##   info.size    Vector2(width, depth) of the main body
-## opts: "interior" (default true; false = closed house, far cheaper -
+## opts: "mirror" (1.0 / -1.0), "brick" (true = clinker, not plaster),
+##       "interior" (default true; false = closed house, far cheaper -
 ##       for houses nobody flies into: every window shows a painted room
 ##       niche, so from outside it looks as lived-in as the others), "storeys" (1/2),
 ##       "roof" ("gable"/"hip"), "garage" ("none"/"garage"/"carport"),
@@ -101,7 +102,7 @@ static func ensure_materials(g: Geo) -> void:
 	g.add_material("hc_trim", Geo.flat_mat(Color.WHITE, 0.6))
 	g.add_material("hc_glass_dark", Geo.flat_mat(Color(0.2, 0.25, 0.3), 0.2, 0.3))
 	g.add_material("hc_terrace", Geo.tex_mat(MapTextures.get_tex("paving_slabs"), Color(0.86, 0.82, 0.76), 1.6))
-	g.add_material("hc_paving", Geo.ground_mat(MapTextures.get_tex("paving_slabs"), Color(0.86, 0.84, 0.8), 1.6, 1, 0.2))
+	g.add_material("hc_paving", Geo.ground_mat(MapTextures.get_tex("paving_slabs"), Color(0.86, 0.84, 0.8), 1.6, 2, 0.2)) # (layer 2: over a farmyard's gravel)
 	var glass := StandardMaterial3D.new()
 	glass.albedo_color = Color(0.62, 0.74, 0.8, 0.28)
 	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -170,7 +171,7 @@ static func build_plot(g: Geo, plot: Dictionary, seed_value: int, opts: Dictiona
 	var info: Dictionary = build(g, centre, atan2(fz.x, fz.z), seed_value, o)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value * 31 + 7
-	var garden: Dictionary = GardenCreator.build(g, plot, info, rng)
+	var garden: Dictionary = GardenCreator.build(g, plot, info, rng, opts)
 	info["trees"] = garden.trees
 	info.views.append_array(garden.views)
 	return info
@@ -189,7 +190,9 @@ func _run(g: Geo, pos: Vector3, yaw: float, seed_value: int, opts: Dictionary) -
 	rng.seed = seed_value
 	base = pos
 	interior = opts.get("interior", true)
-	var mirror: float = -1.0 if rng.randf() < 0.5 else 1.0
+	pins = opts
+	# Pinned options (opts) still draw their number: see Pieces.
+	var mirror: float = opts.get("mirror", -1.0 if rng.randf() < 0.5 else 1.0)
 	xf = Transform3D(Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(mirror, 1, 1)), pos)
 	storeys = opts.get("storeys", 1 if rng.randf() < 0.3 else 2)
 	W = snappedf(rng.randf_range(9.2, 12.2), 0.1)
@@ -229,10 +232,15 @@ func _run(g: Geo, pos: Vector3, yaw: float, seed_value: int, opts: Dictionary) -
 	geo.tint = saved[3]
 	geo.ground_fn = saved[4]
 
+var pins: Dictionary = {}
+
 func _style() -> void:
-	plaster = rng.randf() < 0.72
-	brick_ground = plaster and rng.randf() < 0.15
-	facade_tint = PLASTER[rng.randi() % PLASTER.size()] if plaster else Color.WHITE
+	# Every number is drawn whatever the pins say (see Pieces).
+	plaster = not pins.get("brick", rng.randf() >= 0.72)
+	var bg: bool = rng.randf() < 0.15
+	brick_ground = plaster and bg
+	var ft: Color = PLASTER[rng.randi() % PLASTER.size()]
+	facade_tint = ft if plaster else Color.WHITE
 	trim = TRIMS[rng.randi() % TRIMS.size()]
 	shutter_style = ["none", "shutters", "rollers", "rollers"][rng.randi() % 4]
 	shutter_tint = SHUTTERS[rng.randi() % SHUTTERS.size()]
@@ -249,6 +257,33 @@ func _box(c: Vector3, s: Vector3, mat: String, collide: bool = true) -> void:
 
 func _boxt(t: Transform3D, s: Vector3, mat: String, collide: bool = true) -> void:
 	geo.box_on(xf * t, s, mat, base.y, collide)
+
+## Paving (the path, the driveway) on the plot, x = its middle, from z0
+## to z1, w wide, 6 cm thick. Where the real ground under it stands
+## higher than the plot - the front of a plot beside a sloping street,
+## where the 8 m terrain grid's triangles from the road's bed rise into
+## it - it is laid in 1.5 m pieces, each lifted clear of the ground.
+func _paving(x: float, z0: float, z1: float, w: float) -> void:
+	var n: int = maxi(1, ceili((z1 - z0) / 1.5))
+	var L: float = (z1 - z0) / n
+	var tops: Array[float] = []
+	var lifted: bool = false
+	for k in range(n):
+		var top: float = 0.06
+		if geo.floor_fn.is_valid():
+			for u in [-0.5, 0.0, 0.5]:
+				for v in [0.0, 0.5, 1.0]:
+					var q: Vector3 = xf * Vector3(x + u * w, 0, z0 + (k + v) * L)
+					var g: float = geo.floor_fn.call(q.x, q.z)
+					if g > -1e5 and g - base.y + 0.04 > top:
+						top = g - base.y + 0.04
+						lifted = true
+		tops.append(top)
+	if not lifted:
+		_box(Vector3(x, 0.03, (z0 + z1) * 0.5), Vector3(w, 0.06, z1 - z0), "hc_paving", false)
+		return
+	for k in range(n):
+		_box(Vector3(x, tops[k] * 0.5, z0 + (k + 0.5) * L), Vector3(w, tops[k], L), "hc_paving", false)
 
 ## Box in a sub-frame t (furniture, openings): c and s in t's coordinates.
 func _fb(t: Transform3D, c: Vector3, s: Vector3, mat: String, collide: bool = true) -> void:
@@ -479,7 +514,14 @@ func _plan_windows() -> void:
 			var sd: Array = sides[0]
 			_fill(rm, sd, sd[3] + 0.45, sd[4] - 0.45, fy + 0.9, fy + 2.2, 0.9, 1.2, "window", open_candidates)
 	# One window (sometimes two) stands open - a way in from outside.
-	open_candidates.shuffle()
+	# (Shuffled with the house's own rng: Array.shuffle() uses the global
+	# one, seeded anew every run - the house came out different on every
+	# load.)
+	for k in range(open_candidates.size() - 1, 0, -1):
+		var j: int = rng.randi_range(0, k)
+		var sw: Variant = open_candidates[k]
+		open_candidates[k] = open_candidates[j]
+		open_candidates[j] = sw
 	var n_open: int = 2 if rng.randf() < 0.3 else 1
 	for o in open_candidates.slice(0, n_open):
 		o.open = true
@@ -920,7 +962,7 @@ func _front_door_extras(path_to: float) -> void:
 	var p0: Vector3 = t * Vector3(0, 0, 1.7)
 	gate_at = xf * Vector3(p0.x, 0, path_to)
 	if path_to > p0.z + 0.3:
-		_box(Vector3(p0.x, 0.03, (p0.z + path_to) * 0.5), Vector3(1.3, 0.06, path_to - p0.z), "hc_paving", false)
+		_paving(p0.x, p0.z, path_to, 1.3)
 	# Mailbox.
 	_tint(door_tint.lightened(0.2))
 	_box(Vector3(p0.x + 1.0, 0.55, path_to - 0.6), Vector3(0.06, 1.1, 0.06), "hc_trim")
@@ -992,7 +1034,7 @@ func _garage() -> void:
 		Vehicles.car(geo, xf * Vector3(x, 0.0, z), atan2(fwd.x, fwd.z), paint, ["sedan", "hatch", "suv"][rng.randi() % 3])
 	# Driveway out to the street (on a plot: to its street edge).
 	var drive_end: float = maxf(D * 0.5 + 5.3, path_end)
-	_box(Vector3(x, 0.03, (D * 0.5 + 0.3 + drive_end) * 0.5), Vector3(gw, 0.06, drive_end - D * 0.5 - 0.3), "hc_paving", false)
+	_paving(x, D * 0.5 + 0.3, drive_end, gw)
 	drive_at = xf * Vector3(x, 0, drive_end)
 
 # --- inside ------------------------------------------------------------------------

@@ -49,21 +49,40 @@ func _run() -> void:
 	var te: float = Settings.throttle_curve(0.75)
 	Settings.throttle_expo = 0.0
 	_check(absf(te - 0.5625) < 0.001, "throttle: Betaflight EXPO curve", "%.4f" % te)
+	# Dev aid: SH_SELFTEST_ONLY=menu,realism,race runs just those parts.
+	if OS.has_environment("SH_SELFTEST_ONLY"):
+		var only: PackedStringArray = OS.get_environment("SH_SELFTEST_ONLY").split(",")
+		if only.has("menu"):
+			await _test_menu_flow()
+		if only.has("realism"):
+			await _test_realism()
+		if only.has("race"):
+			await _test_race()
+		if only.has("video"):
+			await _test_video_link()
+		if only.has("cache"):
+			await _test_map_cache()
+		print("SELFTEST DONE: %d checks, %d failed" % [_checks, _failures])
+		get_tree().quit(1 if _failures > 0 else 0)
+		return
 	await _test_menu_flow()
+	_test_updater()
+	await _test_collectibles()
 	await _test_calibration_and_arm_switch()
+	_test_creators()
 	var cases: Array = [
-		["res://scenes/Main.tscn", "seeker3"],
-		["res://scenes/Main.tscn", "five"],
-		["res://scenes/Main.tscn", "whoop"],
-		["res://scenes/Main2.tscn", "seeker3"],
-		["res://scenes/Main2.tscn", "five"],
-		["res://scenes/Main2.tscn", "whoop"],
+		["res://scenes/maps/Village.tscn", "seeker3"],
+		["res://scenes/maps/Village.tscn", "five"],
+		["res://scenes/maps/Village.tscn", "whoop"],
+		["res://scenes/maps/Factory.tscn", "seeker3"],
+		["res://scenes/maps/Factory.tscn", "five"],
+		["res://scenes/maps/Factory.tscn", "whoop"],
 		["res://scenes/Main3.tscn", "whoop"],
 		["res://scenes/Main3.tscn", "seeker3"], # the school must force the whoop anyway
 		["res://scenes/maps/Playground.tscn", "five"], # forced to the whoop too
 		["res://scenes/maps/RaceField.tscn", "five"],
 		["res://scenes/maps/RaceField.tscn", "race"],
-		["res://scenes/Main.tscn", "race"],
+		["res://scenes/maps/Village.tscn", "race"],
 		["res://scenes/maps/SteelMill.tscn", "seeker3"],
 		["res://scenes/maps/RaceArena.tscn", "seeker3"],
 		["res://scenes/maps/Office.tscn", "seeker3"], # forced to the whoop
@@ -76,8 +95,10 @@ func _run() -> void:
 	for c in cases:
 		await _test_map(c[0], c[1], false)
 	await _test_race()
+	await _test_realism()
+	await _test_video_link()
 	Settings.performance_mode = true
-	await _test_map("res://scenes/Main2.tscn", "seeker3", true)
+	await _test_map("res://scenes/maps/Factory.tscn", "seeker3", true)
 	await _test_map("res://scenes/Main3.tscn", "whoop", true)
 	Settings.performance_mode = false
 	await _tap(KEY_ESCAPE)
@@ -90,6 +111,13 @@ func _run() -> void:
 	_check(get_tree().current_scene.scene_file_path == "res://scenes/MainMenu.tscn" and not get_tree().paused, "pause: Main menu button returns to the menu, unpaused")
 	print("SELFTEST DONE: %d checks, %d failed" % [_checks, _failures])
 	get_tree().quit(1 if _failures > 0 else 0)
+
+## The creators with many seeds, level and on steep hills (CreatorCheck):
+## nothing they build may float, every kind gets built.
+func _test_creators() -> void:
+	var r: Dictionary = CreatorCheck.run()
+	_check(r.floating.is_empty(), "creators: nothing floats (town houses, industry, farm, fields; level and hills)", "%d floating: %s" % [r.floating.size(), str(r.floating.slice(0, 3))])
+	_check(r.houses >= 50 and r.halls == 6 and r.crops == 2 * FieldCreator.CROPS.size(), "creators: every kind built", "%d houses, %d halls, %d fields in %d ms" % [r.houses, r.halls, r.crops, r.ms])
 
 func _check(ok: bool, what: String, detail: String = "") -> void:
 	_checks += 1
@@ -143,6 +171,13 @@ func _test_menu_flow() -> void:
 	await _tap(KEY_ESCAPE)
 	await _wait(0.2)
 	_check(menu._screens["main"].visible and not menu._screens["about"].visible, "menu: Esc in About goes back home")
+	for scr in ["Updates", "Achievements"]:
+		_find_button(menu._screens["main"], scr).pressed.emit()
+		await _wait(0.2)
+		_check(menu._screens[scr.to_lower()].visible and not menu._screens["main"].visible, "menu: %s opens" % scr)
+		await _tap(KEY_ESCAPE)
+		await _wait(0.2)
+		_check(menu._screens["main"].visible and not menu._screens[scr.to_lower()].visible, "menu: Esc in %s goes back home" % scr)
 	var settings_btn: Button = _find_button(menu, "Settings")
 	settings_btn.pressed.emit()
 	await _wait(0.2)
@@ -174,8 +209,51 @@ func _test_menu_flow() -> void:
 	_check(SceneLoader.is_loading(), "menu: map load goes through the loading screen")
 	await _wait(2.5)
 	var scene: Node = get_tree().current_scene
-	_check(scene != null and scene.scene_file_path == "res://scenes/Main.tscn", "menu: Play -> Village loads the map")
+	_check(scene != null and scene.scene_file_path == "res://scenes/maps/Village.tscn", "menu: Play -> Village loads the map")
 	_check(Engine.max_fps == Settings.max_fps, "menu: FPS cap restored in game", "max_fps=%d" % Engine.max_fps)
+
+## Version compare, GitHub's release JSON, the offline notes, markdown.
+func _test_updater() -> void:
+	_check(Updater.is_newer("v0.10.0", "0.9.0") and Updater.is_newer("1.0.0", "0.9.9") and not Updater.is_newer("v0.9.0", "0.9.0") and not Updater.is_newer("0.8.9", "0.9.0") and not Updater.is_newer("0.9.0-beta", "0.9.0"), "updater: semantic version compare")
+	var saved: Dictionary = Updater.latest
+	var ok: bool = Updater.apply_response(200, '{"tag_name": "v9.9.9", "html_url": "https://example.org/r", "body": "# Hi\\n- one"}')
+	_check(ok and Updater.newer_available() and Updater.latest.version == "9.9.9" and Updater.latest.url == "https://example.org/r", "updater: parses a release and sees it is newer")
+	_check(not Updater.apply_response(404, "{}") and not Updater.apply_response(200, "nonsense"), "updater: errors and junk are ignored")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Updater.cache_path()))
+	Updater.latest = saved
+	_check(Changelog.notes_for(Updater.current_version()) != "", "updater: the installed version has bundled release notes")
+	var box := VBoxContainer.new()
+	Updater.add_notes(box, "# Title\n- a **bold** [link](http://x)\ntext")
+	_check(box.get_child_count() == 3 and (box.get_child(1) as Label).text == "·  a bold link", "updater: markdown notes become labels")
+	box.free()
+
+## A gnome is picked up by flying the drone into it, remembered, and
+## counted on the Achievements screen.
+func _test_collectibles() -> void:
+	Collectibles.reset()
+	_check(MapCatalog.gnome_total("playground") == 1 and Collectibles.found_count("playground") == 0, "gnomes: playground hides one, none found yet")
+	Settings.selected_drone = "whoop"
+	get_tree().change_scene_to_file("res://scenes/maps/Playground.tscn")
+	await _wait(2.0)
+	var sc: Node = get_tree().current_scene
+	var g: Node3D = sc.get_node_or_null("Gnome_0")
+	_check(g != null, "gnomes: the map places its gnome")
+	if g == null:
+		return
+	var d: Drone = _drone()
+	d.global_position = g.global_position + Vector3(2, 1, 0)
+	await _wait(0.3)
+	_check(Collectibles.found_count("playground") == 0, "gnomes: not found from a distance")
+	d.global_position = g.global_position + Vector3(0, 0.2, 0)
+	d.linear_velocity = Vector3.ZERO
+	await _wait(0.5)
+	_check(Collectibles.found_count("playground") == 1 and Collectibles.is_found("playground", 0), "gnomes: flying into the gnome collects it")
+	var done: bool = false
+	for a in Achievements.list():
+		if a.name == "Map cleared":
+			done = a.done
+	_check(done, "achievements: all gnomes on a map")
+	Collectibles.reset()
 
 var _float_checked: Dictionary = {}
 
@@ -195,6 +273,14 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		_float_checked[map] = true
 		var fl: Array = (sc as BuiltMap).floating_pieces()
 		_check(fl.is_empty(), tag + ": nothing floats in the air", str(fl.slice(0, 3)))
+		if sc.has_method("surface_glitches"):
+			var sg: Array = sc.surface_glitches()
+			_check(sg.is_empty(), tag + ": no terrain through roads or rails", "%d spots: %s" % [sg.size(), str(sg.slice(0, 3))])
+		# Ground surfaces: no terrain through roads/paving, no road or yard
+		# hanging over the land, nothing stacked close enough to flicker.
+		var sr: Dictionary = SurfaceCheck.run(sc as BuiltMap)
+		var sv: String = SurfaceCheck.verdict(sc.name, sr)
+		_check(sv == "", tag + ": ground surfaces clean (no poke-through, hanging road edge or flicker)", sv if sv != "" else "%d faces, %d ms" % [sr.tris, sr.ms])
 	var forced: String = MapCatalog.forced_drone(map)
 	var expected_profile: String = forced if forced != "" else drone_id
 	_check(Settings.selected_drone == expected_profile, tag + ": right drone profile", Settings.selected_drone)
@@ -239,7 +325,7 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		await _wait(1.2)
 		var climbed: float = d.global_position.y - rest_y
 		_check(climbed > 1.0, tag + ": takes off (keyboard)", "climbed %.2f m, throttle %.2f" % [climbed, InputManager.get_throttle()])
-		_check(d.battery.used_mah > 0.1 and d.battery.cell_v < 4.2 and d.flight_time > 1.0, tag + ": battery drains and flight timer runs", "%.1f mAh, %.2f V/cell, %.1f s" % [d.battery.used_mah, d.battery.cell_v, d.flight_time])
+		_check(d.battery.used_mah > 0.1 and d.battery.cell_v < d.battery.rest_cell_v(1.0) and d.flight_time > 1.0, tag + ": battery drains and flight timer runs", "%.1f mAh, %.2f V/cell, %.1f s" % [d.battery.used_mah, d.battery.cell_v, d.flight_time])
 		var osd: Dictionary = get_tree().current_scene.get_node("UI")._osd_labels
 		_check(osd.has("time") and osd.time.text.begins_with("00:0") and osd.time.visible and osd.spd.text.ends_with("km/h") and osd.thr.visible and osd.bat.visible == Settings.battery_enabled, tag + ": OSD shows the flight (battery group only when enabled)", osd.time.text if osd.has("time") else "no OSD")
 		# Steering, Angle mode: W forward, D right (relative to heading).
@@ -318,6 +404,52 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		_joy_axis(a, 0.0)
 	await get_tree().process_frame
 	InputManager._joy_active = false
+
+## The camera looks and the video link (FpvVideo): clean next to the
+## pilot, worse far away and behind the village houses, the digital
+## camera's latency through the held camera, back to the drone's own
+## camera on Clean.
+func _test_video_link() -> void:
+	Settings.selected_drone = "seeker3"
+	get_tree().change_scene_to_file("res://scenes/maps/Village.tscn") # (the generated village; the old Main.tscn is gone)
+	await _wait(2.0)
+	var d: Drone = _drone()
+	var v: FpvVideo = get_tree().current_scene.get_node("UI").video
+	d.freeze = true
+	Settings.camera_look = 1
+	d.global_position = d._spawn_transform.origin + Vector3(0, 2, 0)
+	await _wait(0.8)
+	var near_bad: float = v.badness
+	_check(near_bad < 0.05 and v.visible and v.link_quality > 95, "video: analog clean next to the pilot", "bad %.2f LQ %d" % [near_bad, v.link_quality])
+	d.global_position = Vector3(10, 2, -60) # behind the village houses west of the church square (~20 dB of walls: analog breaks up, digital holds)
+	await _wait(1.5)
+	_check(v._obstruction_target > 10.0 and v.badness > 0.3, "video: walls between drone and pilot weaken the analog link", "obstruction %.1f dB, bad %.2f" % [v._obstruction_target, v.badness])
+	_check(FpvVideo.bad_for(2, v.margin_db) < v.badness, "video: digital holds on longer than analog", "margin %.1f dB, analog %.2f, digital %.2f" % [v.margin_db, v.badness, FpvVideo.bad_for(2, v.margin_db)])
+	Settings.camera_look = 2
+	await _wait(0.3)
+	var cam: Camera3D = d.get_node("CameraMount/Camera3D")
+	var vp_cam: Camera3D = get_viewport().get_camera_3d()
+	_check(vp_cam != cam and vp_cam != null and vp_cam.name == "FpvHoldCam", "video: digital camera shows the delayed picture", str(vp_cam))
+	Settings.camera_look = 0
+	await _wait(0.2)
+	_check(get_viewport().get_camera_3d() == cam and not v.visible and v.link_quality == -1, "video: Clean is the drone camera, no pass")
+	# The world extras (LooksFx): glare and grass outdoors, none of them
+	# on Low; dust indoors.
+	var sc: Node = get_tree().current_scene
+	var ui_root: Node = sc.get_node("UI")._root
+	_check(ui_root.get_node_or_null("SunGlare") != null and sc.get_node_or_null("GrassTufts") != null and sc.get_node_or_null("DustMotes") == null, "looks: village has sun glare and grass tufts, no dust")
+	var q: int = Settings.graphics_quality
+	Settings.graphics_quality = 0
+	Settings.apply_graphics_settings()
+	_check(sc.get_node_or_null("GrassTufts") == null and WorldShading.DETAIL[0].x == 0.0, "looks: Low has no grass tufts and no surface detail")
+	Settings.graphics_quality = q
+	Settings.apply_graphics_settings()
+	d.freeze = false
+	d.reset_to_spawn()
+	get_tree().change_scene_to_file("res://scenes/Main3.tscn")
+	await _wait(2.0)
+	sc = get_tree().current_scene
+	_check(sc.get_node_or_null("DustMotes") != null and sc.get_node("UI")._root.get_node_or_null("SunGlare") == null and sc.get_node_or_null("GrassTufts") == null, "looks: the school has dust in the air, no glare or grass")
 
 func _test_pause_menu(tag: String, d: Drone, map: String) -> void:
 	var pm: PauseMenu = get_tree().current_scene.get_node("UI").pause_menu
@@ -424,7 +556,7 @@ func _test_calibration_and_arm_switch() -> void:
 
 	Settings.selected_drone = "seeker3"
 	axes[5] = 1.0 # switch left ON while the map loads
-	get_tree().change_scene_to_file("res://scenes/Main.tscn")
+	get_tree().change_scene_to_file("res://scenes/maps/Village.tscn")
 	await _wait(2.0)
 	var d: Drone = _drone()
 	_check(not InputManager.armed and InputManager.arm_hint().contains("arm switch"), "arm switch: ON at load doesn't arm", InputManager.arm_hint())
@@ -461,7 +593,7 @@ func _test_calibration_and_arm_switch() -> void:
 		axes[i] = 0.0
 	InputManager._joy_active = false
 	InputManager._forget_axes()
-	get_tree().change_scene_to_file("res://scenes/Main.tscn")
+	get_tree().change_scene_to_file("res://scenes/maps/Village.tscn")
 	await _wait(2.0)
 	axes[5] = 1.0
 	await _wait(0.1)
@@ -568,7 +700,22 @@ func _test_race() -> void:
 			await get_tree().physics_frame
 	await get_tree().physics_frame
 	_check(course._lap == 2 and course._last_lap > 0.0, "race: a full lap through all %d gates is timed" % course._gates.size(), "lap %d, last %.2f s" % [course._lap, course._last_lap])
-	_check(course._ghost_pos.size() > 3, "race: best lap recorded as a ghost", "%d samples" % course._ghost_pos.size())
+	_check(course._ghost_pos.size() > 3 and course._ghost_rot.size() == course._ghost_pos.size(), "race: best lap recorded as a ghost", "%d samples" % course._ghost_pos.size())
+	# The next lap: the ghost (the drone's own see-through model) flies it.
+	var gp: Vector3 = course._gates[1].xf * Vector3(0, 0, 3.0)
+	for _k in range(3):
+		pos = pos.move_toward(gp, 2.5)
+		d.global_position = pos
+		await get_tree().physics_frame
+	var parts: int = course._ghost.get_child_count()
+	_check(course._ghost.visible and parts >= 3, "race: the ghost flies along on the next lap", "visible %s, %d parts" % [course._ghost.visible, parts])
+	Settings.race_ghost = false
+	await get_tree().physics_frame
+	_check(not course._ghost.visible, "race: the ghost setting hides it")
+	Settings.race_ghost = true
+	var cfg := ConfigFile.new()
+	cfg.load(RaceCourse.GHOST_PATH)
+	_check(cfg.has_section_key(RaceCourse.section("race_field"), "five_q"), "race: the ghost is saved per track + drone")
 	# Two more laps finish the 3-lap race: results, a top-5 entry.
 	for _l in range(RaceCourse.LAPS - 1):
 		for p in pts.slice(2):
@@ -674,3 +821,124 @@ func _test_race() -> void:
 	InputManager.test_joy = keep_joy
 	InputManager._joy_active = false
 	_check(reloading, "radio: the restart switch reloads the map")
+
+## The optional realism settings (battery sag, prop damage, wind) through
+## the real input path: keyboard arm and throttle, R to reset.
+func _test_realism() -> void:
+	InputManager.armed = false
+	InputManager.self_level = true
+	Settings.selected_drone = "seeker3"
+	Settings.game_mode = Settings.MODE_FREESTYLE
+	Settings.battery_enabled = true
+	Settings.prop_damage = true
+	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
+	await _wait(2.0)
+	var d: Drone = _drone()
+	var osd: Dictionary = get_tree().current_scene.get_node("UI")._osd_labels
+	var b: Battery = d.battery
+	_check(b.cells == 4 and is_equal_approx(b.capacity_mah, 850.0) and b.cell_v > 4.15, "realism: Static Three carries a full 4S 850 mAh pack", "%dS %d mAh %.2f V/cell" % [b.cells, int(b.capacity_mah), b.cell_v])
+	await _tap(KEY_ENTER)
+	_key(KEY_SHIFT, true)
+	await _wait(0.9)
+	_key(KEY_SHIFT, false)
+	await _wait(0.5)
+	_check(osd.bat.visible and osd.bat.text.ends_with("V/cell") and b.current_a > 1.0 and absf(b.thrust_factor() - 1.0) < 0.03, "realism: battery OSD on, fresh pack = full thrust", "%s  %.1f A  k=%.3f" % [osd.bat.text, b.current_a, b.thrust_factor()])
+	# Fast-forward the pack to 5% left: low voltage, less thrust, warning.
+	b.used_mah = b.capacity_mah * 0.95
+	await _wait(4.5)
+	_check(b.thrust_factor() < 0.85 and osd.warn.text in ["LOW BATTERY", "LAND NOW"], "realism: a drained pack warns and loses thrust", "%.2f V/cell (filtered %.2f), k=%.2f, '%s', armed %s, y %.1f" % [b.cell_v, b.warn_v, b.thrust_factor(), osd.warn.text, InputManager.armed, d.global_position.y - d._spawn_transform.origin.y])
+	b.used_mah = b.capacity_mah * 1.02
+	await _wait(1.5)
+	_check(osd.warn.text.begins_with("BATTERY EMPTY") and b.thrust_factor() < 0.4, "realism: an empty pack can't hold the quad up", "k=%.2f '%s'" % [b.thrust_factor(), osd.warn.text])
+	# A crash: straight into the ground at ~12 m/s, motors running.
+	_key(KEY_R, true)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_key(KEY_R, false)
+	await _wait(0.2)
+	_check(b.charge() > 0.99 and osd.warn.text == "", "realism: R fits a fresh pack", "%.3f '%s'" % [b.charge(), osd.warn.text])
+	if not InputManager.armed:
+		await _tap(KEY_ENTER)
+	# (From low down: from higher up the 7:1 thrust brakes it first.)
+	d.global_position = d._spawn_transform.origin + Vector3.UP * 1.2
+	d.linear_velocity = Vector3(0, -12.0, 0)
+	await _wait(0.5)
+	var worst: float = d.prop_health.min()
+	_check(worst < 0.95 and worst >= Drone.PROP_HEALTH_MIN, "realism: a hard crash damages props", "%s armed %s y %.2f v %s" % [d.prop_health, InputManager.armed, d.global_position.y - d._spawn_transform.origin.y, d.linear_velocity])
+	_check(osd.warn.text == "PROP DAMAGED", "realism: OSD says PROP DAMAGED", osd.warn.text)
+	_key(KEY_R, true)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_key(KEY_R, false)
+	await _wait(0.2)
+	_check(d.prop_health.min() == 1.0, "realism: R fits new props")
+	Settings.prop_damage = false
+	d.global_position = d._spawn_transform.origin + Vector3.UP * 1.2
+	d.linear_velocity = Vector3(0, -12.0, 0)
+	await _wait(0.5)
+	_check(d.prop_health.min() == 1.0, "realism: no prop damage with the setting off")
+	# Wind: blows outdoors (more up high), drifts the quad, off = still.
+	Settings.wind_level = 3
+	d.reset_to_spawn()
+	await _wait(0.5)
+	var low: float = d.wind_velocity.length()
+	d.global_position = d._spawn_transform.origin + Vector3.UP * 30.0
+	d.linear_velocity = Vector3.ZERO
+	await _wait(0.5)
+	var high: float = d.wind_velocity.length()
+	_check(high > 6.0 and high > low, "realism: strong wind blows, stronger up high", "%.1f m/s near the ground, %.1f m/s at 30 m" % [low, high])
+	Settings.wind_level = 0
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check(d.wind_velocity == Vector3.ZERO, "realism: wind off = still air")
+	# Throttle back down before disarming (the next test arms again).
+	_key(KEY_CTRL, true)
+	await _wait(1.6)
+	_key(KEY_CTRL, false)
+	await _tap(KEY_ENTER)
+	Settings.battery_enabled = false
+	d.reset_to_spawn()
+	await _wait(0.3)
+
+## The map load cache (SH_SELFTEST_ONLY=cache - slow, every generated map
+## built twice): a fresh build (which writes the cache) and the cached
+## load must give the same map (MapCache.fingerprint), the same preview
+## views, race gates, and a drone that rests at spawn. SH_CACHE_MAPS=a,b
+## limits it to those map ids.
+func _test_map_cache() -> void:
+	MapCache.force = true
+	var only: PackedStringArray = OS.get_environment("SH_CACHE_MAPS").split(",", false) if OS.has_environment("SH_CACHE_MAPS") else PackedStringArray()
+	for m in MapCatalog.available():
+		var ps := load(m.scene) as PackedScene
+		if ps == null or not (only.is_empty() or only.has(m.id)):
+			continue
+		var probe: Node = ps.instantiate()
+		var built: bool = probe is BuiltMap
+		probe.free()
+		if not built:
+			continue
+		var d := DirAccess.open(MapCache.DIR)
+		if d:
+			for f in d.get_files():
+				if f.begins_with(m.scene.get_file().get_basename() + "-"):
+					d.remove(f)
+		var res: Array = []
+		for pass_i in range(2):
+			InputManager.armed = false
+			Settings.selected_drone = "seeker3"
+			get_tree().change_scene_to_file(m.scene)
+			await _wait(2.5)
+			var sc: BuiltMap = get_tree().current_scene as BuiltMap
+			var dr: Drone = _drone()
+			var y0: float = dr.global_position.y
+			await _wait(1.0)
+			var course: Variant = sc.get("course")
+			res.append({"cache": sc.from_cache, "fp": MapCache.fingerprint(sc), "views": sc.views().size(),
+				"gates": (course as RaceCourse)._gates.size() if course is RaceCourse else -1,
+				"rest": absf(dr.global_position.y - y0) < 0.05 and dr.linear_velocity.length() < 0.1})
+		var a: Dictionary = res[0]
+		var b: Dictionary = res[1]
+		_check(not a.cache and b.cache, "cache %s: second load comes from the cache" % m.id)
+		_check(a.fp == b.fp, "cache %s: cached map identical to the fresh build" % m.id, b.fp if a.fp == b.fp else "%s vs %s" % [a.fp, b.fp])
+		_check(a.views == b.views and a.gates == b.gates and b.rest, "cache %s: views, gates, drone at rest" % m.id, "views %d/%d gates %d/%d rest %s" % [a.views, b.views, a.gates, b.gates, b.rest])
+	MapCache.force = false

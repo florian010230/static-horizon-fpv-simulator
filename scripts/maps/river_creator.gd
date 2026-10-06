@@ -24,6 +24,8 @@ const DUCK_RACE_CHANCE: float = 0.05
 ## Grass bank from the bank top out to here (m past the water's edge):
 ## past the terrain's carved strip, so its outer edge lands on plain ground.
 const GRASS_OUT: float = 16.0
+## The grass bank's points stand at least this far over the ground.
+const GRASS_LIFT: float = 0.06
 
 var land: TerrainCreator
 var line: LandLine
@@ -137,9 +139,25 @@ func draw(geo: Geo, rect: Rect2, rng: RandomNumberGenerator) -> Dictionary:
 			var wy: float = c.y
 			var top: Vector3 = c + right * (w + TerrainCreator.BANK) + Vector3(0, 0.45, 0)
 			mud.append(PackedVector3Array([c + right * (w + 0.3) + Vector3(0, -0.3, 0), c + right * (w + 1.5) + Vector3(0, 0.12, 0), top]))
-			var out: Vector3 = c + right * (w + GRASS_OUT)
-			out.y = land.ground(out.x, out.z) + 0.03
-			grass.append(PackedVector3Array([top, out]))
+			# The grass bank, from the bank's top straight out to the ground
+			# GRASS_OUT past the water: in rows half a river step apart, twelve
+			# points across, each lifted clear of the ground under it (a valley
+			# side bulging over the straight line, and the 8 m terrain grid's
+			# triangles between two rows, rose through it).
+			for h in ([0.0, 0.5] if k < seg.size() - 1 else [0.0]):
+				var ch: Vector3 = seg[k].lerp(seg[k + 1], h) if h > 0.0 else c
+				var th: Vector3 = Route._tangent(seg, k).lerp(Route._tangent(seg, k + 1), h).normalized() if h > 0.0 else tan
+				var rh: Vector3 = Vector3(-th.z, 0, th.x) * side
+				var t0: Vector3 = ch + rh * (w + TerrainCreator.BANK) + Vector3(0, 0.45, 0)
+				var out: Vector3 = ch + rh * (w + GRASS_OUT)
+				out.y = land.ground(out.x, out.z) + GRASS_LIFT
+				var row := PackedVector3Array()
+				for f in range(13):
+					var q: Vector3 = t0.lerp(out, f / 12.0)
+					if f > 0:
+						q.y = maxf(q.y, land.ground(q.x, q.z) + GRASS_LIFT)
+					row.append(q)
+				grass.append(row)
 		var tint_light := func(n: Vector3, p: Vector3) -> Color: return land.tint(geo, n, p)
 		geo.light_fn = func(n: Vector3, p: Vector3) -> Color: return geo.shade(n, p.y + 50.0) * Color(1.05, 1.0, 0.9)
 		geo.strip(mud, "rv_mud")

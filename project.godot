@@ -11,9 +11,12 @@ config_version=5
 [application]
 
 config/name="Static Horizon FPV Sim"
-config/version="0.9.0"
+config/version="0.10.0"
 run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.7")
+config/icon="res://icon.png"
+config/macos_native_icon="res://icon.icns"
+config/windows_native_icon="res://icon.ico"
 run/max_fps=60
 
 [autoload]
@@ -88,6 +91,14 @@ sh_shadow_info={
 "value": Vector4(0, 0, 0, 0)
 }
 sh_shadow_map={
+"type": "sampler2D",
+"value": ""
+}
+sh_detail={
+"type": "vec4",
+"value": Vector4(0, 40, 0, 0)
+}
+sh_detail_tex={
 "type": "sampler2D",
 "value": ""
 }

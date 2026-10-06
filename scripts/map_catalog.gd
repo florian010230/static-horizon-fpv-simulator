@@ -8,6 +8,8 @@ extends RefCounted
 ## tier: how demanding the map is to render - "Low" runs on anything
 ## (4 GB RAM, integrated graphics), "Medium" wants a mid-range laptop,
 ## "High" is the showcase tier (big, detailed, full effects).
+## dev: true for maps shown only in development runs, not in releases.
+## gnomes: how many garden gnomes (Collectibles) the map hides, default 0.
 ## drone: "any", or the one profile id the map forces (indoor whoop
 ## maps - a 650 g five-inch has no business in a school corridor).
 
@@ -15,19 +17,19 @@ const TIERS: Array[String] = ["Low", "Medium", "High"]
 const TIER_COLORS := {"Low": Color("#3fae5a"), "Medium": Color("#e0a526"), "High": Color("#e8551a")}
 
 const MAPS: Array[Dictionary] = [
-	{"id": "village", "name": "Village", "scene": "res://scenes/Main.tscn", "tier": "Medium", "drone": "any",
+	{"id": "village", "gnomes": 3, "name": "Village", "scene": "res://scenes/maps/Village.tscn", "tier": "Medium", "drone": "any",
 	 "color": Color("#3f8f4a"),
-	 "text": "Main street with houses you can fly into, a church, an FPV club field with gates, a railway underpass and a farm."},
-	{"id": "factory", "name": "Factory", "scene": "res://scenes/Main2.tscn", "tier": "Medium", "drone": "any",
+	 "text": "Holderbach: take off from the FPV club's field - gardens and houses to fly into, a church tower with an open belfry, a stone railway viaduct over the stream, a farm, and a bando beyond the tracks."},
+	{"id": "factory", "gnomes": 3, "name": "Factory", "scene": "res://scenes/maps/Factory.tscn", "tier": "Medium", "drone": "any",
 	 "color": Color("#e8551a"),
-	 "text": "A working plant: rail yard and dock, fly-through production halls, a boiler house, chimneys, tanks and pipe bridges."},
+	 "text": "Werk Lindner, running three shifts: fly end to end through the production hall, up the silo conveyor, into the cooling tower, under the pipe rack and along the rail siding."},
 	{"id": "school", "indoor": true, "name": "School", "scene": "res://scenes/Main3.tscn", "tier": "Low", "drone": "whoop",
 	 "color": Color("#1f6fe0"),
 	 "text": "A full-size sports hall with goals, ropes and hoops, a long corridor and furnished classrooms. Indoors only."},
-	{"id": "steelmill", "name": "Abandoned Steel Mill", "scene": "res://scenes/maps/SteelMill.tscn", "tier": "High", "drone": "any",
+	{"id": "steelmill", "gnomes": 3, "name": "Abandoned Steel Mill", "scene": "res://scenes/maps/SteelMill.tscn", "tier": "High", "drone": "any",
 	 "color": Color("#b5552b"),
 	 "text": "After the Völklinger Hütte: six blast furnaces in a row, skip hoists to the tops, a column slalom under the bunker hall, hollow gas mains, the ore monorail."},
-	{"id": "playground", "name": "Playground", "scene": "res://scenes/maps/Playground.tscn", "tier": "Low", "drone": "whoop",
+	{"id": "playground", "gnomes": 1, "name": "Playground", "scene": "res://scenes/maps/Playground.tscn", "tier": "Low", "drone": "whoop",
 	 "color": Color("#e0a526"),
 	 "text": "Slides, swings, a climbing frame and a tunnel tube - a whoop playground."},
 	{"id": "race_field", "race": true, "track": 2, "name": "Race Field", "scene": "res://scenes/maps/RaceField.tscn", "tier": "Low", "drone": "any",
@@ -48,10 +50,10 @@ const MAPS: Array[Dictionary] = [
 	{"id": "harbour", "name": "Harbour & Central Station", "scene": "res://scenes/maps/Harbour.tscn", "tier": "High", "drone": "any",
 	 "color": Color("#2a7fb0"),
 	 "text": "A port city at sunset: container cranes and ships, a rail branch into the terminal, a through station with a glass train shed, the old harbour and the city grid."},
-	{"id": "test_valley", "name": "Test Valley", "scene": "res://scenes/maps/TestValley.tscn", "tier": "Medium", "drone": "any",
+	{"id": "test_valley", "dev": true, "gnomes": 1, "name": "Test Valley", "scene": "res://scenes/maps/TestValley.tscn", "tier": "Medium", "drone": "any",
 	 "color": Color("#7a8f4f"),
 	 "text": "Test bed for the map creators: a village in a river valley, houses on both banks joined by a stone arch bridge. Five houses are open - find a way in."},
-	{"id": "mountain_lake", "name": "Mountain Lake", "scene": "res://scenes/maps/MountainLake.tscn", "tier": "High", "drone": "any",
+	{"id": "mountain_lake", "gnomes": 3, "name": "Mountain Lake", "scene": "res://scenes/maps/MountainLake.tscn", "tier": "High", "drone": "any",
 	 "color": Color("#3a9a8a"),
 	 "text": "An alpine lake in the evening alpenglow: surf the ridges, skim the water, dive the dam, chase the waterfall and the cable car."},
 ]
@@ -61,10 +63,13 @@ const MAPS: Array[Dictionary] = [
 static func is_race(m: Dictionary) -> bool:
 	return m.get("race", false)
 
-## Maps whose scene exists in this build.
+## Maps whose scene exists in this build. "dev" maps (the creators' test
+## bed) only show in development runs, never in a release build.
 static func available() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for m in MAPS:
+		if m.get("dev", false) and not OS.is_debug_build():
+			continue
 		if ResourceLoader.exists(m.scene):
 			out.append(m)
 	return out
@@ -84,3 +89,16 @@ static func forced_drone(scene_path: String) -> String:
 ## quality -> Low/Medium/High maps).
 static func recommended_tier() -> String:
 	return TIERS[clampi(Settings.graphics_quality, 0, 2)]
+
+## How many gnomes a map hides (Collectibles).
+static func gnome_total(map_id: String) -> int:
+	for m in MAPS:
+		if m.id == map_id:
+			return int(m.get("gnomes", 0))
+	return 0
+
+static func map_ids() -> Array[String]:
+	var out: Array[String] = []
+	for m in available():
+		out.append(m.id)
+	return out

@@ -35,6 +35,12 @@ var cell: float = CELL
 ## and thousands of draw calls saved.
 var detail_prefixes: Array[String] = ["rd_line", "rd_steel", "rd_lamp", "rd_kerb", "rd_barrier", "veh_", "train_", "rw_rail", "rw_steel", "rw_black", "rw_yellow", "rw_red", "rw_green", "rw_white", "rw_mast", "groove", "cty_metal", "cty_cornice", "boat_", "site_", "yard_"]
 const DETAIL_RANGE: float = 450.0
+## Vertex compression for the big generated meshes (Geo batches, terrain
+## chunks, Fleet chunks): 16-bit positions within the mesh's bounding box
+## and octahedral normals - 16 bytes a vertex instead of 24 (measured,
+## RenderingServer strides; no UVs/tangents needed). Error ~1 mm in a
+## 64 m cell. (Round 2, RAM on weak machines.)
+const COMPRESS: int = Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES
 ## Long, cheap surfaces (roads, pavements, track beds, far ground) and
 ## small details batch in 256 m cells: a road running 2 km out of the
 ## map is then 8 draw calls, not 30.
@@ -149,6 +155,13 @@ static func ground_mat(tex: Texture2D, tint: Color = Color.WHITE, metres_per_til
 	m.set_shader_parameter("use_uv", uv_mapped)
 	return m
 
+## A material's ground layer: 0.. for ground_mat/ground_flat, -1 for
+## anything else (drawn without a pull: same as layer 0 against them).
+static func layer_of(m: Material) -> int:
+	if m is ShaderMaterial and (m as ShaderMaterial).shader == _layer_shader and _layer_shader != null:
+		return roundi(float((m as ShaderMaterial).get_shader_parameter("pull")) / LAYER_PULL)
+	return -1
+
 static func ground_flat(color: Color, layer: int = 1) -> ShaderMaterial:
 	return ground_mat(null, color, 1.0, layer, 0.0)
 
@@ -256,6 +269,21 @@ func _overlaps(a: Array, b: Array) -> bool:
 			if absf(ca - cb) > ea + eb + 0.15:
 				return false
 	return true
+
+## Generated pieces (see Pieces): the map's overrides by piece id, and
+## what SH_IDS shows and fingerprints.
+var pieces: Dictionary = {}
+var piece_seen: Dictionary = {}
+var piece_marks: Array = [] # [id, label position]
+var piece_mark_from: Dictionary = {}
+var piece_prints: Dictionary = {}
+
+func support_count() -> int:
+	return _support.size()
+
+## Hash of every footprint recorded since `from` (a piece's fingerprint).
+func support_hash(from: int) -> int:
+	return hash(_support.slice(from))
 
 ## Dev check (SH_FLOAT=1, and the self-test): solid pieces that float.
 ## Two ways to float:
@@ -408,6 +436,20 @@ func _filled_below(p: Vector2, y: float, o: Array) -> bool:
 		var d: Vector2 = p - q[0]
 		var qa: Vector2 = q[1]
 		if absf(d.dot(qa)) <= q[2].x + 0.1 and absf(d.dot(Vector2(-qa.y, qa.x))) <= q[2].y + 0.1:
+			return true
+	return false
+
+## Is there a piece (any recorded solid or sweep, flat ones too) at p
+## whose top lies between y0 and y1 - something holding up a surface
+## above the ground there (a bridge's arch, an abutment, a deck)?
+func solid_below(p: Vector2, y0: float, y1: float) -> bool:
+	for j: int in _sup_grid.get(Vector2i(floori(p.x / OBS_CELL), floori(p.y / OBS_CELL)), []):
+		var q: Array = _support[j]
+		if q[4] < y0 or q[4] > y1:
+			continue
+		var d: Vector2 = p - q[0]
+		var qa: Vector2 = q[1]
+		if absf(d.dot(qa)) <= q[2].x + 0.2 and absf(d.dot(Vector2(-qa.y, qa.x))) <= q[2].y + 0.2:
 			return true
 	return false
 
@@ -831,6 +873,37 @@ func pipe_path(path: Array[Vector3], r: float, mat: String, hollow_wall: float =
 
 # --- internals ---------------------------------------------------------------
 
+## A flat round disc at c facing n (a fan of `sides` triangles), not
+## solid - a wheel's rim and hub, where a cylinder a centimetre thick
+## would spend most of its vertices on a band nobody can see.
+func disc(c: Vector3, n: Vector3, r: float, mat: String, sides: int = 12) -> void:
+	n = n.normalized()
+	var u: Vector3 = n.cross(Vector3.UP if absf(n.y) < 0.99 else Vector3.RIGHT).normalized() * r
+	var v: Vector3 = n.cross(u)
+	_begin(mat, c, false)
+	_obstacle_points([c + u, c - u, c + v, c - v], false)
+	for s in range(sides):
+		var a0: float = TAU * s / sides
+		var a1: float = TAU * (s + 1) / sides
+		_tri(c, c + u * cos(a0) + v * sin(a0), c + u * cos(a1) + v * sin(a1), n, false)
+
+## Drops what only the build needs (footprints, lanes, support records
+## - tens of MB on a big map) once the map stands. Not when a floating
+## check will still ask (BuiltMap keeps them for SH_FLOAT / --selftest).
+func release_records() -> void:
+	_obs.clear()
+	_obs_grid.clear()
+	_lanes.clear()
+	_lane_grid.clear()
+	_support.clear()
+	_sup_grid.clear()
+	_lcache.clear()
+	_mat_cell.clear()
+
+## Which ends of a closed cylinder/cone get a cap (bit 0: at a, bit 1:
+## at b) - skip the ones nobody sees (a wheel's inner side) - Vehicles.
+var cap_mask: int = 3
+
 func _tube(a: Vector3, b: Vector3, r0: float, r1: float, wall: float, mat: String, sides: int, collide: bool, caps: bool, shadow: bool) -> void:
 	var d: Vector3 = b - a
 	var length: float = d.length()
@@ -885,7 +958,7 @@ func _tube(a: Vector3, b: Vector3, r0: float, r1: float, wall: float, mat: Strin
 				var i0: Vector3 = a + basis * Vector3(cos(a0) * ri, sin(a0) * ri, z)
 				var i1: Vector3 = a + basis * Vector3(cos(a1) * ri, sin(a1) * ri, z)
 				_quad(o0, o1, i1, i0, n_end, collide)
-			elif caps:
+			elif caps and (cap_mask >> end) & 1:
 				_tri(center, o0, o1, n_end, collide)
 	if shadow:
 		_shadow(pts)
@@ -1078,13 +1151,18 @@ func commit(root: Node3D) -> void:
 	root.add_child(holder)
 	for key in _batches:
 		var st: SurfaceTool = _batches[key]
-		var mesh: ArrayMesh = st.commit()
+		# Compressed vertices (16-bit positions in the batch's box, octahedral
+		# normals): 16 instead of 24 bytes a vertex, ~1 mm precision in a
+		# 64 m cell (Geo.COMPRESS, see notes/r2-flight.md).
+		var mesh: ArrayMesh = st.commit(null, COMPRESS)
 		if mesh.get_surface_count() == 0:
 			continue
 		mesh.surface_set_material(0, _mats[_batch_mat[key]])
 		var mi := MeshInstance3D.new()
 		mi.mesh = mesh
 		mi.set_meta("geo_batch", true)
+		mi.set_meta("geo_mat", _batch_mat[key]) # (SurfaceCheck: which surface is which)
+		mi.set_meta("geo_layer", layer_of(_mats[_batch_mat[key]]))
 		for pre in detail_prefixes:
 			if _batch_mat[key].begins_with(pre):
 				mi.visibility_range_end = DETAIL_RANGE

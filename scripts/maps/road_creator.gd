@@ -44,7 +44,8 @@ var mouths: Array = []
 ## start: where the road begins (y used when opts.start_y is set);
 ## heading: its first direction in degrees (Route convention).
 ## opts: start_y, radius (corners, 70), lead (straight start, 40),
-## end ("on" | "turning"), verge (gravel shoulder width, 1), bridge
+## end ("on" | "turning"), verge (gravel shoulder width, 1), hold
+## ([[Vector2 centre, y, radius], ...]: levels held there), bridge
 ## (style for the bridges on it, else BridgeCreator picks).
 static func plan(t: TerrainCreator, start: Vector3, heading: float, waypoints: Array, road_width: float = 6.5, o: Dictionary = {}) -> RoadCreator:
 	var r := RoadCreator.new()
@@ -119,6 +120,13 @@ func _grade(pts: Array[Vector3]) -> void:
 		for i in range(mini(4, n)):
 			y[i] = opts.start_y
 			fixed[i] = 1
+	# Held levels ([centre (x, z), y, radius]): e.g. at a works gate, so
+	# the road meets the yard's level rather than the ground's.
+	for h: Array in opts.get("hold", []):
+		for i in range(n):
+			if fixed[i] == 0 and Vector2(pts[i].x, pts[i].z).distance_to(h[0]) < h[2]:
+				y[i] = h[1]
+				fixed[i] = 1
 	# Rivers: a bridge span over each crossing, its deck held at
 	# CLEARANCE above the water.
 	for rv: LandLine in t.rivers:
@@ -251,9 +259,17 @@ func draw(geo: Geo, roads: Roads, rng: RandomNumberGenerator) -> Dictionary:
 	if end_style == "turning":
 		var e: Vector3 = pts[-1]
 		var circ: Array[Vector3] = []
+		# Each rim point at the road's level nearest it, as the land's bed
+		# is (a flat circle at the end of a sloping lane sank under the bed
+		# on its uphill side and the land poked through its rim).
+		var lv := func(q: Vector3) -> float:
+			var nn: Array = line.nearest(Vector2(q.x, q.z))
+			return nn[1] if not nn.is_empty() else e.y
 		for k in range(24):
 			var a: float = TAU * k / 24.0
-			circ.append(e + Vector3(cos(a) * width * 1.4, Roads.SURF, sin(a) * width * 1.4))
+			var q: Vector3 = e + Vector3(cos(a) * width * 1.4, 0, sin(a) * width * 1.4)
+			q.y = lv.call(q) + Roads.SURF
+			circ.append(q)
 		geo.polygon(circ, "rd_asphalt")
 		# A gravel verge round it, like the road's own.
 		var ring: Array = []
@@ -261,7 +277,11 @@ func draw(geo: Geo, roads: Roads, rng: RandomNumberGenerator) -> Dictionary:
 		for k in range(25):
 			var a: float = TAU * k / 24.0
 			var dv := Vector3(cos(a), 0, sin(a))
-			ring.append(PackedVector3Array([e + dv * (rr - 0.05) + Vector3(0, Roads.SURF - 0.01, 0), e + dv * (rr + opts.get("verge", 1.0)) + Vector3(0, Roads.SURF - 0.02, 0)]))
+			var r0: Vector3 = e + dv * (rr - 0.05)
+			var r1: Vector3 = e + dv * (rr + opts.get("verge", 1.0))
+			r0.y = lv.call(r0) + Roads.SURF - 0.01
+			r1.y = lv.call(r1) + Roads.SURF - 0.02
+			ring.append(PackedVector3Array([r0, r1]))
 		geo.strip(ring, "rd_verge", false)
 	for br: Array in bridges:
 		var deck: Array[Vector3] = []
@@ -334,3 +354,30 @@ func _mouth(geo: Geo, roads: Roads) -> void:
 	gl[0].y = y_start
 	gl[1].y = y_start
 	roads.dashes(gl, 0.0, 0.5, 0.5, 0.3, "rd_line")
+
+## Glitch check (self-test): points on a line's surface - a road's
+## carriageway, a railway's formation - where the terrain comes up
+## through it (more than `tol` over the surface), inside `rect`, off its
+## bridges. Samples every segment's middle at the centre and near both
+## edges. Returns [[Vector3 point, how far the ground pokes up], ...].
+static func buried(land: TerrainCreator, l: LandLine, rect: Rect2, tol: float = 0.05) -> Array:
+	var out: Array = []
+	for i in range(l.pts.size() - 1):
+		if l.bridge[i] == 1:
+			continue
+		var a: Vector3 = l.pts[i]
+		var b: Vector3 = l.pts[i + 1]
+		var m: Vector3 = (a + b) * 0.5
+		if not rect.has_point(Vector2(m.x, m.z)):
+			continue
+		var t: Vector3 = (b - a)
+		t.y = 0.0
+		if t.length() < 0.01:
+			continue
+		var side: Vector3 = Vector3(-t.z, 0, t.x).normalized()
+		for f in [-0.85, 0.0, 0.85]:
+			var q: Vector3 = m + side * l.half * f
+			var up: float = land.ground(q.x, q.z) - m.y
+			if up > tol:
+				out.append([q, snappedf(up, 0.01)])
+	return out

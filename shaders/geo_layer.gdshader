@@ -56,6 +56,7 @@ void fragment() {
 		float m2 = dot(texture(tex, wpos.zx * scale * 0.017 + vec2(0.37, 0.71)).rgb, vec3(0.333)) / mean;
 		c *= clamp(1.0 + macro * ((m1 - 1.0) * 1.2 + (m2 - 1.0) * 0.9), 0.6, 1.4);
 	}
+	c = sh_surface_detail(c, wpos, normalize(wnrm), CAMERA_POSITION_WORLD, true);
 	c = sh_apply_shadow(c, wpos, normalize(wnrm));
 	c = sh_apply_fog(c, wpos, CAMERA_POSITION_WORLD);
 	ALBEDO = c;

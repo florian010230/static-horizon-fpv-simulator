@@ -101,7 +101,7 @@ static func _chunk(rect: Rect2, s: float, h: PackedFloat32Array, nx: int, nrms: 
 	arrays[Mesh.ARRAY_COLOR] = colors
 	arrays[Mesh.ARRAY_INDEX] = idx
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, Geo.COMPRESS)
 	mesh.surface_set_material(0, mat)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh

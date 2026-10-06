@@ -24,10 +24,14 @@ const MENU_FPS: int = 30
 ## The maps themselves live in MapCatalog (scripts/map_catalog.gd).
 
 ## Where Back / Esc goes from each screen.
-const BACK_TARGET := {"mode": "main", "map": "mode", "about": "main"}
+const BACK_TARGET := {"mode": "main", "map": "mode", "about": "main", "updates": "main", "achievements": "main"}
 const WEBSITE := "https://statichorizonfpv.com/"
 
 var _settings: SettingsScreens
+var _updater: Updater
+var _updates: UpdatesScreen
+var _achievements: AchievementsScreen
+var _update_hint: Button
 
 var _screens: Dictionary = {}
 var _current: String = "main"
@@ -70,6 +74,16 @@ func _ready() -> void:
 	_screens["mode"] = _build_mode_screen(root)
 	_screens["map"] = _build_map_screen(root)
 	_screens["about"] = _build_about_screen(root)
+	_updater = Updater.new()
+	add_child(_updater)
+	_updates = UpdatesScreen.new()
+	_screens["updates"] = _updates.build(root, _updater, func(): _show("main"))
+	_achievements = AchievementsScreen.new()
+	_screens["achievements"] = _achievements.build(root, func(): _show("main"))
+	_updater.finished.connect(_refresh_update_hint)
+	Updater.note_launch()
+	_refresh_update_hint()
+	_updater.check_on_start()
 	# Settings is a shared component (also opened from the in-game pause
 	# menu); from here, closing it returns to the home screen.
 	_settings = SettingsScreens.new()
@@ -96,6 +110,12 @@ func _show(screen: String) -> void:
 		_settings.open()
 	if screen == "map":
 		_refresh_maps()
+	if screen == "updates":
+		_updates.refresh()
+	if screen == "achievements":
+		_achievements.refresh()
+	if screen == "main":
+		_refresh_update_hint()
 	# Keyboard / gamepad: something is always focused, so arrows + Enter
 	# work everywhere without the mouse.
 	var first: Control = _first_focusable(_screens.get(screen))
@@ -148,12 +168,70 @@ func _draw_horizon(c: Control) -> void:
 		var half: float = 70.0 if k % 2 == 0 else 38.0
 		c.draw_line(Vector2(s.x * 0.5 - half, y), Vector2(s.x * 0.5 + half, y), Color(1, 1, 1, 0.025), 1.0)
 
+## The quiet update line: a newer release, or (once) what's new after an
+## update. Nothing at all otherwise.
+func _refresh_update_hint() -> void:
+	if _update_hint == null:
+		return
+	if Updater.newer_available():
+		_update_hint.text = "Version %s available  ›" % Updater.latest.version
+		_update_hint.visible = true
+	elif Updater.show_whats_new_hint():
+		_update_hint.text = "What's new in %s  ›" % Updater.current_version()
+		_update_hint.visible = true
+	else:
+		_update_hint.visible = false
+
+## The main screen's corners: a small Settings button bottom left; the
+## version, the quiet "new version" / "what's new" hint and a small
+## Updates button bottom right.
+func _build_corners(screen: Control) -> void:
+	var settings := UIKit.button("Settings", "", 40)
+	settings.add_theme_font_size_override("font_size", 19)
+	settings.custom_minimum_size.x = 130
+	settings.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	settings.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	settings.offset_left = 28
+	settings.offset_bottom = -22
+	settings.pressed.connect(func(): _show("settings"))
+	screen.add_child(settings)
+	var corner := HBoxContainer.new()
+	corner.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	corner.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	corner.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	corner.offset_right = -28
+	corner.offset_bottom = -22
+	corner.alignment = BoxContainer.ALIGNMENT_END
+	corner.add_theme_constant_override("separation", 14)
+	screen.add_child(corner)
+	_update_hint = UIKit.button("", "GhostButton", 40)
+	_update_hint.add_theme_font_size_override("font_size", 17)
+	_update_hint.add_theme_color_override("font_color", UIKit.ACCENT)
+	_update_hint.visible = false
+	_update_hint.pressed.connect(func(): _show("updates"))
+	corner.add_child(_update_hint)
+	var version := Label.new()
+	version.text = "Version %s" % Updater.current_version()
+	version.theme_type_variation = "Small"
+	version.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	corner.add_child(version)
+	var upd := UIKit.button("Updates", "", 40)
+	upd.add_theme_font_size_override("font_size", 19)
+	upd.custom_minimum_size.x = 110
+	upd.pressed.connect(func(): _show("updates"))
+	corner.add_child(upd)
+
 # --- Main screen -------------------------------------------------------------
 
 func _build_main_screen(root: Control) -> Control:
+	var screen := Control.new()
+	screen.set_anchors_preset(Control.PRESET_FULL_RECT)
+	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(screen)
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	root.add_child(center)
+	screen.add_child(center)
+	_build_corners(screen)
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 80)
@@ -191,13 +269,17 @@ func _build_main_screen(root: Control) -> Control:
 	play.pressed.connect(func(): _show("mode"))
 	play.set_meta("default_focus", true)
 	left.add_child(play)
-	var settings := UIKit.button("Settings", "", 60)
-	settings.pressed.connect(func(): _show("settings"))
-	left.add_child(settings)
-	var about := UIKit.button("About", "", 52)
-	about.pressed.connect(func(): _show("about"))
-	left.add_child(about)
-	var quit := UIKit.button("Quit", "GhostButton", 52)
+	# One column of full-width rows under Play: Achievements, About, and
+	# Quit as a big plain text button (no card, as in the earlier menus).
+	# Settings sits in the bottom-left corner, Updates and the version in
+	# the bottom-right one (see _build_corners).
+	for entry in [["Achievements", func(): _show("achievements")],
+			["About", func(): _show("about")]]:
+		var b := UIKit.button(entry[0], "", 50)
+		b.pressed.connect(entry[1])
+		left.add_child(b)
+	var quit := UIKit.button("Quit", "GhostButton", 56)
+	quit.add_theme_font_size_override("font_size", 26)
 	quit.pressed.connect(func(): get_tree().quit())
 	left.add_child(quit)
 
@@ -248,7 +330,7 @@ func _build_main_screen(root: Control) -> Control:
 	_preview_text.custom_minimum_size = Vector2(0, 44)
 	card_box.add_child(_preview_text)
 	_refresh_preview_labels()
-	return center
+	return screen
 
 ## The site's real brand wordmark treatment (css/style.css, ".brand
 ## span"): Oswald at weight 600, uppercase, letter-spaced, skewed -10
@@ -459,7 +541,7 @@ func _build_about_screen(root: Control) -> Control:
 	name_label.theme_type_variation = "Title"
 	name_box.add_child(name_label)
 	var version := Label.new()
-	version.text = "Version %s  ·  free and open source (MIT licence)" % ProjectSettings.get_setting("application/config/version", "dev")
+	version.text = "Version %s  ·  free, source on GitHub (PolyForm Noncommercial licence)" % ProjectSettings.get_setting("application/config/version", "dev")
 	version.theme_type_variation = "Muted"
 	name_box.add_child(version)
 

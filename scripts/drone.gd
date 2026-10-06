@@ -341,6 +341,37 @@ var _in_contact: bool = false
 var _prop_centers: Array[Vector3] = [] # local, set by _build_collision
 var _prop_radius: float = 0.04
 
+## Prop damage (Settings.prop_damage, off by default): a hard hit chips
+## or bends a prop. prop_health is each prop's thrust left (1 = intact).
+## See _strike() for what counts as hard, _physics_process for the
+## effects (less thrust on that motor, a yaw pull from its missing drag
+## torque, vibration the PID has to fight, a shaking camera). Reset
+## (R) fits new props.
+var prop_health: Array[float] = [1.0, 1.0, 1.0, 1.0]
+## Seconds left of the OSD's "PROP DAMAGED" note after a new hit.
+var prop_damage_flash: float = 0.0
+## Prop spin per motor, Betaflight's default "props in" (seen from above:
+## front right and back left counter-clockwise, the others clockwise);
+## +1 = counter-clockwise = +Y. A prop's drag torque turns the frame the
+## other way, so a weaker prop leaves a pull in its own spin direction.
+const PROP_SPIN: Array[float] = [1.0, -1.0, -1.0, 1.0]
+## Impact speed (m/s, along the contact normal) from which a hit damages
+## a prop; guards/ducts take the first knocks. Damage per m/s above it,
+## at most PROP_HIT_MAX per hit, never below PROP_HEALTH_MIN: a chipped
+## prop flies on, worse - not punishing, a bad crash or two is noticeable.
+const PROP_HIT_SPEED: float = 3.0
+const PROP_HIT_SPEED_GUARDED: float = 5.5
+const PROP_HIT_PER_MPS: float = 0.05
+const PROP_HIT_MAX: float = 0.2
+const PROP_HEALTH_MIN: float = 0.6
+var _hit_cool: Array[float] = [0.0, 0.0, 0.0, 0.0]
+var _hit_now: Array[float] = [0.0, 0.0, 0.0, 0.0]
+var _vel_hist: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO] # last steps, newest last
+var _prev_ang_vel := Vector3.ZERO
+var _guarded: bool = false
+var _vib_noise := FastNoiseLite.new()
+var _vib_t: float = 0.0
+
 ## Collision shape layout (see _build_collision): index 0 body, 1 nose
 ## (camera), 2..5 one sphere per prop, in motor order.
 const SHAPE_PROP_FIRST: int = 2
@@ -407,6 +438,7 @@ func apply_profile(profile_name: String) -> void:
 		Vector3(-arm_length, 0.0, arm_length),  # back left
 	]
 
+	_guarded = p.visual.get("has_prop_guards", false)
 	_build_collision(p)
 	_rebuild_visual(p.visual)
 	var sound := get_node_or_null("MotorSound")
@@ -523,6 +555,48 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		elif rel.dot(up) > 0.0:
 			for m in range(4):
 				_prop_blocked[m] = PROP_SPINUP_TIME
+		if Settings.prop_damage:
+			_strike(state, i, shape_idx)
+	# One crash = one hit per prop (the worst contact of this step); then a
+	# short cool-down while it bounces and scrapes along.
+	for m in range(4):
+		if _hit_now[m] >= 0.01 and _hit_cool[m] <= 0.0:
+			prop_health[m] = maxf(prop_health[m] - _hit_now[m], PROP_HEALTH_MIN)
+			prop_damage_flash = 2.5
+			_hit_cool[m] = 0.5
+		_hit_now[m] = 0.0
+	_vel_hist.pop_front()
+	_vel_hist.append(state.linear_velocity)
+	_prev_ang_vel = state.angular_velocity
+
+## A hit on anything: how fast the touching point was moving into the
+## obstacle over the last few steps (by the time a contact is reported
+## the solver has already eaten most of the speed - measured: an 11 m/s
+## crash read 4 m/s one step back), and which prop is nearest to it. A prop takes a hit through its own
+## sphere, or through the frame at speed (a crash lands on the props).
+func _strike(state: PhysicsDirectBodyState3D, i: int, shape_idx: int) -> void:
+	var at: Vector3 = state.get_contact_local_position(i)
+	var r: Vector3 = at - state.transform.origin
+	var n: Vector3 = state.get_contact_local_normal(i)
+	var other: Vector3 = state.get_contact_collider_velocity_at_position(i)
+	var impact: float = 0.0
+	for v in _vel_hist:
+		impact = maxf(impact, -(v + _prev_ang_vel.cross(r) - other).dot(n))
+	var limit: float = PROP_HIT_SPEED_GUARDED if _guarded else PROP_HIT_SPEED
+	if shape_idx < SHAPE_PROP_FIRST or shape_idx >= SHAPE_PROP_FIRST + 4:
+		limit *= 1.6 # the frame took it; the props catch only part of it
+	if impact <= limit:
+		return
+	var local: Vector3 = state.transform.basis.inverse() * r
+	var m: int = 0
+	for k in range(1, 4):
+		if local.distance_to(_prop_centers[k]) < local.distance_to(_prop_centers[m]):
+			m = k
+	if shape_idx >= SHAPE_PROP_FIRST and shape_idx < SHAPE_PROP_FIRST + 4:
+		m = shape_idx - SHAPE_PROP_FIRST
+	# A spinning prop shatters, a stopped one mostly survives.
+	var spin: float = 0.3 + 0.7 * rpm_fraction if InputManager.armed else 0.25
+	_hit_now[m] = maxf(_hit_now[m], minf((impact - limit) * PROP_HIT_PER_MPS, PROP_HIT_MAX) * spin)
 
 func _physics_process(delta: float) -> void:
 	if linear_velocity.length() > MAX_LINEAR_SPEED:
@@ -541,7 +615,11 @@ func _physics_process(delta: float) -> void:
 	_yaw_pid.kd = yaw_d
 
 	_apply_camera_settings()
+	_update_wind(delta)
 	_apply_drag()
+	prop_damage_flash = maxf(prop_damage_flash - delta, 0.0)
+	for m in range(4):
+		_hit_cool[m] = maxf(_hit_cool[m] - delta, 0.0)
 	_update_flip_recovery(delta)
 	battery.step(delta, _last_total_thrust / (4.0 * max_motor_thrust_n), InputManager.armed)
 	if InputManager.armed:
@@ -658,6 +736,8 @@ func _physics_process(delta: float) -> void:
 		# with a first-order lag (motor_tau, see PROFILES).
 		_motor_cmd[i] = lerpf(_motor_cmd[i], clampf(thrusts[i], idle, max_motor_thrust_n), k_motor)
 		var thrust: float = _motor_cmd[i] * sag * aero
+		if Settings.prop_damage:
+			thrust *= prop_health[i]
 		if _prop_blocked[i] > 0.0:
 			# Recovering linearly over the spin-up time once free again.
 			thrust *= lerpf(1.0, PROP_STRIKE_THRUST, _prop_blocked[i] / PROP_SPINUP_TIME)
@@ -672,6 +752,47 @@ func _physics_process(delta: float) -> void:
 	apply_torque(up_global * clampf(yaw_torque, -max_yaw_torque, max_yaw_torque))
 	_last_total_thrust = total_thrust
 	rpm_fraction = sqrt(clampf(total_thrust / (4.0 * max_motor_thrust_n), 0.0, 1.0))
+	if Settings.prop_damage:
+		_damaged_props(delta, up_global)
+
+## A damaged prop: its missing drag torque leaves a yaw pull in its spin
+## direction (the yaw PID holds it, the I-term trims it out), and the
+## imbalance shakes the frame. The real shake is once per revolution
+## (300-500 Hz on a 3"), far above the physics rate - what reaches the
+## flight is the part the gyro filters let through, here a ~20 Hz random
+## roll/pitch torque growing with the damage and the rpm.
+func _damaged_props(delta: float, up: Vector3) -> void:
+	var loss: float = 0.0
+	var yaw: float = 0.0
+	for i in range(4):
+		var l: float = 1.0 - prop_health[i]
+		loss += l
+		yaw += PROP_SPIN[i] * yaw_torque_per_newton * _motor_cmd[i] * l
+	if loss <= 0.0:
+		return
+	apply_torque(up * yaw)
+	_vib_t += delta
+	var amp: float = loss * 0.15 * max_motor_thrust_n * arm_length * rpm_fraction
+	apply_torque(global_transform.basis * Vector3(
+		_vib_noise.get_noise_2d(_vib_t * 2000.0, 3.0) * amp, 0.0,
+		_vib_noise.get_noise_2d(_vib_t * 2000.0, 9.0) * amp))
+
+## Camera shake from damaged props ("jello" in the FPV feed): a small,
+## fast wobble of the camera on its mount, with the rpm.
+func _process(_delta: float) -> void:
+	if _camera == null:
+		return
+	var loss: float = 0.0
+	if Settings.prop_damage and InputManager.armed:
+		for h in prop_health:
+			loss += 1.0 - h
+	if loss <= 0.0:
+		if _camera.rotation != Vector3.ZERO:
+			_camera.rotation = Vector3.ZERO
+		return
+	var a: float = loss * 0.05 * rpm_fraction
+	var t: float = Time.get_ticks_msec() * 0.001
+	_camera.rotation = Vector3(_vib_noise.get_noise_2d(t * 3000.0, 21.0) * a, _vib_noise.get_noise_2d(t * 3000.0, 27.0) * a, 0.0)
 
 ## Motor response: real props take a moment to change speed - roughly
 ## 15 ms on a whoop's tiny props up to ~25 ms on 5" props (time constant
@@ -725,7 +846,7 @@ func _ground_effect(up: Vector3) -> float:
 ## center of mass.
 func _apply_drag() -> void:
 	# Drag acts on airspeed, so wind is just moving air (see _wind()).
-	var air: Vector3 = linear_velocity - _wind()
+	var air: Vector3 = linear_velocity - wind_velocity
 	var speed_sq: float = air.length_squared()
 	if speed_sq > 0.0001:
 		apply_central_force(-air.normalized() * drag_coefficient * speed_sq)
@@ -738,24 +859,86 @@ func _apply_drag() -> void:
 		-rotor_drag_planar * v_local.z) * mass * rotor_speed_ratio
 	apply_central_force(b * rotor_drag_local)
 
-## Wind (Settings.wind_level) on outdoor maps: a steady breeze from one
-## direction per map, plus slow gusts and a little turbulence from noise
-## over time - weaker near the ground (surface friction). Light ~3 m/s,
-## gusty ~7 m/s peaking near 11 m/s.
+## Wind (Settings.wind_level) on outdoor maps, as moving air the drag
+## model sees (see _apply_drag) - never a raw force. Indoor maps: none.
+##
+## Built like the wind engineers' standard model of the lowest few
+## hundred metres:
+## - Mean speed (Settings.WIND_SPEEDS: 3 / 6 / 10 m/s at 10 m - Beaufort
+##   2, 4 and 5) over height above ground by the log law
+##   u(z) = u10 * ln(z / z0) / ln(10 / z0), z0 = 0.1 m (open country with
+##   hedges and houses): ~0.5x at 1 m, 1.3x at 50 m.
+## - Turbulence intensity Iu = 1 / ln(z / z0) (Eurocode EN 1991-1-4,
+##   4.4: ~22% at 10 m, ~33% at 2 m); lateral 0.75 Iu, vertical 0.5 Iu
+##   (the usual ratios, e.g. ESDU 85020). The turbulence is "frozen"
+##   (Taylor): a 3D noise field that drifts with the wind over the map,
+##   so flying through it upwind feels choppier than drifting with it.
+## - Gusts: a slow swell of the mean speed (10-20 s), peaks ~1.4x the
+##   mean - a typical gust factor over open land.
+## - Shelter: under a roof or a tree (a ray up hits something) almost
+##   still; in the lee of a building, wall or tree line (a ray upwind hits
+##   it close) much weaker. Rays 10 times a second, smoothed.
+const WIND_Z0: float = 0.1
+const WIND_TURB_SCALE: float = 25.0 ## m, size of the turbulent eddies
 var _indoor: bool = false
 var _wind_noise := FastNoiseLite.new()
 var _wind_t: float = 0.0
 var _wind_dir: Vector3 = Vector3(1, 0, 0.3).normalized()
+var _shelter: float = 1.0
+var _shelter_target: float = 1.0
+var _wind_agl: float = 10.0
+var _wind_ray_t: float = 0.0
+## The wind at the drone this step (for the OSD/tests).
+var wind_velocity := Vector3.ZERO
+
+func _update_wind(delta: float) -> void:
+	if Settings.wind_level <= 0 or _indoor:
+		wind_velocity = Vector3.ZERO
+		return
+	_wind_t += delta
+	_wind_ray_t -= delta
+	if _wind_ray_t <= 0.0:
+		_wind_ray_t = 0.1
+		var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+		var p: Vector3 = global_position
+		var down: Dictionary = _ray(space, p, p + Vector3.DOWN * 80.0)
+		_wind_agl = p.distance_to(down.position) if down else 80.0
+		var shelter: float = 1.0
+		if _ray(space, p, p + Vector3.UP * 30.0):
+			shelter = 0.12 # roof, bridge, tree crown overhead
+		var up_wind: Dictionary = _ray(space, p, p - _wind_dir * 20.0)
+		if up_wind:
+			shelter = minf(shelter, lerpf(0.35, 1.0, p.distance_to(up_wind.position) / 20.0))
+		_shelter_target = shelter
+	_shelter = lerpf(_shelter, _shelter_target, 1.0 - exp(-delta / 0.4))
+	wind_velocity = _wind()
+
+func _ray(space: PhysicsDirectSpaceState3D, a: Vector3, b: Vector3) -> Dictionary:
+	var q := PhysicsRayQueryParameters3D.create(a, b)
+	q.exclude = [get_rid()]
+	return space.intersect_ray(q)
 
 func _wind() -> Vector3:
-	if Settings.wind_level <= 0 or _indoor:
+	var level: int = clampi(Settings.wind_level, 0, Settings.WIND_SPEEDS.size() - 1)
+	if level <= 0 or _indoor:
 		return Vector3.ZERO
-	_wind_t += get_physics_process_delta_time()
-	var base: float = 3.0 if Settings.wind_level == 1 else 7.0
-	var gust: float = (_wind_noise.get_noise_1d(_wind_t * 8.0) * 0.5 + 0.5) * (0.4 if Settings.wind_level == 1 else 0.6)
-	var turb := Vector3(_wind_noise.get_noise_2d(_wind_t * 40.0, 1.0), _wind_noise.get_noise_2d(_wind_t * 40.0, 2.0) * 0.4, _wind_noise.get_noise_2d(_wind_t * 40.0, 3.0))
-	var height: float = clampf((global_position.y - _spawn_transform.origin.y) / 10.0, 0.25, 1.0)
-	return (_wind_dir * base * (1.0 + gust) + turb * base * 0.25) * height
+	var z: float = clampf(_wind_agl, 0.3, 120.0)
+	var lnz: float = log(maxf(z, WIND_Z0 * 3.0) / WIND_Z0)
+	var u: float = Settings.WIND_SPEEDS[level] * lnz / log(10.0 / WIND_Z0)
+	var iu: float = clampf(1.0 / lnz, 0.12, 0.45)
+	# Slow gusts and a direction that wanders +-15 degrees.
+	var gust: float = maxf(_wind_noise.get_noise_2d(_wind_t * 6.0, 50.0), -0.3) * 0.8
+	var dir: Vector3 = _wind_dir.rotated(Vector3.UP, _wind_noise.get_noise_2d(_wind_t * 2.0, 80.0) * 0.5)
+	var side: Vector3 = dir.cross(Vector3.UP)
+	# Frozen turbulence drifting downwind. (FastNoiseLite's default fractal
+	# noise has a standard deviation of ~0.23, measured: /0.23 makes it ~1.)
+	var q: Vector3 = (global_position - dir * u * _wind_t) * (100.0 / WIND_TURB_SCALE)
+	var tu: float = _wind_noise.get_noise_3d(q.x, q.y, q.z) / 0.23
+	var tv: float = _wind_noise.get_noise_3d(q.x + 500.0, q.y, q.z) / 0.23
+	var tw: float = _wind_noise.get_noise_3d(q.x, q.y + 500.0, q.z) / 0.23
+	var sigma: float = u * iu
+	var w: Vector3 = dir * (u * (1.0 + gust) + tu * sigma) + side * tv * sigma * 0.75 + Vector3.UP * tw * sigma * 0.5
+	return w * _shelter
 
 func _reset_controller() -> void:
 	_roll_pid.reset()
@@ -875,6 +1058,8 @@ func flip_upright() -> void:
 
 func reset_to_spawn() -> void:
 	battery.reset()
+	prop_health = [1.0, 1.0, 1.0, 1.0]
+	prop_damage_flash = 0.0
 	flight_time = 0.0
 	global_transform = _spawn_transform
 	linear_velocity = Vector3.ZERO

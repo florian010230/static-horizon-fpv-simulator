@@ -15,40 +15,6 @@ static func grass_texture(size: int = 128) -> ImageTexture:
 			var n: float = (noise.get_noise_2d(x, y) + 1.0) * 0.5
 			img.set_pixel(x, y, low.lerp(high, n))
 	return ImageTexture.create_from_image(img)
-
-static func brick_texture(size: int = 128) -> ImageTexture:
-	var brick_color := Color(0.5, 0.27, 0.2)
-	var mortar_color := Color(0.72, 0.69, 0.64)
-	var window_color := Color(0.25, 0.32, 0.38)
-	var window_frame := Color(0.85, 0.83, 0.78)
-	var img := Image.create(size, size, false, Image.FORMAT_RGB8)
-	var brick_h: int = size / 8
-	var brick_w: int = size / 4
-	var mortar: int = max(1, size / 48)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 2
-	# A 2x2 grid of windows per tile, brick fills the rest - reads as a
-	# regular office/apartment facade once the texture repeats across a
-	# whole building face.
-	var cell: int = size / 2
-	var win_margin: int = cell / 5
-	for y in range(size):
-		var row: int = int(y / float(brick_h))
-		var offset: int = (brick_w / 2) if (row % 2 == 1) else 0
-		var cy: int = y % cell
-		for x in range(size):
-			var cx: int = x % cell
-			if cx >= win_margin and cx < cell - win_margin and cy >= win_margin and cy < cell - win_margin:
-				var is_frame: bool = cx < win_margin + 2 or cx >= cell - win_margin - 2 or cy < win_margin + 2 or cy >= cell - win_margin - 2
-				img.set_pixel(x, y, window_frame if is_frame else window_color)
-				continue
-			var xx: int = (x + offset) % brick_w
-			var yy: int = y % brick_h
-			if xx < mortar or yy < mortar:
-				img.set_pixel(x, y, mortar_color)
-			else:
-				var shade: float = 1.0 + rng.randf_range(-0.06, 0.06)
-				img.set_pixel(x, y, Color(brick_color.r * shade, brick_color.g * shade, brick_color.b * shade))
 	return ImageTexture.create_from_image(img)
 
 ## Baked panel seams + an AO gradient toward each seam, in place of real
@@ -391,17 +357,6 @@ static func field_texture() -> ImageTexture:
 	for x in range(128):
 		var v: float = 0.78 + 0.22 * sin(x / 128.0 * 8.0 * TAU)
 		img.fill_rect(Rect2i(x, 0, 1, 128), Color(v, v, v))
-	img.generate_mipmaps()
-	return ImageTexture.create_from_image(img)
-
-## Tunnel/culvert ceiling: dark concrete, and optionally a strip of lamp
-## fittings down the middle (u = 0.5, running along v - the tunnel's
-## length under world projection).
-static func tube_ceiling_texture(lamps: bool) -> ImageTexture:
-	var img := plaster_image(64, 0.26, 0.34, 45)
-	if lamps:
-		for i in range(4):
-			img.fill_rect(Rect2i(28, i * 16 + 2, 8, 10), Color(1, 0.97, 0.88))
 	img.generate_mipmaps()
 	return ImageTexture.create_from_image(img)
 

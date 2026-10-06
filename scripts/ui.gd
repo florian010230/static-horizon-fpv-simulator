@@ -90,19 +90,15 @@ static func _osd_font() -> Font:
 		_mono = f
 	return _mono
 
-var _video: ColorRect
+var video: FpvVideo
 
 func _build_osd() -> void:
-	# The analog look goes under the OSD: in real goggles the OSD text is
-	# overlaid on the (noisy) picture, so it stays crisp.
-	_video = ColorRect.new()
-	_video.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_video.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var vm := ShaderMaterial.new()
-	vm.shader = preload("res://shaders/analog_video.gdshader")
-	_video.material = vm
-	_root.add_child(_video)
-	_root.move_child(_video, 0)
+	# The camera look (and lens) goes under the OSD: in real goggles the
+	# OSD text is overlaid on the (noisy) picture, so it stays crisp.
+	video = FpvVideo.new()
+	video.setup(self)
+	_root.add_child(video)
+	_root.move_child(video, 0)
 	# Stick overlay: both gimbals at the bottom centre, as the radio reads
 	# them (Mode 2: throttle/yaw left, pitch/roll right).
 	_sticks = Control.new()
@@ -124,19 +120,12 @@ func _build_osd() -> void:
 	_osd_label("alt", Control.PRESET_CENTER_RIGHT, Vector2(-48, -36), HORIZONTAL_ALIGNMENT_RIGHT, 24)
 	_osd_label("spd", Control.PRESET_CENTER_RIGHT, Vector2(-48, -2), HORIZONTAL_ALIGNMENT_RIGHT, 24)
 	_osd_label("time", Control.PRESET_CENTER_RIGHT, Vector2(-48, 32), HORIZONTAL_ALIGNMENT_RIGHT, 24)
+	_osd_label("lq", Control.PRESET_CENTER_RIGHT, Vector2(-48, 66), HORIZONTAL_ALIGNMENT_RIGHT, 24)
 	_osd_label("warn", Control.PRESET_CENTER, Vector2(0, 70), HORIZONTAL_ALIGNMENT_CENTER, 30)
 
 func _update_osd(delta: float) -> void:
 	if _osd == null:
 		_build_osd()
-	var vs: float = Settings.VIDEO_EFFECT_STRENGTH[clampi(Settings.video_effect, 0, 2)]
-	var fish: float = [0.0, 0.22, 0.5][clampi(Settings.lens_fisheye, 0, 2)] if _los_cam == null else 0.0
-	_video.visible = vs > 0.0 or fish > 0.0
-	var vm := _video.material as ShaderMaterial
-	vm.set_shader_parameter("strength", vs)
-	vm.set_shader_parameter("fisheye", fish)
-	var vsz: Vector2 = get_viewport().get_visible_rect().size
-	vm.set_shader_parameter("aspect", vsz.x / maxf(vsz.y, 1.0))
 	_sticks.visible = Settings.stick_overlay and _drone != null
 	if _sticks.visible:
 		_sticks.queue_redraw()
@@ -147,7 +136,7 @@ func _update_osd(delta: float) -> void:
 	var t: int = int(_drone.flight_time)
 	var bat_on: bool = Settings.battery_enabled
 	var osd_on: bool = Settings.osd_enabled
-	_osd_labels.bat.text = "%.1fV  %.2fV" % [b.pack_v(), b.cell_v]
+	_osd_labels.bat.text = "%.1fV  %.2fV/cell" % [b.pack_v(), b.cell_v]
 	_osd_labels.mah.text = "%dmAh" % int(b.used_mah)
 	_osd_labels.time.text = "%02d:%02d" % [t / 60, t % 60]
 	for k in ["bat", "mah"]:
@@ -157,7 +146,18 @@ func _update_osd(delta: float) -> void:
 	_osd_labels.spd.text = "SPD " + Settings.speed_text(_drone.linear_velocity.length())
 	for k in ["thr", "alt", "spd", "time"]:
 		_osd_labels[k].visible = osd_on
-	var warn: String = "LOW BATTERY" if bat_on and InputManager.armed and b.is_low() else ""
+	# Video link quality (FpvVideo) - not on the Clean camera.
+	_osd_labels.lq.visible = osd_on and video.link_quality >= 0
+	_osd_labels.lq.text = "LQ %d" % video.link_quality
+	_osd_labels.lq.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3) if video.link_quality < 40 else Color.WHITE)
+	# Betaflight's warnings (see Battery): LOW BATTERY under 3.5 V per cell,
+	# LAND NOW under 3.3 V, then the pack is flat. Also shown disarmed
+	# once the pack is empty - R fits a fresh one.
+	var warn: String = b.warning() if bat_on and (InputManager.armed or b.is_empty()) else ""
+	if warn == "BATTERY EMPTY":
+		warn += "\nR = fresh pack"
+	if warn == "" and Settings.prop_damage and _drone.prop_damage_flash > 0.0:
+		warn = "PROP DAMAGED"
 	_osd_warn_t += delta
 	_osd_labels.warn.text = warn
 	_osd_labels.warn.modulate.a = 0.35 + 0.65 * absf(sin(_osd_warn_t * 5.0))
@@ -226,8 +226,14 @@ func set_drone(drone: Drone) -> void:
 	add_child(replay)
 	replay.setup(drone, self)
 
+var _flight_noted: bool = false
+
 func _process(delta: float) -> void:
 	_handle_toggle()
+	if not _flight_noted and InputManager.armed:
+		_flight_noted = true
+		var cur: Node = get_tree().current_scene
+		Achievements.note_flight(MapCatalog.for_scene(cur.scene_file_path).get("id", "") if cur else "")
 	# No mouse cursor over the FPV view; it comes back in the pause menu
 	# (which pauses this node) and with the tuning panel open.
 	var want: Input.MouseMode = Input.MOUSE_MODE_VISIBLE if _panel_visible else Input.MOUSE_MODE_HIDDEN

@@ -332,7 +332,7 @@ func _bales() -> void:
 	var base: float = INF
 	for k in range(3):
 		var q: Vector2 = s0 + ax * (k - 1) * 1.55
-		base = minf(base, _foot(q, 1.0))
+		base = minf(base, _foot(q, 1.55))
 	_stack_at = Vector3(s0.x, base, s0.y)
 	for row in range(3):
 		for k in range(3 - row):
@@ -344,14 +344,16 @@ var _stack_at := Vector3.INF
 ## Lowest ground under a round thing of radius r at q.
 func _foot(q: Vector2, r: float) -> float:
 	var lo: float = INF
-	for o: Vector2 in [Vector2.ZERO, Vector2(r, 0), Vector2(-r, 0), Vector2(0, r), Vector2(0, -r), Vector2(r, r) * 0.71, Vector2(-r, r) * 0.71, Vector2(r, -r) * 0.71, Vector2(-r, -r) * 0.71]:
+	# (Out to the corners of the square round it too: a turned bale's
+	# footprint - 2.7 x 1.5 m with its rounded ends - reaches there.)
+	for o: Vector2 in [Vector2.ZERO, Vector2(r, 0), Vector2(-r, 0), Vector2(0, r), Vector2(0, -r), Vector2(r, r), Vector2(-r, r), Vector2(r, -r), Vector2(-r, -r)]:
 		lo = minf(lo, land.ground(q.x + o.x, q.y + o.y))
 	return lo
 
 func _bale(q: Vector2, yaw: float, wrapped: bool) -> void:
 	if geo.on_lane(q, 1.0):
 		return
-	_bale_at(Vector3(q.x, _foot(q, 1.0) + 0.72, q.y), yaw, wrapped)
+	_bale_at(Vector3(q.x, _foot(q, 1.55) + 0.72, q.y), yaw, wrapped)
 
 ## A round bale lying on its side, its axis turned by yaw: straw (golden)
 ## or hay (yellow-green), the rolled layers showing as rings on its ends.

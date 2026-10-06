@@ -13,6 +13,13 @@ var geo: Geo
 var rng: RandomNumberGenerator
 var fleet: Fleet
 var trees: Array = []
+## Near the flight area the cheap boxes of a perimeter block can be real
+## town houses (CityHouseCreator, ~22 ms each): inside house_radius of
+## house_centre, up to house_cap houses in all (0 = off).
+var house_centre := Vector2.ZERO
+var house_radius: float = 0.0
+var house_cap: int = 0
+var houses_built: int = 0
 
 const STOREY: float = 3.5
 const FACADES := ["cty_plaster", "cty_plaster_warm", "cty_plaster_grey", "cty_brick", "cty_plaster_warm", "cty_plaster"]
@@ -133,7 +140,16 @@ func perimeter_block(r: Rect2, y: float, floors_min: int = 4, floors_max: int = 
 				_:
 					c = Vector3(r.end.x - depth * 0.5, y, r.position.y + r.size.y * 0.5 + t)
 					size = Vector2(depth, seg - 0.1)
-			building(c, size, 0.0, floors, facade, roof, shops and rng.randf() < 0.75)
+			var shop: bool = shops and rng.randf() < 0.75
+			if houses_built < house_cap and Vector2(c.x, c.z).distance_to(house_centre) < house_radius:
+				# The front faces out of the block: house frame +z = outward.
+				var out: Vector3 = [Vector3(0, 0, -1), Vector3(0, 0, 1), Vector3(-1, 0, 0), Vector3(1, 0, 0)][side]
+				var frame := Transform3D(Basis.looking_at(-out, Vector3.UP), c + out * depth * 0.5)
+				var style: String = "fifties" if floors <= 3 else ("altbau" if floors <= 5 else "modern")
+				CityHouseCreator.build(geo, frame, size.x if side < 2 else size.y, depth, style, rng)
+				houses_built += 1
+			else:
+				building(c, size, 0.0, floors, facade, roof, shop)
 	var inner: Rect2 = r.grow(-depth - 3.0)
 	if inner.size.x > 8.0 and inner.size.y > 8.0:
 		for i in range(rng.randi_range(1, 3)):

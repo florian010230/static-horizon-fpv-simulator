@@ -71,10 +71,16 @@ static func _bx(geo: Geo, xf: Transform3D, c: Vector3, size: Vector3, mat: Strin
 static func _wheel(geo: Geo, xf: Transform3D, local: Vector3, r: float, w: float, collide: bool = true) -> void:
 	var c: Vector3 = xf * local
 	var ax: Vector3 = xf.basis.x.normalized() * (w * 0.5)
-	geo.cylinder(c - ax, c + ax, r, "veh_tyre", 14, collide, true, false)
 	var side: float = signf(local.x)
-	geo.cylinder(c + ax * side, c + ax * side * 1.08, r * 0.62, "veh_rim", 12, false, true, false)
-	geo.cylinder(c + ax * side * 1.08, c + ax * side * 1.16, r * 0.2, "veh_steel", 8, false, true, false)
+	# Only the outer face gets a cap (the inner one faces the car), and
+	# rim and hub are discs, not 1 cm thick cylinders: a third fewer
+	# vertices per car (Harbour parks ~2,900 of them).
+	geo.cap_mask = 2 if side > 0.0 else 1
+	geo.cylinder(c - ax, c + ax, r, "veh_tyre", 14, collide, true, false)
+	geo.cap_mask = 3
+	# Rim and hub stand ~1 cm proud: discs at their outer faces.
+	geo.disc(c + ax * side * 1.08, ax * side, r * 0.62, "veh_rim", 12)
+	geo.disc(c + ax * side * 1.16, ax * side, r * 0.2, "veh_steel", 8)
 
 ## Dimensions per kind: L, W, roof, belt, bonnet front height, bonnet
 ## length, windscreen run, roof length, rear window run, wheel radius,
@@ -139,18 +145,18 @@ static func car(geo: Geo, p: Vector3, yaw: float, paint: String, kind: String = 
 		cab_end = zrf + 0.6
 		geo.prism(xf, [Vector2(zws + 0.02, belt), Vector2(zrf, H), Vector2(cab_end, H), Vector2(cab_end, belt)], gw, glass, true, false)
 		geo.prism(xf, [Vector2(cab_end, belt), Vector2(cab_end, H), Vector2(zr - 0.02, H), Vector2(zr - 0.02, belt)], W - 0.04, mat)
-		geo.prism(xf, [Vector2(zrf + 0.04, H - 0.04), Vector2(zr - 0.02, H - 0.04), Vector2(zr - 0.06, H + 0.03), Vector2(zrf + 0.12, H + 0.03)], W - 0.08, mat, false, false)
+		geo.prism(xf, [Vector2(zrf + 0.04, H - 0.04), Vector2(zr - 0.02, H - 0.04), Vector2(zr - 0.06, H + 0.05), Vector2(zrf + 0.12, H + 0.05)], W - 0.08, mat, false, false)
 	elif kind == "pickup":
 		cab_end = zrr + 0.12
 		geo.prism(xf, [Vector2(zws + 0.02, belt), Vector2(zrf, H), Vector2(zrr, H), Vector2(cab_end, belt)], gw, glass, true, false)
-		geo.prism(xf, [Vector2(zrf + 0.04, H - 0.04), Vector2(zrr - 0.02, H - 0.04), Vector2(zrr - 0.06, H + 0.03), Vector2(zrf + 0.12, H + 0.03)], gw - 0.04, mat, false, false)
+		geo.prism(xf, [Vector2(zrf + 0.04, H - 0.04), Vector2(zrr - 0.02, H - 0.04), Vector2(zrr - 0.06, H + 0.05), Vector2(zrf + 0.12, H + 0.05)], gw - 0.04, mat, false, false)
 		# The load bed: side walls and tailgate round an open floor.
 		for sx in [-1.0, 1.0]:
 			_bx(geo, xf, Vector3(sx * (W * 0.5 - 0.05), belt + 0.22, (cab_end + zr) * 0.5 + 0.05), Vector3(0.1, 0.44, zr - cab_end - 0.1), mat, true)
 		_bx(geo, xf, Vector3(0, belt + 0.22, zr - 0.06), Vector3(W - 0.1, 0.44, 0.1), mat, true)
 	else:
 		geo.prism(xf, [Vector2(zws + 0.02, belt), Vector2(zrf, H), Vector2(zrr, H), Vector2(zrb, belt)], gw, glass, true, false)
-		geo.prism(xf, [Vector2(zrf + 0.04, H - 0.04), Vector2(zrr - 0.02, H - 0.04), Vector2(zrr - 0.08, H + 0.03), Vector2(zrf + 0.12, H + 0.03)], gw - 0.04, mat, false, false)
+		geo.prism(xf, [Vector2(zrf + 0.04, H - 0.04), Vector2(zrr - 0.02, H - 0.04), Vector2(zrr - 0.08, H + 0.05), Vector2(zrf + 0.12, H + 0.05)], gw - 0.04, mat, false, false)
 	# Pillars (A, B, C) in body colour over the glass.
 	var px: float = gw * 0.5 + 0.005
 	for sx in [-1.0, 1.0]:

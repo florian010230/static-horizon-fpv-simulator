@@ -135,8 +135,8 @@ static func material(style: Dictionary, part: String, building_size: Vector3 = V
 	_materials[key] = mat
 	return mat
 
-## Everything the layout generator tagged by surface type (see the node
-## groups in Main.tscn / Main2.tscn) - world-space top projection, so a 200 m road
+## Everything a hand-made scene tagged by surface type (node groups -
+## the school, Main3.tscn) - world-space top projection, so a 200 m road
 ## and a 5 m ramp get the same texture density without per-node UV
 ## scales.
 static func apply_ground_surfaces(tree: SceneTree) -> void:
@@ -155,83 +155,6 @@ static func apply_ground_surfaces(tree: SceneTree) -> void:
 			mat.albedo_texture = tex
 			mat.uv1_triplanar = true
 			mat.uv1_world_triplanar = true
-			mat.uv1_scale = Vector3(1.0 / tile, 1.0 / tile, 1.0 / tile)
-
-## A big grass plane under the playable ground, reaching to the horizon
-## (visual only, no collision). Past the 500 m ground box the sky's dark
-## "underside" used to show through below the horizon - looking toward
-## the map edge from any height made the landscape go dark.
-## Grass from the map's 500 m ground plate out to the horizon: a ring
-## of four strips round the plate, at exactly its height - not one big
-## plane under it (an earlier version lay 3 cm below the plate and the
-## two flickered through each other at every distance).
-static func add_far_ground(root: Node3D, top_y: float, inner_half: float = 250.0, outer_half: float = 3000.0) -> void:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_texture = ProceduralTextures.grass_texture()
-	mat.uv1_triplanar = true
-	mat.uv1_world_triplanar = true
-	mat.uv1_scale = Vector3(1.0 / 7.0, 1.0 / 7.0, 1.0 / 7.0)
-	var i: float = inner_half
-	var o: float = outer_half
-	for r in [Rect2(-o, -o, 2.0 * o, o - i), Rect2(-o, i, 2.0 * o, o - i), Rect2(-o, -i, o - i, 2.0 * i), Rect2(i, -i, o - i, 2.0 * i)]:
-		var plane := PlaneMesh.new()
-		plane.size = r.size
-		plane.material = mat
-		var mi := MeshInstance3D.new()
-		mi.name = "FarGround"
-		mi.mesh = plane
-		mi.position = Vector3(r.get_center().x, top_y, r.get_center().y)
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		root.add_child(mi)
-
-## Streets that reach the edge of a hand-made map's ground plate carry
-## on past it to the horizon (same width, height and surface), so no
-## road just stops at the map edge. Finds them itself: long, flat box
-## meshes with an end at the plate's edge.
-static func extend_edge_roads(root: Node3D, half: float = 250.0, to: float = 3000.0) -> void:
-	var found: Array = []
-	_find_edge_strips(root, half, found)
-	for mi: MeshInstance3D in found:
-		var box: AABB = mi.global_transform * mi.get_aabb()
-		var along_x: bool = box.size.x > box.size.z
-		var mat: Material = mi.get_surface_override_material(0) if mi.get_surface_override_material_count() > 0 else null
-		if mat == null:
-			mat = mi.mesh.surface_get_material(0)
-		var ext_mat: StandardMaterial3D = null
-		if mat is StandardMaterial3D:
-			ext_mat = (mat as StandardMaterial3D).duplicate()
-			ext_mat.uv1_triplanar = true
-			ext_mat.uv1_world_triplanar = true
-			ext_mat.uv1_scale = Vector3.ONE / 6.0
-		for sgn in [-1.0, 1.0]:
-			var end: float = (box.end.x if sgn > 0.0 else box.position.x) if along_x else (box.end.z if sgn > 0.0 else box.position.z)
-			if absf(absf(end) - half) > 3.0 or signf(end) != sgn:
-				continue
-			var length: float = to - absf(end)
-			var m := BoxMesh.new()
-			m.size = Vector3(length, box.size.y, box.size.z) if along_x else Vector3(box.size.x, box.size.y, length)
-			m.material = ext_mat if ext_mat else mat
-			var ext := MeshInstance3D.new()
-			ext.name = "EdgeRoad"
-			ext.mesh = m
-			var c: Vector3 = box.get_center()
-			ext.position = Vector3(end + sgn * length * 0.5, c.y, c.z) if along_x else Vector3(c.x, c.y, end + sgn * length * 0.5)
-			root.add_child(ext)
-
-static func _find_edge_strips(node: Node, half: float, out: Array) -> void:
-	if node is MeshInstance3D and (node as MeshInstance3D).mesh is BoxMesh:
-		var mi := node as MeshInstance3D
-		var box: AABB = mi.global_transform * mi.get_aabb()
-		var long: float = maxf(box.size.x, box.size.z)
-		var short: float = minf(box.size.x, box.size.z)
-		if box.size.y < 0.6 and long > 40.0 and short < 16.0 and box.position.y < 1.5:
-			var along_x: bool = box.size.x > box.size.z
-			var e0: float = box.position.x if along_x else box.position.z
-			var e1: float = box.end.x if along_x else box.end.z
-			if absf(absf(e0) - half) < 3.0 or absf(absf(e1) - half) < 3.0:
-				out.append(mi)
-	for c in node.get_children():
-		_find_edge_strips(c, half, out)
 
 static func glass_material() -> StandardMaterial3D:
 	if _materials.has("glass"):

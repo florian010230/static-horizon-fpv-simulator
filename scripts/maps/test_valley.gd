@@ -47,8 +47,36 @@ func border() -> Array:
 func _height(x: float, z: float) -> float:
 	return land.ground(x, z)
 
+func after_build() -> void:
+	var gx: float = GREEN.x - 7.0
+	var gz: float = GREEN.z - 3.0
+	Collectibles.gnome(self, "test_valley", 0, Transform3D(Basis(Vector3.UP, 1.2), Vector3(gx, land.ground(gx, gz), gz)))
+
 func preview_views() -> Array:
 	return _views
+
+## Loaded from the map cache after the first build (MapCache): all the
+## script keeps is the land's height grid and the preview views.
+func cacheable() -> bool:
+	return true
+
+func cache_state() -> Dictionary:
+	return {"views": _views, "land": land.grid_state()}
+
+func restore_state(state: Dictionary) -> void:
+	_views = state.views
+	land = TerrainCreator.from_grid_state(state.land)
+
+## Per-piece overrides (Pieces): fly with SH_IDS=1 to see every
+## piece's id over it. Examples - uncomment to try:
+func pieces() -> Dictionary:
+	return {
+		# "plot 108,-21": {"storeys": 1, "roof": "hip", "fence": "wall"}, # a bungalow behind a low wall
+		# "plot 109,-45": {"remove": true}, # leave the plot empty
+		# "plot 106,4": {"seed": 12}, # another house and garden altogether
+		# "town 124,-250": {"style": "modern", "shop": true, "shop_name": "Eiscafé"},
+		# "field 235,295": {"crop": "maize"},
+	}
 
 func build() -> void:
 	var t0: int = Time.get_ticks_msec()
@@ -136,7 +164,9 @@ func build() -> void:
 	StreetKit.give_way(geo, works_rd)
 	# --- the town's houses ---
 	var tt0: int = Time.get_ticks_msec()
-	var town_views: Array = CityHouseCreator.build_row(geo, town_lots, 41).views
+	var town: Dictionary = CityHouseCreator.build_row(geo, town_lots, 41)
+	var town_views: Array = town.views
+	trees.append_array(town.trees) # the courtyards' trees
 	var tt1: int = Time.get_ticks_msec()
 	# --- the industrial estate ---
 	var works_views: Array = _works(works, lrng)
@@ -155,7 +185,19 @@ func build() -> void:
 	frng.seed = 51
 	var farm_views: Array = fv.views
 	for fd: Array in FIELDS:
-		var fi: Dictionary = FieldCreator.build(geo, land, fd[1], fd[0], frng, {"hedges": fd[2]})
+		# Each field its own random numbers (a piece, see Pieces): no
+		# field changes when another one does.
+		var fc := Vector3.ZERO
+		for q: Vector2 in fd[1]:
+			fc += Vector3(q.x, 0, q.y) * 0.25
+		var fid: String = Pieces.id_at("field", fc)
+		var fov: Dictionary = Pieces.override(geo, fid)
+		var fr_rng := RandomNumberGenerator.new()
+		fr_rng.seed = fov.get("seed", Pieces.seed_of(fid, 51))
+		var fy: float = land.ground(fc.x, fc.z)
+		Pieces.begin(geo, fid, fc + Vector3(0, fy + 8.0, 0), [fc + Vector3(-40.0, fy + 25.0, 40.0), fc + Vector3(0, fy, 0)])
+		var fi: Dictionary = FieldCreator.build(geo, land, fd[1], fov.get("crop", fd[0]), fr_rng, {"hedges": fd[2]})
+		Pieces.end(geo, fid, fi.trees)
 		trees.append_array(fi.trees)
 		farm_views.append_array(fi.views)
 	# A tractor out on the stubble, loading the bales.

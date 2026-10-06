@@ -34,6 +34,13 @@ static func ensure_materials(g: Geo) -> void:
 	g.add_material("in_paint", Geo.flat_mat(Color.WHITE, 0.5))
 	g.add_material("in_brick", Geo.tex_mat(MapTextures.get_tex("dark_brick"), Color(1.1, 1.0, 0.95), 3.0))
 	g.add_material("ind_paint", Geo.flat_mat(Color.WHITE, 0.5))
+	g.add_material("ind_mark", Geo.ground_flat(Color.WHITE, 3)) # painted lines on a floor or yard (a layer: they never flicker)
+	# The hall floor: lit by the roof glazing, not left in the roof's
+	# shadow (the shadow map can't see light through glass).
+	g.add_material("in_floor", Geo.tex_mat(MapTextures.get_tex("concrete_slab"), Color(1.05, 1.05, 1.03), 6.0))
+	g.material("in_floor").set_meta("no_shadow", true)
+	g.add_material("in_lamp", Geo.flat_mat(Color(1.6, 1.6, 1.5), 0.5)) # lit: never shaded darker
+	g.material("in_lamp").set_meta("no_shadow", true)
 	g.detail_prefixes.append("ind_")
 	Vehicles.ensure_materials(g)
 
@@ -56,8 +63,8 @@ static func yard(g: Geo, site: Dictionary) -> void:
 	# Painted lanes: a yellow line round the inside of the site.
 	g.tint = Color(0.95, 0.8, 0.15)
 	for s in [-1.0, 1.0]:
-		g.box(o + Vector3(0, 0.01, s * (h.y - 3.0)), Vector3(h.x * 2.0 - 6.0, 0.02, 0.15), "ind_paint", 0.0, false, false)
-		g.box(o + Vector3(s * (h.x - 3.0), 0.01, 0), Vector3(0.15, 0.02, h.y * 2.0 - 6.0), "ind_paint", 0.0, false, false)
+		g.box(o + Vector3(0, 0.01, s * (h.y - 3.0)), Vector3(h.x * 2.0 - 6.0, 0.02, 0.15), "ind_mark", 0.0, false, false)
+		g.box(o + Vector3(s * (h.x - 3.0), 0.01, 0), Vector3(0.15, 0.02, h.y * 2.0 - 6.0), "ind_mark", 0.0, false, false)
 	g.tint = Color.WHITE
 
 # --- the hall ------------------------------------------------------------------------------
@@ -75,7 +82,7 @@ static func hall(g: Geo, xf: Transform3D, L: float, B: float, H: float, rng: Ran
 	var T: float = 0.25
 	# Floor slab and a concrete plinth wall 1 m high all round.
 	g.tint = Color(0.8, 0.8, 0.78)
-	_hb(g, xf, level, Vector3(0, 0.08, 0), Vector3(B, 0.16, L), "in_concrete")
+	_hb(g, xf, level, Vector3(0, 0.08, 0), Vector3(B, 0.16, L), "in_floor")
 	# Long walls (x = +-B/2): cladding over a plinth, a light band under
 	# the eaves; docks on the +x side.
 	var n_docks: int = opts.get("docks", 3)
@@ -116,7 +123,8 @@ static func hall(g: Geo, xf: Transform3D, L: float, B: float, H: float, rng: Ran
 				_hb(g, xf, level, Vector3((a + b) * 0.5, H * 0.5, z), Vector3(b - a, H, T), "in_clad")
 		for xd: float in xs:
 			_hb(g, xf, level, Vector3(xd, (dh + H) * 0.5, z), Vector3(dw, H - dh, T), "in_clad")
-			var open: bool = s < 0.0 and xd == xs[0]
+			# (opts "open_both": the +z end's first door open too - a straight fly-through.)
+			var open: bool = xd == xs[0] and (s < 0.0 or opts.get("open_both", false))
 			g.tint = trim_col
 			for e in [-1.0, 1.0]:
 				_hb(g, xf, level, Vector3(xd + e * (dw * 0.5 + 0.1), dh * 0.5, z + s * 0.12), Vector3(0.2, dh, 0.2), "in_paint", false)
@@ -178,7 +186,8 @@ static func hall(g: Geo, xf: Transform3D, L: float, B: float, H: float, rng: Ran
 	_hb(g, xf, level, Vector3(-B * 0.15, 2.85, cz), Vector3(0.4, 0.3, 0.25), "in_steel")
 	g.tint = Color(0.75, 0.6, 0.42)
 	for k in range(6):
-		_hb(g, xf, level, Vector3(-B * 0.5 + 2.5 + (k % 3) * 1.4, 0.16 + 0.5 + (k / 3) * 1.0, L * 0.3), Vector3(1.2, 1.0, 1.2), "in_paint")
+		_hb(g, xf, level, Vector3(-B * 0.5 + 2.6 + (k % 3) * 1.4, 0.16 + 0.5 + (k / 3) * 1.0, L * 0.3), Vector3(1.2, 1.0, 1.2), "in_paint")
+	_inside(g, xf, level, L, B, H)
 	# Office annex at the +z end: two storeys, window bands, a canopy.
 	if opts.get("office", true):
 		var ow: float = minf(B, 24.0)
@@ -203,6 +212,129 @@ static func hall(g: Geo, xf: Transform3D, L: float, B: float, H: float, rng: Ran
 	views.append(["hall_door", xf * Vector3(-B * 0.25, 3.0, -L * 0.5 - 14.0), xf * Vector3(-B * 0.25, 3.0, 0)])
 	views.append(["hall_inside", xf * Vector3(-B * 0.25, 3.5, -L * 0.5 + 3.0), xf * Vector3(0, H - 2.0, L * 0.3)])
 	return views
+
+## The hall's working floor, kept off the aisle from the open door (x =
+## -B/4, +-3 m, painted lines either side - the fly-through stays clear):
+## pallet racks with goods down the -x wall, a forklift beside them, a row
+## of machine tools east of the aisle, workbenches along the +x wall,
+## high-bay lamps hanging from the roof over it all. Its own dice (seeded
+## from the hall's place), so `rng`'s sequence is as it was.
+## Real numbers: pallet racks 1.1 m deep, 2.7 m bays, beam levels ~1.5 m
+## apart; a Euro pallet 1.2 x 0.8 m; a 2.5 t forklift ~2.3 m long, 1.15 m
+## wide; machining centres ~3 x 2.5 m, 2.5-3 m tall.
+static func _inside(g: Geo, xf: Transform3D, level: float, L: float, B: float, H: float) -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = hash([snappedf(xf.origin.x, 0.1), snappedf(xf.origin.z, 0.1), L, B])
+	var fy: float = 0.16 # the floor slab's top
+	var ax: float = -B * 0.25
+	# Aisle lines.
+	g.tint = Color(0.95, 0.8, 0.15)
+	for e in [-1.0, 1.0]:
+		g.box_xf(xf * Transform3D(Basis(), Vector3(ax + e * 3.0, fy + 0.005, 0)), Vector3(0.12, 0.01, L - 1.0), "ind_mark", false)
+	# Pallet racks along the -x wall, up to the crates at z = L * 0.3.
+	var rx: float = -B * 0.5 + 1.55
+	var z0: float = -L * 0.5 + 3.0
+	var z1: float = L * 0.3 - 1.5
+	var bay: float = 2.7
+	var n_bays: int = int((z1 - z0) / bay)
+	var levels: int = clampi(int((H - 3.0) / 1.6), 2, 5)
+	var goods: Array = [Color(0.72, 0.58, 0.4), Color(0.85, 0.85, 0.82), Color(0.3, 0.45, 0.7), Color(0.75, 0.3, 0.2), Color(0.45, 0.5, 0.45)]
+	for k in range(n_bays + 1):
+		var z: float = z0 + k * bay
+		g.tint = Color(0.15, 0.3, 0.6) # uprights
+		for e in [-0.5, 0.5]:
+			_hb(g, xf, level, Vector3(rx + e * 1.0, fy + levels * 0.8, z), Vector3(0.08, levels * 1.6, 0.08), "ind_paint")
+	for lv in range(levels):
+		var y: float = fy + 0.15 + lv * 1.6
+		g.tint = Color(0.95, 0.45, 0.1) # beams
+		for e in [-0.5, 0.5]:
+			g.box_xf(xf * Transform3D(Basis(), Vector3(rx + e * 1.0, y, (z0 + z0 + n_bays * bay) * 0.5)), Vector3(0.06, 0.12, n_bays * bay), "ind_paint", false)
+		for k in range(n_bays):
+			# Three pallet places a bay: a run of pallets (one box), goods
+			# on 1-3 of them (one box per run of the same goods).
+			var n_p: int = r.randi_range(0, 3)
+			if n_p == 0:
+				continue
+			var pz0: float = z0 + k * bay + 0.15
+			g.tint = Color(0.8, 0.68, 0.5)
+			g.box_xf(xf * Transform3D(Basis(), Vector3(rx, y + 0.13, pz0 + n_p * 0.425)), Vector3(1.15, 0.14, n_p * 0.85 - 0.07), "ind_paint", false)
+			var gh: float = r.randf_range(0.5, 1.2)
+			g.tint = goods[r.randi() % goods.size()] * r.randf_range(0.9, 1.05)
+			g.box_xf(xf * Transform3D(Basis(), Vector3(rx, y + 0.2 + gh * 0.5, pz0 + n_p * 0.425)), Vector3(1.05, gh, n_p * 0.85 - 0.13), "ind_paint", false)
+	# A forklift parked by the racks, forks down, pointing along the hall.
+	var fz: float = z0 + n_bays * bay * 0.4
+	var fx: float = rx + 2.05
+	var fk := Transform3D(Basis(), Vector3(fx, fy, fz))
+	g.tint = Color(0.95, 0.65, 0.1)
+	g.box_xf(xf * fk * Transform3D(Basis(), Vector3(0, 0.75, 0.2)), Vector3(1.1, 0.9, 1.9), "ind_paint")
+	g.tint = Color(0.2, 0.2, 0.22)
+	g.box_xf(xf * fk * Transform3D(Basis(), Vector3(0, 0.75, 1.05)), Vector3(1.05, 0.7, 0.4), "ind_paint", false) # counterweight
+	for e in [-0.5, 0.5]:
+		g.box_xf(xf * fk * Transform3D(Basis(), Vector3(e * 0.95, 1.5, 0.1)), Vector3(0.06, 1.3, 0.06), "ind_paint", false) # cage posts
+		g.box_xf(xf * fk * Transform3D(Basis(), Vector3(e * 0.95, 1.5, 0.9)), Vector3(0.06, 1.3, 0.06), "ind_paint", false)
+	g.box_xf(xf * fk * Transform3D(Basis(), Vector3(0, 2.18, 0.5)), Vector3(1.1, 0.06, 1.0), "ind_paint", false)
+	g.box_xf(xf * fk * Transform3D(Basis(), Vector3(0, 1.4, -0.85)), Vector3(0.8, 2.4, 0.12), "ind_paint", false) # mast
+	for e in [-0.25, 0.25]:
+		g.box_xf(xf * fk * Transform3D(Basis(), Vector3(e, 0.06, -1.5)), Vector3(0.12, 0.05, 1.15), "ind_paint", false) # forks
+	for e in [-0.45, 0.45]:
+		for wz in [-0.5, 0.75]:
+			g.cylinder(xf * (fk * Vector3(e * 1.2, 0.3, wz)), xf * (fk * Vector3(e * 1.25, 0.3, wz)), 0.3, "ind_paint", 10, false)
+	# Machine tools east of the aisle, every 7 m.
+	var mx: float = ax + 3.0 + 3.5
+	var z: float = -L * 0.5 + 8.0
+	while z < L * 0.5 - 6.0:
+		if absf(z - L * 0.3) > 2.5 or mx > -B * 0.5 + 6.0:
+			var mw: float = r.randf_range(2.2, 3.0)
+			var mh: float = r.randf_range(2.0, 2.8)
+			var md: float = r.randf_range(2.4, 3.6)
+			var body: Color = [Color(0.92, 0.92, 0.9), Color(0.8, 0.82, 0.84), Color(0.55, 0.65, 0.5)][r.randi() % 3]
+			g.tint = body
+			_hb(g, xf, level, Vector3(mx, fy + mh * 0.5, z), Vector3(mw, mh, md), "in_paint")
+			g.tint = Color(0.15, 0.3, 0.55)
+			_hb(g, xf, level, Vector3(mx, fy + 0.2, z), Vector3(mw + 0.04, 0.4, md + 0.04), "in_paint", false) # plinth stripe
+			g.tint = Color(0.25, 0.3, 0.35)
+			g.box_xf(xf * Transform3D(Basis(), Vector3(mx - mw * 0.5 - 0.02, fy + mh * 0.6, z)), Vector3(0.04, mh * 0.4, md * 0.5), "ind_paint", false) # the door's window
+			g.tint = Color(0.2, 0.2, 0.22)
+			g.box_xf(xf * Transform3D(Basis(), Vector3(mx - mw * 0.5 - 0.25, fy + 1.5, z + md * 0.5 - 0.2)), Vector3(0.12, 0.6, 0.45), "ind_paint", false) # control panel
+			g.box_xf(xf * Transform3D(Basis(), Vector3(mx - mw * 0.5 - 0.1, fy + 1.5, z + md * 0.5 - 0.2)), Vector3(0.2, 0.08, 0.08), "ind_paint", false)
+			# A light tower on it (green/amber/red).
+			for k in range(3):
+				g.tint = [Color(0.2, 0.8, 0.25), Color(1.0, 0.7, 0.1), Color(0.9, 0.15, 0.1)][k]
+				g.cylinder(xf * Vector3(mx + mw * 0.3, fy + mh + k * 0.1, z - md * 0.3), xf * Vector3(mx + mw * 0.3, fy + mh + (k + 1) * 0.1, z - md * 0.3), 0.05, "ind_paint", 8, false)
+		z += 7.0
+	# Workbenches along the +x wall, a vice and a tool board over each.
+	var bx: float = B * 0.5 - 1.35
+	z = -L * 0.5 + 5.0
+	while z < L * 0.5 - 4.0:
+		g.tint = Color(0.35, 0.45, 0.55)
+		for e in [-0.85, 0.85]:
+			_hb(g, xf, level, Vector3(bx, fy + 0.42, z + e), Vector3(0.7, 0.84, 0.06), "ind_paint")
+		g.tint = Color(0.75, 0.6, 0.42)
+		_hb(g, xf, level, Vector3(bx, fy + 0.87, z), Vector3(0.8, 0.06, 2.0), "ind_paint")
+		g.tint = Color(0.3, 0.32, 0.35)
+		g.box_xf(xf * Transform3D(Basis(), Vector3(bx - 0.1, fy + 0.98, z + 0.6)), Vector3(0.2, 0.16, 0.14), "ind_paint", false)
+		g.tint = Color(0.85, 0.85, 0.82)
+		g.box_xf(xf * Transform3D(Basis(), Vector3(B * 0.5 - 0.27, fy + 1.7, z)), Vector3(0.04, 1.0, 1.6), "ind_paint", false)
+		if r.randf() < 0.6: # a red tool chest beside it
+			g.tint = Color(0.75, 0.12, 0.1)
+			_hb(g, xf, level, Vector3(bx + 0.05, fy + 0.5, z + 1.45), Vector3(0.55, 1.0, 0.6), "ind_paint")
+		z += 4.5
+	# High-bay lamps: rows over the aisle and the machines, above the
+	# crane's girder, each on a rod from the roof.
+	g.tint = Color(1.0, 0.97, 0.88)
+	for lx: float in [ax, ax + 6.5, B * 0.5 - 3.0]:
+		z = -L * 0.5 + 4.0
+		while z < L * 0.5 - 2.0:
+			var top := xf * Vector3(lx, H + 0.1, z)
+			var lamp := xf * Vector3(lx, H - 0.9, z)
+			g.tint = Color(0.3, 0.3, 0.32)
+			g.cylinder(lamp, top, 0.02, "ind_paint", 4, false)
+			g.tint = Color(0.55, 0.57, 0.6)
+			g.cone(lamp + Vector3(0, 0.3, 0), lamp, 0.12, 0.32, "ind_paint", 10, false)
+			g.tint = Color(1.0, 0.98, 0.9)
+			g.cylinder(lamp - Vector3(0, 0.02, 0), lamp, 0.3, "in_lamp", 10, false)
+			z += 8.0
+	g.tint = Color.WHITE
 
 ## Where the docks are (for parking trucks at them): positions on the
 ## +x wall, facing +x.
@@ -352,7 +484,9 @@ static func silos(g: Geo, p: Vector3, n: int, rng: RandomNumberGenerator, hopper
 ## A mesh fence round the site (concrete posts, mesh, barbed wire), a
 ## gatehouse and a red-and-white barrier arm at the gate on side
 ## `gate` ("e" | "w" | "n" | "s"), the gate 8 m wide.
-static func fence(g: Geo, site: Dictionary, gate: String) -> Array:
+## opts "gaps": [[side, offset from the side's middle, half width], ...] -
+## more openings without a gatehouse (a rail siding's way in).
+static func fence(g: Geo, site: Dictionary, gate: String, opts: Dictionary = {}) -> Array:
 	ensure_materials(g)
 	if not g.has_material("ind_mesh"):
 		var mesh: StandardMaterial3D = Geo.tex_mat(_mesh_tex(), Color(0.55, 0.6, 0.55), 0.6)
@@ -369,9 +503,21 @@ static func fence(g: Geo, site: Dictionary, gate: String) -> Array:
 		var b: Vector3 = o + (sides[k][1] as Vector3)
 		var L: float = a.distance_to(b)
 		var dir: Vector3 = (b - a) / L
-		var runs: Array = [[0.0, L]]
+		var cuts: Array = []
 		if k == gate:
-			runs = [[0.0, L * 0.5 - 4.0], [L * 0.5 + 4.0, L]]
+			cuts.append([L * 0.5 - 4.0, L * 0.5 + 4.0])
+		for gp: Array in opts.get("gaps", []):
+			if gp[0] == k:
+				cuts.append([L * 0.5 + gp[1] - gp[2], L * 0.5 + gp[1] + gp[2]])
+		cuts.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+		var runs: Array = []
+		var from: float = 0.0
+		for c: Array in cuts:
+			if c[0] - from > 0.5:
+				runs.append([from, c[0]])
+			from = c[1]
+		if L - from > 0.5:
+			runs.append([from, L])
 		for run: Array in runs:
 			var n: int = maxi(1, int((run[1] - run[0]) / 3.0))
 			for i in range(n + 1):

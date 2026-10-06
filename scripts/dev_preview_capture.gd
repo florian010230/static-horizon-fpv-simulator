@@ -23,7 +23,7 @@ func _ready() -> void:
 ## when iterating on one map. No names = everything.
 func _wants(section: String) -> bool:
 	var args := OS.get_cmdline_user_args()
-	var sections: Array = ["menu", "village", "factory", "school", "borders", "thumbs"]
+	var sections: Array = ["menu", "village", "factory", "school", "borders", "thumbs", "gnome"]
 	for m in MapCatalog.MAPS:
 		sections.append(m.id)
 	# ("shadows" is a modifier, not a section.)
@@ -35,7 +35,7 @@ func _wants(section: String) -> bool:
 ## `-- --dev-preview borders`: every map, the drone parked just outside
 ## its flight area - the border must show (prints BORDER ok/FAIL).
 func _border_shots() -> void:
-	var scenes: Array = ["res://scenes/Main.tscn", "res://scenes/Main2.tscn", "res://scenes/Main3.tscn"]
+	var scenes: Array = ["res://scenes/Main3.tscn"]
 	for m in MapCatalog.MAPS:
 		if not scenes.has(m.scene):
 			scenes.append(m.scene)
@@ -86,8 +86,8 @@ func _border_shots() -> void:
 ## HUD. `-- --dev-preview thumbs <map id>` - one map per run: in one
 ## long run over all maps, later maps sometimes rendered half-empty.
 const HERO := {
-	"village": [Vector3(-75, 42, 135), Vector3(25, 0, 55)],
-	"factory": [Vector3(-55, 38, 80), Vector3(25, 0, -15)],
+	"village": [Vector3(170, 42, 60), Vector3(20, 4, -90)],
+	"factory": [Vector3(150, 48, 115), Vector3(-25, 6, -15)],
 	"school": [Vector3(-19, 3.5, 9), Vector3(10, 1.5, -2)],
 	"steelmill": [Vector3(-330, 125, 230), Vector3(10, 10, 10)],
 	"playground": [Vector3(-40, 26, 48), Vector3(0, 0, -2)],
@@ -142,7 +142,7 @@ func _thumb_shots() -> void:
 ## Geo): every mesh whose box starts above the ground and touches no
 ## other mesh's box is listed - something floating in the air.
 func _float_check() -> void:
-	for sc in ["res://scenes/Main.tscn", "res://scenes/Main2.tscn", "res://scenes/Main3.tscn"]:
+	for sc in ["res://scenes/Main3.tscn"]: # (Main/Main2 - the old village/factory - are generated maps now)
 		get_tree().change_scene_to_file(sc)
 		await get_tree().create_timer(1.5).timeout
 		var boxes: Array = []
@@ -191,41 +191,20 @@ func _go() -> void:
 		await _lab_shots()
 		get_tree().quit()
 		return
+	if OS.get_cmdline_user_args().has("perf"):
+		await _perf_run()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("flight"):
+		await _flight_shots()
+	if OS.get_cmdline_user_args().has("looks"):
+		await _looks_shots()
+		get_tree().quit()
+		return
 	if _wants("menu"):
 		await _menu_shots()
-	if _wants("village"):
-		await _map_shots("res://scenes/Main.tscn", "village", [
-			["topdown", Vector3(20, 160, 10), Vector3(20.1, 0, 9.9)],
-			["main_street", Vector3(-62, 5, 70), Vector3(40, 3, 70)],
-			["street_east", Vector3(95, 7, 66), Vector3(140, 6, 90)],
-			["house_inside", Vector3(-12, 1.8, 80), Vector3(-25, 1.2, 80)],
-			["house_living", Vector3(-11.5, 1.9, 78.2), Vector3(-17, 0.3, 82.5)],
-			["house_kitchen", Vector3(-19, 2.0, 84.5), Vector3(-12, 0.5, 86.5)],
-			["house_bedroom", Vector3(-18.5, 5.8, 78.3), Vector3(-12.6, 3.6, 79.5)],
-			["house_front", Vector3(-15, 4, 66), Vector3(-15, 4, 82)],
-			["house_upstairs", Vector3(-12, 5.2, 80.5), Vector3(-25, 4.6, 80)],
-			["church_inside", Vector3(135, 3.0, 104), Vector3(135, 2.0, 88)],
-			["club_field", Vector3(10, 6, 20), Vector3(40, 0, 40)],
-			["underpass", Vector3(-40, 3.2, -25), Vector3(-40, 2.4, -80)],
-			["railway", Vector3(-10, 14, -30), Vector3(-60, 6, -60)],
-			["farm", Vector3(-40, 14, -78), Vector3(-30, 2, -118)],
-			# Same spot, four compass directions - for checking that the
-			# lighting doesn't go dark looking one way (toward the sun).
-			["dir_n", Vector3(0, 6, 30), Vector3(0, 3, 0)],
-			["dir_e", Vector3(0, 6, 30), Vector3(30, 3, 30)],
-			["dir_s", Vector3(0, 6, 30), Vector3(0, 3, 60)],
-			["dir_w", Vector3(0, 6, 30), Vector3(-30, 3, 30)],
-			["shadows_top", Vector3(30, 60, 95), Vector3(30.1, 0, 94.9)],
-		])
-	if _wants("factory"):
-		await _map_shots("res://scenes/Main2.tscn", "factory", [
-			["topdown", Vector3(25, 160, 0), Vector3(25.1, 0, -0.1)],
-			["entrance", Vector3(0, 3, 70), Vector3(0, 2, 20)],
-			["hall_inside", Vector3(0, 5, -20), Vector3(0, 3, -45)],
-			["rail_dock", Vector3(80, 8, 5), Vector3(62, 2, -30)],
-			["tank_farm", Vector3(95, 10, -10), Vector3(85, 5, -45)],
-			["overview", Vector3(-40, 30, 70), Vector3(30, 5, -10)],
-		])
+	if _wants("gnome"):
+		await _gnome_shots()
 	if _wants("school"):
 		await _map_shots("res://scenes/Main3.tscn", "school", [
 			["gym", Vector3(-19, 3.5, 9), Vector3(10, 1.5, -2)],
@@ -238,9 +217,30 @@ func _go() -> void:
 		])
 	# Generated maps name their own views (BuiltMap.preview_views()).
 	for m in MapCatalog.available():
-		if m.id in ["village", "factory", "school"] or not _wants(m.id):
+		if m.id == "school" or not _wants(m.id):
 			continue
 		await _map_shots(m.scene, m.id, [], false)
+	get_tree().quit()
+
+## The garden gnome up close, new and found (Collectibles).
+func _gnome_shots() -> void:
+	Collectibles.reset()
+	Settings.selected_drone = "whoop"
+	get_tree().change_scene_to_file("res://scenes/maps/Playground.tscn")
+	await get_tree().create_timer(2.0).timeout
+	var drone: RigidBody3D = get_tree().root.find_child("Drone", true, false)
+	var g: Node3D = get_tree().current_scene.get_node("Gnome_0")
+	drone.freeze = true
+	drone.global_position = g.global_position + Vector3(0.5, 0.3, 0.9)
+	drone.look_at(g.global_position + Vector3(0, 0.18, 0), Vector3.UP)
+	await get_tree().create_timer(0.5).timeout
+	_shot("preview_gnome_new.png")
+	g.get_node("Pickup").body_entered.emit(drone)
+	await get_tree().create_timer(0.2).timeout
+	_shot("preview_gnome_pop.png")
+	await get_tree().create_timer(1.0).timeout
+	_shot("preview_gnome_found.png")
+	Collectibles.reset()
 	get_tree().quit()
 
 func _menu_shots() -> void:
@@ -306,6 +306,27 @@ func _menu_shots() -> void:
 	await get_tree().create_timer(0.3).timeout
 	_shot("preview_about.png")
 
+	# Updates (a pretend newer release) and Achievements (some progress).
+	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+	await get_tree().create_timer(0.5).timeout
+	Collectibles.reset()
+	Collectibles.mark_found("playground", 0)
+	Achievements.note_flight("village")
+	Updater.latest = {"version": "0.9.1", "tag": "v0.9.1", "url": Updater.RELEASES_PAGE, "checked": 0,
+		"body": "## Fixes\n- The **Static Race** no longer drifts at idle.\n- Gnomes are now easier to find.\n\n## New\n- A quieter menu with an Updates screen."}
+	var mn: Node = get_tree().current_scene
+	mn._refresh_update_hint()
+	await get_tree().create_timer(0.3).timeout
+	_shot("preview_menu_update.png")
+	_find_button(mn._screens["main"], "Updates").pressed.emit()
+	await get_tree().create_timer(0.3).timeout
+	_shot("preview_updates.png")
+	mn._show("achievements")
+	await get_tree().create_timer(0.3).timeout
+	_shot("preview_achievements.png")
+	Updater.latest = {}
+	Collectibles.reset()
+
 	# Reload fresh rather than clicking "Back"/"Cancel" - all panels
 	# (drone/settings/map/calibration) exist in the tree at once (just
 	# hidden), so a text search for either is ambiguous about which one
@@ -341,7 +362,7 @@ func _menu_shots() -> void:
 	menu_node._show("map")
 	await get_tree().create_timer(0.4).timeout
 	_shot("preview_map_choice.png")
-	SceneLoader.goto("res://scenes/Main2.tscn", "Factory")
+	SceneLoader.goto("res://scenes/maps/Factory.tscn", "Factory")
 	await get_tree().process_frame
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -360,10 +381,10 @@ func _map_shots(scene: String, prefix: String, views: Array, pause_shots: bool =
 	await get_tree().create_timer(2.0).timeout
 	_shot("preview_%s_spawn.png" % prefix)
 	if prefix == "playground":
-		Settings.video_effect = 2
+		Settings.camera_look = 1
 		await get_tree().create_timer(0.4).timeout
 		_shot("preview_%s_analog_video.png" % prefix)
-		Settings.video_effect = 0
+		Settings.camera_look = 0
 	# Settled frame rate at the spawn view - the HUD's own FPS readout in
 	# the later shots is skewed by each teleport.
 	await get_tree().create_timer(3.0).timeout
@@ -378,7 +399,11 @@ func _map_shots(scene: String, prefix: String, views: Array, pause_shots: bool =
 	if ui and "_panel_visible" in ui:
 		ui._panel_visible = false
 	if views.is_empty() and get_tree().current_scene.has_method("preview_views"):
-		views = get_tree().current_scene.preview_views()
+		var sc: Node = get_tree().current_scene
+		views = sc.views() if sc is BuiltMap else sc.preview_views()
+	if OS.has_environment("SH_VIEWS"): # (as in the labs: name prefixes)
+		var keep: PackedStringArray = OS.get_environment("SH_VIEWS").split(",")
+		views = views.filter(func(v: Array) -> bool: return Array(keep).any(func(k: String) -> bool: return String(v[0]).begins_with(k)))
 	for v in views:
 		drone.global_position = v[1]
 		var target: Vector3 = v[2]
@@ -388,6 +413,7 @@ func _map_shots(scene: String, prefix: String, views: Array, pause_shots: bool =
 			drone.look_at(target, Vector3.UP)
 		drone.reset_physics_interpolation()
 		await get_tree().create_timer(0.4).timeout
+		await _drawn_frames(2) # (a busy machine: stale frames otherwise, see _lab_shots)
 		_shot("preview_%s_%s.png" % [prefix, v[0]])
 	# Pilot aids on one view: stick overlay and strong fisheye; then the
 	# line-of-sight camera.
@@ -472,12 +498,34 @@ func _lab_shots() -> void:
 		ui.visible = false
 	var groups: Dictionary = {}
 	var order: Array = []
-	for v: Array in root.preview_views():
+	# SH_VIEWS="a,b": only the views whose names start with one of these;
+	# a map's piece views (SH_PIECE_VIEWS, see Pieces) go first.
+	var views: Array = (root.get_meta("piece_views", []) as Array) + root.preview_views()
+	# SH_EYES="name@x,y,z@tx,ty,tz;...": extra views of your own.
+	if OS.has_environment("SH_EYES"):
+		for e: String in OS.get_environment("SH_EYES").split(";"):
+			var f: PackedStringArray = e.split("@")
+			var a: PackedFloat64Array = f[1].split_floats(",")
+			var b: PackedFloat64Array = f[2].split_floats(",")
+			views.push_front([f[0], Vector3(a[0], a[1], a[2]), Vector3(b[0], b[1], b[2]), "eyes"])
+	if OS.has_environment("SH_VIEWS"):
+		var keep: PackedStringArray = OS.get_environment("SH_VIEWS").split(",")
+		views = views.filter(func(v: Array) -> bool:
+			for k in keep:
+				if String(v[0]).begins_with(k):
+					return true
+			return false)
+	for v: Array in views:
 		drone.global_position = v[1]
 		var target: Vector3 = v[2]
 		drone.look_at(target, Vector3.FORWARD if absf((target - v[1]).normalized().y) > 0.99 else Vector3.UP)
 		drone.reset_physics_interpolation()
-		await get_tree().create_timer(0.4).timeout
+		await get_tree().create_timer(float(OS.get_environment("SH_SHOT_WAIT")) if OS.has_environment("SH_SHOT_WAIT") else 0.4).timeout # (longer on a busy machine: stale frames)
+		# And two frames really drawn: while another fullscreen Godot (a
+		# second lab run) holds the screen, macOS stops drawing this one,
+		# and the picture would be the previous view's. Waits a while for
+		# a turn, then asks for the screen.
+		await _drawn_frames(2)
 		var img := get_viewport().get_texture().get_image()
 		img.convert(Image.FORMAT_RGB8)
 		img.save_png(out.path_join(v[0] + ".png"))
@@ -524,6 +572,299 @@ onkeydown=e=>{if(cur<0)return;if(e.key=='ArrowRight')show(cur+1);if(e.key=='Arro
 	f.store_string(html)
 	f.close()
 	print("LAB DONE: ", out.path_join("index.html"))
+
+## `-- --dev-preview looks`: the look of the world and the FPV feed, for
+## shader work (camera looks, close-up surfaces, sky). Shots go to
+## SH_SHOT_DIR (default previews/looks) as <map>_<view>[_c<look>q<q>].png.
+##   SH_LOOKS_MAPS="village,harbour"  which maps (MapCatalog ids)
+##   SH_LOOKS_CAMS="0,1,2,3"          camera looks (Settings.camera_look)
+##   SH_LOOKS_Q="1,0.4,0.1"           forced signal quality (FpvVideo.force_quality)
+##   SH_VIEWS="spawn,sun"             only these views
+##   SH_QUALITY=0..2                  graphics quality (default 2)
+## `-- --dev-preview looks perf`: no shots - the settled frame rate at the
+## spawn of each map on Low, Medium and High (LOOKSPERF lines).
+const LOOKS_EYES := {
+	"village": [["street", Vector3(-62, 1.2, 70), Vector3(40, 0.5, 70)], ["grass", Vector3(10, 0.6, 20), Vector3(30, 0.2, 35)],
+		["wall", Vector3(-10.5, 1.6, 64), Vector3(-15, 1.0, 72)]],
+	"factory": [["hall", Vector3(0, 5, -20), Vector3(0, 3, -45)], ["yard", Vector3(0, 1.2, 70), Vector3(0, 0.5, 30)]],
+	"school": [["gym", Vector3(-19, 3.5, 9), Vector3(10, 1.5, -2)], ["corridor", Vector3(-17, 1.7, 25.9), Vector3(45, 1.3, 25.9)]],
+	"harbour": [["cranes", Vector3(70, 22, 40), Vector3(200, 30, -10)], ["stacks", Vector3(60, 2, -117), Vector3(260, 1, -117)]],
+	"steelmill": [],
+	"mountain_lake": [],
+	"race_arena": [["start", Vector3(-40, 1.3, 20), Vector3(0, 1.3, 20)], ["scaffold", Vector3(35, 10, -22), Vector3(0, 8, -22)]],
+	"test_valley": [],
+}
+
+func _looks_shots() -> void:
+	var args := OS.get_cmdline_user_args()
+	var perf: bool = args.has("perf")
+	var out: String = OS.get_environment("SH_SHOT_DIR") if OS.has_environment("SH_SHOT_DIR") else ProjectSettings.globalize_path("res://previews/looks")
+	DirAccess.make_dir_recursive_absolute(out)
+	var ids: Array = LOOKS_EYES.keys()
+	if OS.has_environment("SH_LOOKS_MAPS"):
+		ids = Array(OS.get_environment("SH_LOOKS_MAPS").split(","))
+	var cams: Array = [0]
+	if OS.has_environment("SH_LOOKS_CAMS"):
+		cams = Array(OS.get_environment("SH_LOOKS_CAMS").split_floats(",")).map(func(v: float) -> int: return int(v))
+	var qs: Array = [-1.0]
+	if OS.has_environment("SH_LOOKS_Q"):
+		qs = Array(OS.get_environment("SH_LOOKS_Q").split_floats(","))
+	Settings.osd_enabled = not perf
+	Settings.crosshair_enabled = false
+	Settings.camera_angle_deg = float(OS.get_environment("SH_CAM_ANGLE")) if OS.has_environment("SH_CAM_ANGLE") else 10.0
+	WorldBorder.disabled = true
+	var qualities: Array = [0, 1, 2] if perf else [int(OS.get_environment("SH_QUALITY")) if OS.has_environment("SH_QUALITY") else 2]
+	for q: int in qualities:
+		Settings.graphics_quality = q
+		for id: String in ids:
+			var info: Dictionary = {}
+			for m in MapCatalog.MAPS:
+				if m.id == id:
+					info = m
+			if info.is_empty():
+				print("LOOKS no map ", id)
+				continue
+			Settings.game_mode = Settings.MODE_FREESTYLE
+			var forced: String = info.get("drone", "any")
+			Settings.selected_drone = forced if forced != "any" else "seeker3"
+			get_tree().change_scene_to_file(info.scene)
+			await get_tree().create_timer(2.5).timeout
+			var root: Node = get_tree().current_scene
+			var drone := root.find_child("Drone", true, false) as Drone
+			if drone == null:
+				continue
+			drone.freeze = true
+			InputManager.armed = false
+			var ui: Node = root.find_child("UI", true, false)
+			if ui and "_panel_visible" in ui:
+				ui._panel_visible = false
+			var spawn: Vector3 = drone._spawn_transform.origin
+			var fwd: Vector3 = -drone._spawn_transform.basis.z
+			# The grass capture runs a moment after the map loads.
+			var gt: Node = root.get_node_or_null("GrassTufts")
+			for k in range(100):
+				if gt == null or not is_instance_valid(gt) or gt.has_meta("ready"):
+					break
+				await get_tree().create_timer(0.2).timeout
+			if perf:
+				Engine.max_fps = 0
+				DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+				drone.global_position = spawn + Vector3(0, 1.5, 0)
+				drone.look_at(spawn + Vector3(0, 1.0, 0) + fwd * 20.0, Vector3.UP)
+				drone.reset_physics_interpolation()
+				await get_tree().create_timer(2.0).timeout
+				# Off/on twice, interleaved: the machine's load drifts.
+				var sums: Array = [0.0, 0.0]
+				for ab: int in [0, 1, 0, 1]:
+					_looks_features(ab == 1)
+					await get_tree().create_timer(0.7).timeout
+					var f0: int = Engine.get_frames_drawn()
+					var t0: int = Time.get_ticks_msec()
+					await get_tree().create_timer(2.5).timeout
+					sums[ab] += (Engine.get_frames_drawn() - f0) * 1000.0 / maxf(Time.get_ticks_msec() - t0, 1.0) * 0.5
+				print("LOOKSPERF %s %s off %.1f on %.1f fps (draws %d)" % [Settings.QUALITY_NAMES[q], id, sums[0], sums[1], RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)])
+				continue
+			var views: Array = [["spawn", spawn + Vector3(0, 1.5, 0), spawn + Vector3(0, 1.0, 0) + fwd * 20.0]]
+			var sun := root.find_child("Sun", true, false) as DirectionalLight3D
+			if sun:
+				var to_sun: Vector3 = sun.global_transform.basis.z
+				var flat := Vector3(to_sun.x, 0, to_sun.z).normalized()
+				views.append(["sun", spawn + Vector3(0, 3, 0), spawn + Vector3(0, 3, 0) + flat * 30.0 + Vector3(0, 30.0 * clampf(to_sun.y / maxf(Vector2(to_sun.x, to_sun.z).length(), 0.01), 0.0, 1.0) * 0.6, 0)])
+				views.append(["away", spawn + Vector3(0, 3, 0), spawn + Vector3(0, 2.5, 0) - flat * 30.0])
+			views.append(["low", spawn + Vector3(0, 0.35, 0) + fwd * 2.0, spawn + fwd * 8.0])
+			views.append_array(LOOKS_EYES.get(id, []))
+			if root.has_method("preview_views"):
+				var pv: Array = root.preview_views()
+				for k in range(mini(pv.size(), 3)):
+					views.append(pv[k])
+			if OS.has_environment("SH_EYES"):
+				for e: String in OS.get_environment("SH_EYES").split(";"):
+					var f: PackedStringArray = e.split("@")
+					var a: PackedFloat64Array = f[1].split_floats(",")
+					var b: PackedFloat64Array = f[2].split_floats(",")
+					views.append([f[0], Vector3(a[0], a[1], a[2]), Vector3(b[0], b[1], b[2])])
+			if OS.has_environment("SH_VIEWS"):
+				var keep: PackedStringArray = OS.get_environment("SH_VIEWS").split(",")
+				views = views.filter(func(v: Array) -> bool: return keep.has(String(v[0])))
+			for v: Array in views:
+				drone.global_position = v[1]
+				var target: Vector3 = v[2]
+				drone.look_at(target, Vector3.FORWARD if absf((target - v[1]).normalized().y) > 0.99 else Vector3.UP)
+				drone.reset_physics_interpolation()
+				for ab: int in ([0, 1] if OS.has_environment("SH_LOOKS_AB") else [1]):
+					_looks_features(ab == 1)
+					for c: int in cams:
+						for qq: float in qs:
+							Settings.camera_look = c
+							FpvVideo.force_quality = qq
+							await get_tree().create_timer(0.5).timeout
+							await _drawn_frames(2)
+							var img := get_viewport().get_texture().get_image()
+							img.convert(Image.FORMAT_RGB8)
+							var suffix: String = "" if (cams.size() == 1 and qs.size() == 1) else "_c%dq%d" % [c, int(round(qq * 100.0))]
+							if ab == 0:
+								suffix += "_off"
+							img.save_png(out.path_join("%s_%s%s.png" % [id, v[0], suffix]))
+							print("LOOKS SHOT %s_%s%s" % [id, v[0], suffix])
+	print("LOOKS DONE ", out)
+
+## SH_LOOKS_AB: the looks track's world features off (false) / on, for
+## before/after shots and frame-rate comparisons in one run.
+func _looks_features(on: bool) -> void:
+	var sc: Node = get_tree().current_scene
+	# SH_PERF_CAM=n: the "on" state also uses camera look n (its pass).
+	if OS.has_environment("SH_PERF_CAM"):
+		Settings.camera_look = int(OS.get_environment("SH_PERF_CAM")) if on else 0
+	if on:
+		WorldShading.set_detail(Settings.graphics_quality)
+	else:
+		RenderingServer.global_shader_parameter_set("sh_detail", Vector4(0, 1, 0, 0))
+	for n in ["DustMotes", "GrassTufts", "UI/SunGlare"]:
+		var node: Node = sc.find_child(n.get_file(), true, false) if sc else null
+		if node:
+			node.set_meta("looks_off", not on)
+			node.set_process(on)
+			node.set("visible", on)
+
+var _draws: int = 0
+
+func _count_draw() -> void:
+	_draws += 1
+
+func _drawn_frames(n: int) -> void:
+	if not RenderingServer.frame_post_draw.is_connected(_count_draw):
+		RenderingServer.frame_post_draw.connect(_count_draw)
+	var goal: int = _draws + n
+	var t0: int = Time.get_ticks_msec()
+	while _draws < goal:
+		await get_tree().process_frame
+		# Ask for the screen every 8 s (other Godot windows may take it back).
+		if Time.get_ticks_msec() - t0 > 8000:
+			t0 = Time.get_ticks_msec()
+			DisplayServer.window_move_to_foreground()
+
+## `-- --dev-preview perf <map id>`: loads one map the way the game does
+## and prints one PERFROW line: time to the first flyable frame (from
+## engine start), whether it came from the map cache, then per graphics
+## quality (switched live, Low/Medium/High) the FPS at spawn (uncapped,
+## no vsync, 3 s average), draw calls, primitives, Godot's static memory
+## and the process RSS. Run it twice for cold / cached (delete
+## user://mapcache or SH_NOCACHE=1 for cold). Used for the Round 2
+## performance table (notes/r2-flight.md).
+func _perf_run() -> void:
+	var args := OS.get_cmdline_user_args()
+	var id: String = args[args.find("perf") + 1] if args.find("perf") + 1 < args.size() else "village"
+	var m: Dictionary = {}
+	for mm in MapCatalog.MAPS:
+		if mm.id == id:
+			m = mm
+	Settings.selected_drone = m.drone if m.get("drone", "any") != "any" else "seeker3"
+	Settings.graphics_quality = 1
+	Engine.max_fps = 0
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	DisplayServer.window_move_to_foreground()
+	var t0: int = Time.get_ticks_msec()
+	get_tree().change_scene_to_file(m.scene)
+	for k in range(4):
+		await get_tree().process_frame
+	await _drawn_frames(3)
+	var ready_ms: int = Time.get_ticks_msec()
+	var sc: Node = get_tree().current_scene
+	var cached: bool = sc is BuiltMap and (sc as BuiltMap).from_cache
+	var line: String = "PERFROW %s ready=%d ms (load %d ms) cache=%s" % [id, ready_ms, ready_ms - t0, cached]
+	await get_tree().create_timer(2.0).timeout
+	for q in range(3):
+		Settings.graphics_quality = q
+		Settings.apply_graphics_settings()
+		Engine.max_fps = 0
+		DisplayServer.window_move_to_foreground()
+		await get_tree().create_timer(1.5).timeout
+		# (A window covered by another one draws nothing on macOS - other
+		# tracks' windows come and go - so up to three tries.)
+		var fps: float = 0.0
+		for attempt in range(3):
+			var f0: int = Engine.get_frames_drawn()
+			var tq: int = Time.get_ticks_msec()
+			await get_tree().create_timer(3.0).timeout
+			fps = (Engine.get_frames_drawn() - f0) * 1000.0 / maxf(Time.get_ticks_msec() - tq, 1)
+			if fps > 1.0:
+				break
+			DisplayServer.window_move_to_foreground()
+		var out: Array = []
+		OS.execute("ps", ["-o", "rss=", "-p", str(OS.get_process_id())], out)
+		var rss: float = float(str(out[0]).strip_edges()) / 1024.0 if not out.is_empty() else -1.0
+		line += " | %s fps=%.0f draws=%d prims=%dk static=%dMB rss=%dMB" % [Settings.QUALITY_NAMES[q], fps,
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000,
+			OS.get_static_memory_usage() / 1048576, int(rss)]
+	print(line)
+
+## `-- --dev-preview flight`: the realism OSD (battery low, prop
+## damage), the race ghost in front of the FPV camera, the Flight tab.
+func _flight_shots() -> void:
+	Settings.selected_drone = "seeker3"
+	Settings.game_mode = Settings.MODE_RACE
+	Settings.battery_enabled = true
+	Settings.prop_damage = true
+	Settings.race_ghost = true
+	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
+	await get_tree().create_timer(3.0).timeout
+	var sc: Node = get_tree().current_scene
+	var d: Drone = sc.get_node("Drone")
+	InputManager.armed = true
+	InputManager.test_override = {"roll": 0.0, "pitch": 0.0, "yaw": 0.0, "throttle": 0.5}
+	await get_tree().create_timer(0.8).timeout
+	InputManager.test_override.throttle = 0.36
+	d.battery.used_mah = d.battery.capacity_mah * 0.965
+	await get_tree().create_timer(5.0).timeout
+	await _drawn_frames(3)
+	_shot("flight_osd_low_battery.png")
+	d.battery.used_mah = d.battery.capacity_mah * 1.01
+	await get_tree().create_timer(0.6).timeout
+	await _drawn_frames(3)
+	_shot("flight_osd_empty.png")
+	d.reset_to_spawn()
+	d.prop_health = [0.7, 1.0, 1.0, 1.0]
+	d.prop_damage_flash = 2.0
+	InputManager.test_override.throttle = 0.6
+	await get_tree().create_timer(0.7).timeout
+	await _drawn_frames(3)
+	_shot("flight_osd_prop_damaged.png")
+	# The ghost: a recorded "lap" that hangs 3 m ahead of the camera,
+	# drifting sideways - the course is told a lap is running.
+	var course: RaceCourse = sc.course
+	d.freeze = true
+	await get_tree().create_timer(0.3).timeout
+	var cam: Camera3D = get_viewport().get_camera_3d()
+	var cb: Basis = cam.global_transform.basis
+	var fwd: Vector3 = -cb.z
+	var pos := PackedVector3Array()
+	var rot := PackedVector4Array()
+	for i in range(300):
+		pos.append(cam.global_position + fwd * 1.6 + cb.x * (0.25 + 0.001 * i) - cb.y * 0.05)
+		var q: Quaternion = (d.global_transform.basis * Basis(Vector3.FORWARD, 0.4)).get_rotation_quaternion()
+		rot.append(Vector4(q.x, q.y, q.z, q.w))
+	course._ghost_pos = pos
+	course._ghost_rot = rot
+	course._lap_start = course._time
+	course._lap = 1
+	await get_tree().create_timer(1.5).timeout
+	await _drawn_frames(3)
+	_shot("flight_ghost.png")
+	InputManager.test_override = null
+	InputManager.armed = false
+	Settings.battery_enabled = false
+	Settings.prop_damage = false
+	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+	await get_tree().create_timer(2.5).timeout
+	var settings_btn: Button = _find_button(get_tree().current_scene, "Settings")
+	if settings_btn:
+		settings_btn.pressed.emit()
+	await get_tree().create_timer(1.0).timeout
+	var st: SettingsScreens = get_tree().current_scene.get("_settings")
+	st.settings_tabs.current_tab = SettingsScreens.TAB_NAMES.find("Flight")
+	await get_tree().create_timer(0.4).timeout
+	_shot("flight_settings.png")
 
 func _shot(filename: String) -> void:
 	var img := get_viewport().get_texture().get_image()

@@ -105,17 +105,32 @@ static func _obb_overlap(a: Array, b: Array, margin: float) -> bool:
 				return false
 	return true
 
-## Houses, fences and gardens on every plot (HouseCreator.build_plot),
-## seeds first_seed.., every fifth one open inside. Returns {"trees",
-## "views", "open"}.
+## Houses, fences and gardens on every plot (HouseCreator.build_plot).
+## Each plot is a piece (see Pieces): id "plot x,z" (its street-edge
+## middle), its own seed from that id and first_seed, about one in
+## five open inside (chosen by the id too), and the map's overrides
+## (BuiltMap.pieces()): "seed", "remove", "open", and HouseCreator's /
+## GardenCreator's pinned options ("storeys", "roof", "garage",
+## "mirror", "brick", "fence"). Returns {"trees", "views", "open"}.
 static func build_plots(geo: Geo, plots: Array, first_seed: int) -> Dictionary:
 	var trees: Array = []
 	var views: Array = []
 	var n_open: int = 0
 	for i in range(plots.size()):
-		var open: bool = HouseCreator.accessible(i)
+		var pl: Dictionary = plots[i]
+		var fr: Transform3D = pl.frame
+		var id: String = Pieces.id_at("plot", fr.origin)
+		var ov: Dictionary = Pieces.override(geo, id)
+		pl["id"] = id
+		if ov.get("remove", false):
+			continue
+		var open: bool = ov.get("open", posmod(("open " + id).hash(), HouseCreator.OPEN_EVERY) == 0)
 		n_open += 1 if open else 0
-		var info: Dictionary = HouseCreator.build_plot(geo, plots[i], first_seed + i, {"interior": open})
+		var o: Dictionary = ov.duplicate()
+		o["interior"] = open
+		Pieces.begin(geo, id, fr * Vector3(0, 13.0, -pl.depth * 0.45), [fr * Vector3(-22.0, 11.0, 16.0), fr * Vector3(0, 2.0, -14.0)])
+		var info: Dictionary = HouseCreator.build_plot(geo, pl, ov.get("seed", Pieces.seed_of(id, first_seed)), o)
+		Pieces.end(geo, id, info.trees)
 		if open and n_open == 1:
 			for v: Array in info.views:
 				if v[0] in ["front", "back"] or String(v[0]).begins_with("way_in1"):

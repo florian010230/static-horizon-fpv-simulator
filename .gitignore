@@ -6,3 +6,16 @@ export_presets.cfg
 .DS_Store
 previews/*.png
 builds/
+
+# Development documents - kept in the private dev-notes repo
+# (~/Projekte/static-horizon-dev-notes, sync.sh), not published here.
+CLAUDE.md
+TODO.md
+DEVLOG.md
+map_design.md
+ROUND2_PLAN.md
+TRACK_NOTES.md
+notes/
+review/
+review_page/
+previews/

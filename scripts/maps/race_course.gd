@@ -21,6 +21,9 @@ extends Node3D
 const RECORDS_PATH: String = "user://race_records.cfg"
 const GATE: float = 1.52 ## MultiGP standard opening, 5 ft
 const PANEL: float = 0.28 ## frame panel width
+## A standing gate's frame rides this high on its feet: its bottom PVC
+## tube, flush with the ground, flickered against the grass.
+const FOOT: float = 0.04
 
 var map_id: String = ""
 var drone: Drone
@@ -37,13 +40,16 @@ var _time: float = 0.0
 
 ## Ghost of the best lap: the current lap is sampled at GHOST_HZ; when a
 ## lap beats the best, its samples become the ghost, which then flies
-## along with every new lap (saved per map + drone, like the best time).
-const GHOST_HZ: float = 20.0
+## along with every new lap (saved per map + track layout + drone, like
+## the best time; Settings.race_ghost hides it). The ghost is the drone's
+## own model (DroneFrameBuilder), see-through and glowing; positions and
+## rotations (quaternions, slerped) are interpolated between samples.
+const GHOST_HZ: float = 30.0
 const GHOST_PATH: String = "user://race_ghosts.cfg"
 var _lap_samples: PackedVector3Array = PackedVector3Array()
-var _lap_rot: PackedVector3Array = PackedVector3Array()
+var _lap_rot: PackedVector4Array = PackedVector4Array()
 var _ghost_pos: PackedVector3Array = PackedVector3Array()
-var _ghost_rot: PackedVector3Array = PackedVector3Array()
+var _ghost_rot: PackedVector4Array = PackedVector4Array()
 var _sample_t: float = 0.0
 var _ghost: Node3D
 
@@ -111,6 +117,13 @@ func _frame(geo: Geo, xf: Transform3D, w: float, h: float, mat: String) -> void:
 
 func _register(xf: Transform3D, w: float, h: float) -> void:
 	_gates.append({"xf": xf, "w": w, "h": h})
+	# Kept on the node too: a map loaded from the map cache gets this node
+	# back without its script variables (see _ready).
+	set_meta("gates", _gates)
+
+func _ready() -> void:
+	if _gates.is_empty() and has_meta("gates"):
+		_gates.assign(get_meta("gates"))
 
 ## Standing gate(s) on the ground at `pos`, facing `yaw` (flown through
 ## toward -Z after turning by yaw). stack = 1 standard, 2 double, 3
@@ -119,7 +132,7 @@ func _register(xf: Transform3D, w: float, h: float) -> void:
 func gate(geo: Geo, pos: Vector3, yaw: float, stack: int = 1, lift: float = 0.0, through: int = 0, mat: String = "gate_a") -> void:
 	var basis := Basis(Vector3.UP, yaw)
 	for i in range(stack):
-		var cy: float = lift + PANEL + GATE * 0.5 + i * (GATE + PANEL)
+		var cy: float = maxf(lift, FOOT) + PANEL + GATE * 0.5 + i * (GATE + PANEL)
 		var xf := Transform3D(basis, pos + Vector3(0, cy, 0))
 		var alt: String = {"gate_a": "gate_b", "gate_b": "gate_a", "led_blue": "led_orange", "led_orange": "led_blue"}.get(mat, mat)
 		_frame(geo, xf, GATE, GATE, mat if i % 2 == 0 else alt)
@@ -163,7 +176,7 @@ func gate_sized(geo: Geo, pos: Vector3, yaw: float, w: float, h: float, bar: flo
 func start_gate(geo: Geo, pos: Vector3, yaw: float) -> void:
 	gate(geo, pos, yaw, 1, 0.0, 0, "gate_dark")
 	var basis := Basis(Vector3.UP, yaw)
-	var top: Vector3 = pos + Vector3(0, PANEL * 2 + GATE + 0.45, 0)
+	var top: Vector3 = pos + Vector3(0, FOOT + PANEL * 2 + GATE + 0.45, 0)
 	for i in range(8):
 		var x: float = -1.4 + i * 0.4
 		geo.box_xf(Transform3D(basis, top + basis * Vector3(x, 0.2, 0)), Vector3(0.4, 0.4, 0.05), "gate_white" if i % 2 == 0 else "gate_dark")
@@ -270,7 +283,8 @@ func _physics_process(delta: float) -> void:
 		if _sample_t >= 1.0 / GHOST_HZ:
 			_sample_t = 0.0
 			_lap_samples.append(pos)
-			_lap_rot.append(drone.global_transform.basis.get_euler())
+			var q: Quaternion = drone.global_transform.basis.get_rotation_quaternion()
+			_lap_rot.append(Vector4(q.x, q.y, q.z, q.w))
 	_update_ghost()
 	_update_hud()
 
@@ -528,31 +542,54 @@ func _process(_delta: float) -> void:
 		if not _gates.is_empty():
 			arrow.position.y = _gates[_next].h * 0.5 + (0.9 + sin(Time.get_ticks_msec() * 0.004) * 0.15) * arrow.scale.y
 
-## A translucent, glowing stand-in shaped roughly like a quad.
+## The drone's own model, see-through and glowing (one shared material
+## over every part), on the drone's render layer rules: the FPV camera
+## sees it, it casts no shadow and stays out of the shadow-map capture.
 func _build_ghost() -> void:
 	_ghost = Node3D.new()
 	_ghost.name = "Ghost"
+	_ghost.set_meta("dynamic", true)
+	_ghost.set_meta("keep_material", true)
 	add_child(_ghost)
+	var p: Dictionary = Drone.PROFILES.get(Settings.selected_drone, Drone.PROFILES["seeker3"])
+	var visual: Dictionary = p.visual.duplicate()
+	visual["arm_length"] = p.arm_length
+	DroneFrameBuilder.build(_ghost, visual)
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0.4, 0.8, 1.0, 0.45)
-	var s: float = drone.arm_length * 2.4
-	for part in [[Vector3(s, 0.02, 0.03), 0.785], [Vector3(s, 0.02, 0.03), -0.785], [Vector3(0.05, 0.04, 0.08), 0.0]]:
-		var mi := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = part[0]
-		mi.mesh = bm
-		mi.material_override = mat
-		mi.rotation.y = part[1]
-		_ghost.add_child(mi)
+	mat.albedo_color = Color(0.5, 0.9, 1.0, 0.6)
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.no_depth_test = false
+	for c in _ghost.get_children():
+		if c is GeometryInstance3D:
+			var gi := c as GeometryInstance3D
+			gi.material_override = mat
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			gi.set_meta("keep_material", true)
+	# A small glow around it, so a 3-inch ghost reads from 20 m away.
+	var halo := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = p.arm_length * 2.2
+	sm.height = p.arm_length * 4.4
+	sm.radial_segments = 16
+	sm.rings = 8
+	halo.mesh = sm
+	var hm := StandardMaterial3D.new()
+	hm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	hm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	hm.albedo_color = Color(0.5, 0.9, 1.0, 0.16)
+	halo.material_override = hm
+	halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	halo.set_meta("keep_material", true)
+	_ghost.add_child(halo)
 	_ghost.visible = false
 
 func _update_ghost() -> void:
 	if _ghost == null:
 		return
 	var n: int = _ghost_pos.size()
-	_ghost.visible = n > 1 and _lap_start >= 0.0
+	_ghost.visible = Settings.race_ghost and n > 1 and _ghost_rot.size() == n and _lap_start >= 0.0
 	if not _ghost.visible:
 		return
 	var f: float = current_lap_time() * GHOST_HZ
@@ -561,22 +598,53 @@ func _update_ghost() -> void:
 	if int(f) >= n - 1:
 		_ghost.visible = false # the ghost already finished its lap
 		return
-	_ghost.global_position = _ghost_pos[i].lerp(_ghost_pos[i + 1], t)
-	_ghost.rotation = _ghost_rot[i]
+	var a: Vector4 = _ghost_rot[i]
+	var b: Vector4 = _ghost_rot[i + 1]
+	var q: Quaternion = Quaternion(a.x, a.y, a.z, a.w).slerp(Quaternion(b.x, b.y, b.z, b.w), t)
+	_ghost.global_transform = Transform3D(Basis(q), _ghost_pos[i].lerp(_ghost_pos[i + 1], t))
 
 func _save_ghost() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(GHOST_PATH)
 	cfg.set_value(section(map_id), _key() + "_pos", _ghost_pos)
-	cfg.set_value(section(map_id), _key() + "_rot", _ghost_rot)
+	cfg.set_value(section(map_id), _key() + "_q", _ghost_rot)
+	if cfg.has_section_key(section(map_id), _key() + "_rot"):
+		cfg.erase_section_key(section(map_id), _key() + "_rot")
 	cfg.save(GHOST_PATH)
 
+## (Ghosts saved before 2026-10-04 kept Euler angles at 20 Hz under
+## "_rot" - converted on load.)
 func _load_ghost() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(GHOST_PATH) != OK:
 		return
-	_ghost_pos = cfg.get_value(section(map_id), _key() + "_pos", PackedVector3Array())
-	_ghost_rot = cfg.get_value(section(map_id), _key() + "_rot", PackedVector3Array())
+	var sec: String = section(map_id)
+	_ghost_pos = cfg.get_value(sec, _key() + "_pos", PackedVector3Array())
+	if cfg.has_section_key(sec, _key() + "_q"):
+		_ghost_rot = cfg.get_value(sec, _key() + "_q", PackedVector4Array())
+		return
+	var old: PackedVector3Array = cfg.get_value(sec, _key() + "_rot", PackedVector3Array())
+	_ghost_rot = PackedVector4Array()
+	for e in old:
+		var q := Quaternion.from_euler(e)
+		_ghost_rot.append(Vector4(q.x, q.y, q.z, q.w))
+	# Old ghosts were sampled at 20 Hz: resample to GHOST_HZ.
+	if old.size() > 1:
+		var pos := PackedVector3Array()
+		var rot := PackedVector4Array()
+		var k: float = 20.0 / GHOST_HZ
+		var j: float = 0.0
+		while j < old.size() - 1:
+			var i: int = int(j)
+			var t: float = j - i
+			pos.append(_ghost_pos[i].lerp(_ghost_pos[i + 1], t))
+			var a: Vector4 = _ghost_rot[i]
+			var b: Vector4 = _ghost_rot[i + 1]
+			var q: Quaternion = Quaternion(a.x, a.y, a.z, a.w).slerp(Quaternion(b.x, b.y, b.z, b.w), t)
+			rot.append(Vector4(q.x, q.y, q.z, q.w))
+			j += k
+		_ghost_pos = pos
+		_ghost_rot = rot
 
 ## Records are kept per track layout: a redesigned track (MapCatalog
 ## "track": n) starts a fresh record table instead of comparing against
