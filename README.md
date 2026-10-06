@@ -1,4 +1,4 @@
-# Static Horizon FPV Sim
+# Static Horizon FPV Simulator
 
 A free, open-source FPV drone flight simulator built in [Godot 4](https://godotengine.org)
 (free forever, no revenue cap, MIT-licensed engine). Built to run on weak

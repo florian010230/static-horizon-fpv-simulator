@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="Static Horizon FPV Sim"
-config/version="0.10.0"
+config/name="Static Horizon FPV Simulator"
+config/version="0.10.1"
 run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.7")
 config/icon="res://icon.png"
@@ -21,6 +21,7 @@ run/max_fps=60
 
 [autoload]
 
+UserDataMigration="*res://scripts/user_data_migration.gd"
 InputManager="*res://scenes/InputManager.tscn"
 Settings="*res://scripts/settings.gd"
 DevPreviewCapture="*res://scripts/dev_preview_capture.gd"

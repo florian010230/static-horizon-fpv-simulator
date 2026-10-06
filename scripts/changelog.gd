@@ -7,6 +7,11 @@ extends RefCounted
 ## with every release (and bump config/version in project.godot).
 
 const ENTRIES: Array = [
+	["0.10.1", """# Fixes
+- A reset switch on the radio no longer keeps the drone pinned to the start while the switch stays on.
+- Resetting the drone close to the start gate now also restarts the race at the first gate.
+- The game is now called Static Horizon FPV Simulator. Your settings, radio calibration, records, ghosts and found gnomes are carried over.
+"""],
 	["0.10.0", """# New maps, camera looks and realism options
 - Rebuilt maps: a new Village with a church tower to fly up, a railway viaduct and a ruined bando; a working Factory with a fly-through hall and cooling tower; Mountain Lake; and the Abandoned Steel Mill, now properly derelict.
 - Camera looks: Analog, Digital and HDZero, each breaking up like the real thing when walls, hills or distance come between you and the drone.
