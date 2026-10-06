@@ -30,6 +30,12 @@ func _ready() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
+	# A fresh install starts with the realism extras off: no wind, no
+	# battery sag, no prop damage (the defaults in settings.gd).
+	var fresh: Node = (load("res://scripts/settings.gd") as GDScript).new()
+	_check(fresh.wind_level == 0 and not fresh.battery_enabled and not fresh.prop_damage, "settings: wind, battery sag and prop damage are off by default",
+		"wind %d battery %s prop damage %s" % [fresh.wind_level, fresh.battery_enabled, fresh.prop_damage])
+	fresh.free()
 	Settings.units = 1
 	var imp: bool = Settings.speed_text(10.0) == "22mph" and Settings.height_text(10.0) == "33ft" and Settings.spec_tag("150 km/h") == "93 mph"
 	Settings.units = 0
