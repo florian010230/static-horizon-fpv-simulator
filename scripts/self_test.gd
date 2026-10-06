@@ -880,6 +880,30 @@ func _test_reset_switch() -> void:
 	var climbed2: float = d.global_position.y - y1
 	_check(climbed1 > 1.0 and back and climbed2 > 1.0, "radio: the reset switch resets the drone once and it takes off again, switch still on",
 		"first climb %.2f m, back at spawn %s, armed %s, climb after reset %.2f m" % [climbed1, back, InputManager.armed, climbed2])
+	# A reset close to the spawn still voids a race run (the run used to
+	# reset only when the drone jumped more than 8 m in one frame).
+	Settings.game_mode = Settings.MODE_RACE
+	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
+	await _wait(2.0)
+	d = _drone()
+	var course: RaceCourse = get_tree().current_scene.course
+	d.global_position = d._spawn_transform.origin + Vector3(3, 1, 0)
+	await get_tree().physics_frame
+	course._next = 2
+	course._lap = 1
+	course._lap_start = course._time
+	d.reset_to_spawn()
+	await get_tree().physics_frame
+	_check(course._next == 0 and course._lap_start < 0.0, "race: a reset near the start voids the run (gates back to the start)", "next gate %d" % course._next)
+	Settings.game_mode = Settings.MODE_FREESTYLE
+	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
+	await _wait(2.0)
+	d = _drone()
+	axes[2] = -1.0
+	axes[4] = -1.0
+	await _wait(0.2)
+	axes[4] = 1.0
+	await _wait(0.3)
 	# Flipping it off and on again resets again.
 	axes[2] = -1.0
 	axes[7] = 1.0

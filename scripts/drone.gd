@@ -1064,6 +1064,9 @@ func flip_upright() -> void:
 	_reset_controller()
 
 var _reset_was_on: bool = false
+## Emitted after every reset to the spawn (R, the radio's reset control,
+## the world border) - a race run listens to void the lap.
+signal was_reset
 
 func reset_to_spawn() -> void:
 	battery.reset()
@@ -1077,3 +1080,4 @@ func reset_to_spawn() -> void:
 	# the old position to the new one over a frame.
 	reset_physics_interpolation()
 	_reset_controller()
+	was_reset.emit()

@@ -69,6 +69,15 @@ func setup(p_map_id: String, p_drone: Drone, p_ui: Node) -> void:
 	_build_ghost()
 	_load_ghost()
 	_reset_run()
+	# Every reset voids the run - also one that lands within a few metres
+	# (a reset near the start gate used to be missed by the jump check in
+	# _physics_process, leaving the gates mid-lap: "sometimes the gates
+	# don't get reset", 2026-10-06).
+	drone.was_reset.connect(_on_drone_reset)
+
+func _on_drone_reset() -> void:
+	_reset_run()
+	_prev_pos = drone.global_position
 
 # --- building gates ----------------------------------------------------------
 
