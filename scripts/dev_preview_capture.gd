@@ -138,6 +138,36 @@ func _thumb_shots() -> void:
 		img.save_jpg(ProjectSettings.globalize_path("res://images/maps/%s.jpg" % m.id), 0.9)
 		print("THUMB ", m.id)
 
+## The website's drone pictures: `-- --dev-preview drones` - the menu's
+## own drone preview, stopped with the drone's front-right toward the
+## camera, rendered at 2x and saved as previews/drone_<id>.png (680x450).
+func _drone_shots() -> void:
+	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+	await get_tree().create_timer(1.0).timeout
+	var menu: Node = get_tree().current_scene
+	for t in get_tree().get_processed_tweens():
+		t.kill()
+	var root3d: Node3D = menu.get("_preview_drone_root")
+	var vp: SubViewport = root3d.get_viewport()
+	vp.size = Vector2i(1360, 900)
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	var before: String = Settings.selected_drone
+	for id in ["seeker3", "five", "race", "whoop"]:
+		Settings.selected_drone = id
+		menu.call("_build_preview_drone", root3d)
+		# The drone's front-right (local +x, -z) toward the camera (+z).
+		root3d.rotation.y = deg_to_rad(-135.0)
+		await get_tree().create_timer(0.6).timeout
+		var img: Image = vp.get_texture().get_image()
+		img.convert(Image.FORMAT_RGBA8)
+		var out := Image.create(img.get_width(), img.get_height(), false, Image.FORMAT_RGBA8)
+		out.fill(UIKit.BOX)
+		out.blend_rect(img, Rect2i(Vector2i.ZERO, img.get_size()), Vector2i.ZERO)
+		out.resize(680, 450, Image.INTERPOLATE_LANCZOS)
+		out.save_png(ProjectSettings.globalize_path("res://previews/drone_%s.png" % id))
+		print("DRONE ", id)
+	Settings.selected_drone = before
+
 ## Pictures for the website: `-- --dev-preview beauty [map ids]` - from
 ## the map's hero spot and its own preview views, the camera turned toward
 ## the sun (low sun, glare and lit haze make the best pictures), High
@@ -251,6 +281,9 @@ func _go() -> void:
 		return
 	if OS.get_cmdline_user_args().has("thumbs"):
 		await _thumb_shots()
+		get_tree().quit()
+	if OS.get_cmdline_user_args().has("drones"):
+		await _drone_shots()
 		get_tree().quit()
 	if OS.get_cmdline_user_args().has("beauty"):
 		await _beauty_shots()
