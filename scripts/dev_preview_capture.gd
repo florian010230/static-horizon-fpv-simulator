@@ -138,6 +138,76 @@ func _thumb_shots() -> void:
 		img.save_jpg(ProjectSettings.globalize_path("res://images/maps/%s.jpg" % m.id), 0.9)
 		print("THUMB ", m.id)
 
+## Pictures for the website: `-- --dev-preview beauty [map ids]` - from
+## the map's hero spot and its own preview views, the camera turned toward
+## the sun (low sun, glare and lit haze make the best pictures), High
+## quality, no HUD. previews/beauty_<map>_<n>.jpg, 1920 wide.
+func _beauty_shots() -> void:
+	Settings.graphics_quality = 2
+	Settings.view_distance = 2400.0
+	Settings.osd_enabled = false
+	Settings.crosshair_enabled = false
+	Settings.camera_angle_deg = 0.0
+	Settings.lens_fisheye = 0
+	Settings.camera_look = 0
+	WorldBorder.disabled = true
+	var args := OS.get_cmdline_user_args()
+	for m in MapCatalog.MAPS:
+		if m.get("indoor", false) or m.get("dev", false) or (args.size() > 2 and not args.has(m.id)):
+			continue
+		get_tree().change_scene_to_file(m.scene)
+		await get_tree().create_timer(4.0).timeout
+		var root: Node = get_tree().current_scene
+		var drone := root.find_child("Drone", true, false) as RigidBody3D
+		var ui := root.find_child("UI", true, false) as CanvasLayer
+		if ui:
+			ui.visible = false
+		var sun := root.find_child("Sun", true, false) as DirectionalLight3D
+		if drone == null or sun == null:
+			continue
+		drone.freeze = true
+		var to_sun: Vector3 = sun.global_transform.basis.z.normalized()
+		# Spots: [position, the thing the view was made for (or null)].
+		var spots: Array = []
+		if HERO.has(m.id):
+			spots.append([HERO[m.id][0], HERO[m.id][1]])
+		spots.append([drone.global_position + Vector3(0, 3, 0), null])
+		if root.has_method("preview_views"):
+			for v in root.preview_views():
+				if v.size() >= 3 and v[1] is Vector3 and v[2] is Vector3:
+					spots.append([v[1], v[2]])
+		var cam := get_viewport().get_camera_3d()
+		var half_v: float = deg_to_rad(cam.fov * 0.5) if cam else 0.6
+		var elev: float = asin(clampf(to_sun.y, -1.0, 1.0))
+		# Sun in the upper third of the frame - for a high sun, at most a
+		# little upward look (sun at the top edge; the ground still fills
+		# most of the picture).
+		var pitch: float = minf(elev - half_v * 0.45, deg_to_rad(8.0))
+		var sun_yaw: float = atan2(to_sun.x, to_sun.z)
+		var n: int = 0
+		for sp in spots.slice(0, 14):
+			var p: Vector3 = sp[0]
+			# Turn from the sun toward the view's subject by up to 30
+			# degrees, so the subject stands against the light with the
+			# sun near the edge of the frame; views facing away from the
+			# sun turn round to face it.
+			var yaw: float = sun_yaw
+			if sp[1] != null:
+				var to_t: Vector3 = (sp[1] as Vector3) - p
+				var d: float = wrapf(atan2(to_t.x, to_t.z) - sun_yaw, -PI, PI)
+				if absf(d) < deg_to_rad(80.0):
+					yaw = sun_yaw + clampf(d, -deg_to_rad(30.0), deg_to_rad(30.0))
+			var dir := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
+			drone.global_position = p
+			drone.look_at(p + dir, Vector3.UP)
+			drone.reset_physics_interpolation()
+			await get_tree().create_timer(1.2).timeout
+			var img := get_viewport().get_texture().get_image()
+			img.resize(1920, int(1920.0 * img.get_height() / img.get_width()), Image.INTERPOLATE_LANCZOS)
+			img.save_jpg(ProjectSettings.globalize_path("res://previews/beauty_%s_%02d.jpg" % [m.id, n]), 0.92)
+			n += 1
+		print("BEAUTY %s: %d" % [m.id, n])
+
 ## `-- --dev-preview floatcheck`: the hand-made maps (scene files, not
 ## Geo): every mesh whose box starts above the ground and touches no
 ## other mesh's box is listed - something floating in the air.
@@ -181,6 +251,9 @@ func _go() -> void:
 		return
 	if OS.get_cmdline_user_args().has("thumbs"):
 		await _thumb_shots()
+		get_tree().quit()
+	if OS.get_cmdline_user_args().has("beauty"):
+		await _beauty_shots()
 		get_tree().quit()
 		return
 	if OS.get_cmdline_user_args().has("borders"):
