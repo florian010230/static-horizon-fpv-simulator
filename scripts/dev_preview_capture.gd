@@ -149,6 +149,9 @@ func _drone_shots() -> void:
 		t.kill()
 	var root3d: Node3D = menu.get("_preview_drone_root")
 	var vp: SubViewport = root3d.get_viewport()
+	# The menu's container stretches the viewport to its own 360x340 -
+	# switch that off, or the 680x450 picture comes out stretched.
+	(vp.get_parent() as SubViewportContainer).stretch = false
 	vp.size = Vector2i(1360, 900)
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	var before: String = Settings.selected_drone
@@ -160,9 +163,18 @@ func _drone_shots() -> void:
 		await get_tree().create_timer(0.6).timeout
 		var img: Image = vp.get_texture().get_image()
 		img.convert(Image.FORMAT_RGBA8)
+		print("DRONE render ", img.get_size())
 		var out := Image.create(img.get_width(), img.get_height(), false, Image.FORMAT_RGBA8)
 		out.fill(UIKit.BOX)
 		out.blend_rect(img, Rect2i(Vector2i.ZERO, img.get_size()), Vector2i.ZERO)
+		# Frame the drone itself: its bounding box (pixels the render
+		# drew) plus a margin, at the picture's 680:450 shape.
+		var used: Rect2i = img.get_used_rect()
+		var c: Vector2 = Vector2(used.get_center())
+		var w: float = maxf(used.size.x, used.size.y * 680.0 / 450.0) * 1.18
+		var h: float = w * 450.0 / 680.0
+		var rect := Rect2i(int(c.x - w / 2.0), int(c.y - h / 2.0), int(w), int(h)).intersection(Rect2i(Vector2i.ZERO, out.get_size()))
+		out = out.get_region(rect)
 		out.resize(680, 450, Image.INTERPOLATE_LANCZOS)
 		out.save_png(ProjectSettings.globalize_path("res://previews/drone_%s.png" % id))
 		print("DRONE ", id)
