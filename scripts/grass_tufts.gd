@@ -63,6 +63,21 @@ func _build() -> void:
 	if grass_nodes.is_empty():
 		return
 	var t0: int = Time.get_ticks_msec()
+	# A cached map keeps its two captures next to the map cache, so the
+	# tufts are there at once (the capture took 1.5-4 s after the map
+	# appeared, and the tufts popped in).
+	var cache_h: String = ""
+	var cache_c: String = ""
+	if scene is BuiltMap and MapCache.enabled(scene as BuiltMap):
+		cache_h = MapCache.path(scene, "-grass-h.png")
+		cache_c = MapCache.path(scene, "-grass-c.png")
+		if FileAccess.file_exists(cache_h) and FileAccess.file_exists(cache_c):
+			var ch := Image.load_from_file(cache_h)
+			var cc := Image.load_from_file(cache_c)
+			if ch and cc:
+				_make_tufts(ImageTexture.create_from_image(ch), ImageTexture.create_from_image(cc))
+				set_meta("ready", true)
+				return
 	var res: int = RES[quality]
 	var vp := SubViewport.new()
 	vp.size = Vector2i(res, res)
@@ -93,6 +108,8 @@ func _build() -> void:
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
+	if not is_inside_tree():
+		return # the map was left during the capture
 	var himg: Image = vp.get_texture().get_image()
 	# Pass 2: the ground's own colour (materials back, no haze).
 	for s in saved:
@@ -102,6 +119,8 @@ func _build() -> void:
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
+	if not is_inside_tree():
+		return
 	var cimg: Image = vp.get_texture().get_image()
 	_restore(saved)
 	vp.queue_free()
@@ -114,6 +133,10 @@ func _build() -> void:
 			WorldShading.fit_fog(we.environment, vcam.far)
 	himg.convert(Image.FORMAT_RGB8)
 	cimg.convert(Image.FORMAT_RGB8)
+	if cache_h != "":
+		DirAccess.make_dir_recursive_absolute(MapCache.DIR)
+		himg.save_png(cache_h)
+		cimg.save_png(cache_c)
 	var htex := ImageTexture.create_from_image(himg)
 	var ctex := ImageTexture.create_from_image(cimg)
 	_make_tufts(htex, ctex)
