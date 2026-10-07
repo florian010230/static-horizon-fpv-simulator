@@ -24,7 +24,7 @@ const MENU_FPS: int = 30
 ## The maps themselves live in MapCatalog (scripts/map_catalog.gd).
 
 ## Where Back / Esc goes from each screen.
-const BACK_TARGET := {"mode": "main", "map": "mode", "about": "main", "updates": "main", "achievements": "main"}
+const BACK_TARGET := {"mode": "main", "map": "mode", "about": "main", "licences": "about", "updates": "main", "achievements": "main"}
 const WEBSITE := "https://statichorizonfpv.com/"
 
 var _settings: SettingsScreens
@@ -74,6 +74,7 @@ func _ready() -> void:
 	_screens["mode"] = _build_mode_screen(root)
 	_screens["map"] = _build_map_screen(root)
 	_screens["about"] = _build_about_screen(root)
+	_screens["licences"] = _build_licences_screen(root)
 	_updater = Updater.new()
 	add_child(_updater)
 	_updates = UpdatesScreen.new()
@@ -112,6 +113,8 @@ func _show(screen: String) -> void:
 		_refresh_maps()
 	if screen == "updates":
 		_updates.refresh()
+	if screen == "licences":
+		_fill_licences()
 	if screen == "achievements":
 		_achievements.refresh()
 	if screen == "main":
@@ -525,7 +528,7 @@ func _option_card(title: String, tags: String, text: String, stripe: Color, acti
 	return b
 
 func _build_about_screen(root: Control) -> Control:
-	var parts: Array = UIKit.screen_card(root, "About", "", 760, func(): _show("main"))
+	var parts: Array = UIKit.screen_card(root, "About", "", 800, func(): _show("main"))
 	var content: VBoxContainer = parts[1]
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 18)
@@ -546,7 +549,7 @@ func _build_about_screen(root: Control) -> Control:
 	name_box.add_child(version)
 
 	var intro := Label.new()
-	intro.text = "A free FPV drone simulator that runs on weak hardware and flies with your radio over USB. Twelve maps for freestyle and racing, three quads whose mass, thrust and drag are taken from real ones, and a flight controller modelled on Betaflight - a simulation, so close but never quite the real thing."
+	intro.text = "A free FPV drone simulator that runs on weak hardware and flies with your radio over USB. Twelve maps for freestyle and racing, four quads whose mass, thrust and drag are taken from real ones, and a flight controller modelled on Betaflight - a simulation, so close but never quite the real thing."
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	content.add_child(intro)
 
@@ -574,10 +577,53 @@ func _build_about_screen(root: Control) -> Control:
 		"Oswald typeface (SIL Open Font License)",
 	])
 	UIKit.gap(content, 6)
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 12)
+	content.add_child(buttons)
 	var site := UIKit.button("Visit statichorizonfpv.com", "PrimaryButton", 56)
+	site.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	site.pressed.connect(func(): OS.shell_open(WEBSITE))
-	content.add_child(site)
+	buttons.add_child(site)
+	var lic := UIKit.button("Licences", "", 56)
+	lic.custom_minimum_size.x = 180
+	lic.pressed.connect(func(): _show("licences"))
+	buttons.add_child(lic)
 	return parts[0]
+
+## The licence texts the game ships under, and those of the engine and
+## everything in it (Godot's MIT licence asks for its notice to be
+## included with the game). Filled when the screen is first opened.
+var _licences_text: RichTextLabel
+
+func _build_licences_screen(root: Control) -> Control:
+	var parts: Array = UIKit.screen_card(root, "Licences", "", 760, func(): _show("about"))
+	var content: VBoxContainer = parts[1]
+	_licences_text = RichTextLabel.new()
+	_licences_text.fit_content = true
+	_licences_text.selection_enabled = true
+	_licences_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_licences_text.add_theme_font_size_override("normal_font_size", 15)
+	content.add_child(_licences_text)
+	return parts[0]
+
+func _fill_licences() -> void:
+	if _licences_text.text != "":
+		return
+	var t := "STATIC HORIZON FPV SIMULATOR\n"
+	t += "PolyForm Noncommercial License 1.0.0 - free to use, study, change and share for non-commercial purposes. Full text: https://polyformproject.org/licenses/noncommercial/1.0.0\n\n"
+	t += "OSWALD TYPEFACE\nCopyright The Oswald Project Authors. SIL Open Font License 1.1 (text below).\n\n"
+	t += "GODOT ENGINE\n" + Engine.get_license_text() + "\n\n"
+	t += "THIRD-PARTY COMPONENTS IN THE GODOT ENGINE\n"
+	for c in Engine.get_copyright_info():
+		t += "\n" + str(c.name) + "\n"
+		for p in c.parts:
+			for cr in p.copyright:
+				t += "  (c) " + str(cr) + "\n"
+			t += "  Licence: " + str(p.license) + "\n"
+	var li: Dictionary = Engine.get_license_info()
+	for k in li:
+		t += "\n\n" + str(k) + "\n" + str(li[k])
+	_licences_text.text = t
 
 func _about_section(parent: Control, title: String, lines: Array) -> void:
 	UIKit.gap(parent, 8)

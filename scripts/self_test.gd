@@ -177,6 +177,14 @@ func _test_menu_flow() -> void:
 	about_btn.pressed.emit()
 	await _wait(0.2)
 	_check(menu._screens["about"].visible and not menu._screens["main"].visible, "menu: About opens")
+	_find_button(menu._screens["about"], "Licences").pressed.emit()
+	await _wait(0.2)
+	var lic: String = menu.get("_licences_text").text
+	_check(menu._screens["licences"].visible and lic.contains("Godot Engine contributors") and lic.contains("OFL-1.1") and lic.contains("PolyForm Noncommercial"),
+		"menu: Licences lists the game's, the font's and the engine's licences", "%d chars" % lic.length())
+	await _tap(KEY_ESCAPE)
+	await _wait(0.2)
+	_check(menu._screens["about"].visible, "menu: Esc in Licences goes back to About")
 	await _tap(KEY_ESCAPE)
 	await _wait(0.2)
 	_check(menu._screens["main"].visible and not menu._screens["about"].visible, "menu: Esc in About goes back home")

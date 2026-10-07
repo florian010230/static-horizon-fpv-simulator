@@ -423,6 +423,9 @@ func _menu_shots() -> void:
 	_find_button(get_tree().current_scene._screens["main"], "About").pressed.emit()
 	await get_tree().create_timer(0.3).timeout
 	_shot("preview_about.png")
+	_find_button(get_tree().current_scene._screens["about"], "Licences").pressed.emit()
+	await get_tree().create_timer(0.5).timeout
+	_shot("preview_licences.png")
 
 	# Updates (a pretend newer release) and Achievements (some progress).
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
