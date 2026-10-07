@@ -228,6 +228,13 @@ func _test_menu_flow() -> void:
 	var scene: Node = get_tree().current_scene
 	_check(scene != null and scene.scene_file_path == "res://scenes/maps/Village.tscn", "menu: Play -> Village loads the map")
 	_check(Engine.max_fps == Settings.max_fps, "menu: FPS cap restored in game", "max_fps=%d" % Engine.max_fps)
+	# Unlimited must also switch VSync off, or the screen's refresh rate
+	# caps it anyway (60 FPS in 0.10.0). Headless has no real VSync.
+	if DisplayServer.get_name() != "headless":
+		var cap: int = Settings.max_fps
+		Settings.set_max_fps(0)
+		_check(Engine.max_fps == 0 and DisplayServer.window_get_vsync_mode() == DisplayServer.VSYNC_DISABLED, "menu: Unlimited FPS turns VSync off")
+		Settings.set_max_fps(cap)
 
 ## Version compare, GitHub's release JSON, the offline notes, markdown.
 func _test_updater() -> void:
@@ -451,7 +458,7 @@ func _test_video_link() -> void:
 	await _wait(0.2)
 	_check(get_viewport().get_camera_3d() == cam and not v.visible and v.link_quality == -1, "video: Clean is the drone camera, no pass")
 	# The world extras (LooksFx): glare and grass outdoors, none of them
-	# on Low; dust indoors.
+	# on Low; no dust anywhere (removed in 0.10.1).
 	var sc: Node = get_tree().current_scene
 	var ui_root: Node = sc.get_node("UI")._root
 	_check(ui_root.get_node_or_null("SunGlare") != null and sc.get_node_or_null("GrassTufts") != null and sc.get_node_or_null("DustMotes") == null, "looks: village has sun glare and grass tufts, no dust")
@@ -466,7 +473,7 @@ func _test_video_link() -> void:
 	get_tree().change_scene_to_file("res://scenes/Main3.tscn")
 	await _wait(2.0)
 	sc = get_tree().current_scene
-	_check(sc.get_node_or_null("DustMotes") != null and sc.get_node("UI")._root.get_node_or_null("SunGlare") == null and sc.get_node_or_null("GrassTufts") == null, "looks: the school has dust in the air, no glare or grass")
+	_check(sc.get_node_or_null("DustMotes") == null and sc.get_node("UI")._root.get_node_or_null("SunGlare") == null and sc.get_node_or_null("GrassTufts") == null, "looks: the school has no dust, glare or grass")
 
 func _test_pause_menu(tag: String, d: Drone, map: String) -> void:
 	var pm: PauseMenu = get_tree().current_scene.get_node("UI").pause_menu

@@ -49,7 +49,7 @@ func _ready() -> void:
 	# a menu left open should not spin up a laptop's fans (it did: GPU at
 	# ~50% just sitting here, measured). Settings.max_fps comes back the
 	# moment a map loads.
-	Engine.max_fps = MENU_FPS
+	Settings.apply_fps_cap(MENU_FPS)
 
 	var bg := TextureRect.new()
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -96,7 +96,7 @@ func _ready() -> void:
 	start_screen = "main"
 
 func _exit_tree() -> void:
-	Engine.max_fps = Settings.max_fps
+	Settings.apply_fps_cap(Settings.max_fps)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") and BACK_TARGET.has(_current):

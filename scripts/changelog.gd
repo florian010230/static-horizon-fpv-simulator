@@ -12,6 +12,8 @@ const ENTRIES: Array = [
 - Resetting the drone close to the start gate now also restarts the race at the first gate.
 - You can fly up to 250 m on the outdoor maps (higher on Harbour and Mountain Lake), and the haze thins with height so you can see the map from up there.
 - Grass no longer pops in a moment after a map loads.
+- "Unlimited" frame rate is really unlimited now (it stopped at the screen's refresh rate, usually 60 FPS).
+- The dust specks in the air on Medium and High are gone.
 - The licences of the game, its font and the Godot Engine are now under About.
 - The game is now called Static Horizon FPV Simulator. Your settings, radio calibration, records, ghosts and found gnomes are carried over.
 """],

@@ -146,9 +146,12 @@ func _build_settings() -> Control:
 	UIKit.gap(g2, 6)
 	var fps_initial: float = clamp(Settings.max_fps if Settings.max_fps > 0 else FPS_MAX, FPS_MIN, FPS_MAX)
 	_fps_value_label = UIKit.slider(g2, "Frame rate limit", FPS_MIN, FPS_MAX, 5, fps_initial, func(v: float):
-		# Stored now, applied when a map loads - the menu itself stays
-		# capped at MENU_FPS (see _ready).
+		# The main menu stays capped at MENU_FPS and applies this when a
+		# map loads; from the pause menu it applies at once.
 		Settings.max_fps = 0 if int(v) >= FPS_MAX else int(v)
+		var cur: Node = get_tree().current_scene
+		if cur and not (cur is MainMenu):
+			Settings.apply_fps_cap(Settings.max_fps)
 		_fps_value_label.text = _fps_label_text(int(v))
 	)
 	_fps_value_label.text = _fps_label_text(int(fps_initial))

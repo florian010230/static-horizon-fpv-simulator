@@ -882,7 +882,7 @@ func _looks_features(on: bool) -> void:
 		WorldShading.set_detail(Settings.graphics_quality)
 	else:
 		RenderingServer.global_shader_parameter_set("sh_detail", Vector4(0, 1, 0, 0))
-	for n in ["DustMotes", "GrassTufts", "UI/SunGlare"]:
+	for n in ["GrassTufts", "UI/SunGlare"]:
 		var node: Node = sc.find_child(n.get_file(), true, false) if sc else null
 		if node:
 			node.set_meta("looks_off", not on)

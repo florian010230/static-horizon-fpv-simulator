@@ -168,7 +168,7 @@ func _ready() -> void:
 	_persist = not (args.has("--selftest") or args.has("--dev-preview"))
 	if _persist:
 		_load()
-	Engine.max_fps = max_fps
+	apply_fps_cap(max_fps)
 	_last_saved = _snapshot()
 
 func _process(delta: float) -> void:
@@ -226,7 +226,19 @@ func _load() -> void:
 
 func set_max_fps(v: int) -> void:
 	max_fps = v
-	Engine.max_fps = v
+	apply_fps_cap(v)
+
+## Sets the frame cap. VSync stays on only while the cap is at or below the
+## screen's refresh rate: with VSync on, "Unlimited" or a cap above the
+## refresh rate still stopped at the screen's rate (60 FPS on a 60 Hz
+## screen, reported on Windows in 0.10.0).
+func apply_fps_cap(cap: int) -> void:
+	Engine.max_fps = cap
+	var hz: float = DisplayServer.screen_get_refresh_rate()
+	if hz <= 0.0:
+		hz = 60.0
+	var vsync: bool = cap > 0 and cap <= int(round(hz))
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
 
 ## Called once by every map in its _ready(): shadows, render scale,
 ## per-object draw distances and the drone camera's view distance.
