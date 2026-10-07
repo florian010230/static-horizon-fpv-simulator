@@ -28,7 +28,7 @@ const MAPS: Array[Dictionary] = [
 	 "text": "A full-size sports hall with goals, ropes and hoops, a long corridor and furnished classrooms. Indoors only."},
 	{"id": "steelmill", "gnomes": 3, "name": "Abandoned Steel Mill", "scene": "res://scenes/maps/SteelMill.tscn", "tier": "High", "drone": "any",
 	 "color": Color("#b5552b"),
-	 "text": "After the Völklinger Hütte: six blast furnaces in a row, skip hoists to the tops, a column slalom under the bunker hall, hollow gas mains, the ore monorail."},
+	 "text": "Inspired by the great ironworks of the Saarland: six blast furnaces in a row, skip hoists to the tops, a column slalom under the bunker hall, hollow gas mains, the ore monorail."},
 	{"id": "playground", "gnomes": 1, "name": "Playground", "scene": "res://scenes/maps/Playground.tscn", "tier": "Low", "drone": "whoop",
 	 "color": Color("#e0a526"),
 	 "text": "Slides, swings, a climbing frame and a tunnel tube - a whoop playground."},

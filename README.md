@@ -1,7 +1,8 @@
 # Static Horizon FPV Simulator
 
-A free, open-source FPV drone flight simulator built in [Godot 4](https://godotengine.org)
-(free forever, no revenue cap, MIT-licensed engine). Built to run on weak
+A free FPV drone flight simulator, source code on GitHub, built in
+[Godot 4](https://godotengine.org) (free forever, no revenue cap,
+MIT-licensed engine). Built to run on weak
 hardware (4GB RAM, integrated graphics) and to fly with real FPV radios —
 starting with the RadioMaster Pocket — over USB.
 
@@ -91,7 +92,7 @@ performance and can filter by it:
 
 | Map | Tier | What it is |
 |---|---|---|
-| Abandoned Steel Mill | High | Laid out after the Völklinger Hütte along the Saar: river, main line through Völklingen station, a row of Cowper stoves, six blast furnaces in one line with dust catchers and cast houses over the iron line, skip hoists up from the Möllerhalle bunker building (a 244 m column slalom underneath), the ore monorail from the ore yard, blower hall, coking and sinter plants, gas holder, the town on the hill and the overgrown "Paradies". Hollow gas and blast mains with open joints to fly through. | Abandoned for thirty years: a collapsed rolling-mill hall with a bando inside, rusting sidings, broken windows, birches growing out of the slag, and something odd in the slag heap.
+| Abandoned Steel Mill | High | Inspired by the great ironworks of the Saarland: a river, a main line through the town station, a row of Cowper stoves, six blast furnaces in one line with dust catchers and cast houses over the iron line, skip hoists up from the Möllerhalle bunker building (a 244 m column slalom underneath), the ore monorail from the ore yard, blower hall, coking and sinter plants, gas holder, the town on the hill and an overgrown wood. Hollow gas and blast mains with open joints to fly through. | Abandoned for thirty years: a collapsed rolling-mill hall with a bando inside, rusting sidings, broken windows, birches growing out of the slag, and something odd in the slag heap.
 | Construction Site | High | A city block under construction: an 18-storey concrete frame with open floors, two lattice tower cranes, a 12 m excavation pit with sheet piles and struts, a steel frame, site machines, the city grid round it and an S-Bahn on brick arches. |
 | Mountain Lake | High | Kaltensee, an alpine reservoir under rocky peaks: a curved concrete dam with its spillway and a gorge to fly out of, a long avalanche gallery over the shore road, a chapel on an island, a waterfall in a hanging valley, a cable car to a summit station, a lakeside village, a campground and an alpine farm. |
 | Parking Garage | Medium | An abandoned multi-storey car park: 2.7 m decks, two-lane ramps, collapsed slabs, broken parapets, stair towers. |

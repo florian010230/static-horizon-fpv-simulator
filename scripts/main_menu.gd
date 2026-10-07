@@ -243,7 +243,7 @@ func _build_main_screen(root: Control) -> Control:
 	left.add_theme_constant_override("separation", 14)
 	row.add_child(left)
 
-	left.add_child(UIKit.eyebrow("FREE  ·  OPEN SOURCE  ·  FPV SIMULATOR"))
+	left.add_child(UIKit.eyebrow("FREE  ·  SOURCE ON GITHUB"))
 
 	var brand := HBoxContainer.new()
 	brand.add_theme_constant_override("separation", 18)
