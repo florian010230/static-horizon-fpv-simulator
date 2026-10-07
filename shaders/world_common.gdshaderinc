@@ -7,6 +7,10 @@
 // (0 off, 1 depth fog begin..end, 2 exponential).
 global uniform vec4 sh_fog;
 global uniform vec4 sh_fog_color;
+// Haze thinning with height (Settings._fit_fog): x = the map's ground
+// height, y = the haze's scale height in m (0 = off: indoor maps),
+// z = where the drawn world ends (just inside the camera's far plane).
+global uniform vec4 sh_haze_h;
 // Sun: xyz direction the light travels, w shadow strength (0 = off).
 global uniform vec4 sh_sun;
 // The baked light's parts (see Geo.shade): x ambient, y sky, z sun.
@@ -136,18 +140,43 @@ vec3 sh_haze_color(vec3 v) {
 	return c * mix(vec3(1.0), vec3(0.95, 0.98, 1.03), (1.0 - sd) * low * 0.6);
 }
 
+// The haze sits in the air near the ground (density falling off with
+// height, scale height sh_haze_h.y): a ray between two heights crosses
+// on average this fraction of the ground-level density. 1 at the
+// ground; looking down from 250 m about 0.6 - the map stays visible
+// from up high instead of drowning in the low-level haze.
+float sh_haze_thin(float h1, float h2) {
+	float hs = sh_haze_h.y;
+	if (hs <= 0.0) {
+		return 1.0;
+	}
+	float a = max(min(h1, h2) - sh_haze_h.x, 0.0);
+	float b = max(max(h1, h2) - sh_haze_h.x, 0.0);
+	float ea = exp(-a / hs);
+	if (b - a < 1.0) {
+		return ea;
+	}
+	return hs * (ea - exp(-b / hs)) / (b - a);
+}
+
 vec3 sh_apply_fog(vec3 c, vec3 wpos, vec3 cam) {
 	c = sh_grade_color(c);
 	if (sh_fog.w < 0.5) {
 		return c;
 	}
 	float d = length(wpos - cam);
+	float de = d * sh_haze_thin(cam.y, wpos.y);
 	float f;
 	if (sh_fog.w < 1.5) {
-		f = clamp((d - sh_fog.x) / max(sh_fog.y - sh_fog.x, 1.0), 0.0, 1.0);
+		f = clamp((de - sh_fog.x) / max(sh_fog.y - sh_fog.x, 1.0), 0.0, 1.0);
 		f = f * f * (3.0 - 2.0 * f);
 	} else {
-		f = 1.0 - exp(-sh_fog.z * d);
+		f = 1.0 - exp(-sh_fog.z * de);
+	}
+	// Whatever the haze, fully fogged just before the far plane: the end
+	// of the drawn world is never a visible edge.
+	if (sh_haze_h.z > 0.0) {
+		f = max(f, smoothstep(sh_haze_h.z * 0.5, sh_haze_h.z, d));
 	}
 	return mix(c, sh_haze_color(normalize(wpos - cam)), f);
 }

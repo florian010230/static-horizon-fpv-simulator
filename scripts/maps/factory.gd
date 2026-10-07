@@ -30,7 +30,7 @@ func map_env() -> Dictionary:
 		"shadow_region": Rect2(-300, -300, 600, 600)}
 
 func border() -> Array:
-	return [330.0, 390.0, 110.0, 150.0, Vector2(10, -20)]
+	return [330.0, 390.0, 250.0, 310.0, Vector2(10, -20)]
 
 func _height(x: float, z: float) -> float:
 	return land.ground(x, z)

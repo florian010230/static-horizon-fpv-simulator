@@ -49,7 +49,7 @@ func map_env() -> Dictionary:
 		"shadow_ground_y": 0.0, "shadow_region": Rect2(-760, -1000, 1400, 1260)}
 
 func border() -> Array:
-	return [760.0, 850.0, 260.0, 320.0, Vector2(-100, -380)]
+	return [760.0, 850.0, 310.0, 370.0, Vector2(-100, -380)]
 
 ## Loaded from the map cache after the first build (MapCache): nothing
 ## the script keeps is needed after build().

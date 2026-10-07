@@ -55,7 +55,7 @@ func map_env() -> Dictionary:
 		"fog_begin": 260.0, "shadow_region": Rect2(-430, -380, 860, 760)}
 
 func border() -> Array:
-	return [430.0, 520.0, 170.0, 230.0]
+	return [430.0, 520.0, 250.0, 310.0]
 
 var _views: Array = []
 

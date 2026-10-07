@@ -28,7 +28,7 @@ func map_env() -> Dictionary:
 	return {"sun_rot": Vector3(-55, 25, 0), "shadow_ground_y": 0.0, "shadow_region": Rect2(-128, -128, 256, 256)}
 
 func border() -> Array:
-	return [110.0, 140.0, 60.0, 90.0]
+	return [110.0, 140.0, 250.0, 310.0]
 
 func preview_views() -> Array:
 	return [

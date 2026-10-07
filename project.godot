@@ -55,6 +55,10 @@ sh_fog={
 "type": "vec4",
 "value": Vector4(0, 1, 0, 0)
 }
+sh_haze_h={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
 sh_fog_color={
 "type": "color",
 "value": Color(0.75, 0.82, 0.9, 1)

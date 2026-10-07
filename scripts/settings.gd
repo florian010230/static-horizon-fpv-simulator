@@ -172,6 +172,7 @@ func _ready() -> void:
 	_last_saved = _snapshot()
 
 func _process(delta: float) -> void:
+	_update_far_with_height()
 	if not _persist:
 		return
 	_save_timer += delta
@@ -251,6 +252,9 @@ func apply_graphics_settings() -> void:
 		_fit_fog(scene, cam.far)
 	LooksFx.attach(scene)
 
+## Haze scale height (m): how fast the low-level haze thins with height.
+const HAZE_SCALE_HEIGHT: float = 220.0
+
 ## Depth fog turns fully into the horizon colour just before the
 ## camera's far plane - so the end of the drawn world is never a visible
 ## edge, whatever the view distance (WorldShading's own cheap fog).
@@ -258,6 +262,39 @@ func _fit_fog(scene: Node, far: float) -> void:
 	var we := scene.get_node_or_null("WorldEnvironment") as WorldEnvironment
 	if we:
 		WorldShading.fit_fog(we.environment, far)
+	# The haze thins out with height on the outdoor generated maps
+	# (world_common sh_haze_thin), measured from the spawn's ground.
+	var info: Dictionary = MapCatalog.for_scene(scene.scene_file_path)
+	var drone := scene.find_child("Drone", true, false) as Node3D
+	if scene is BuiltMap and drone and not info.get("indoor", false):
+		_haze = Vector4(drone.global_position.y, HAZE_SCALE_HEIGHT, far * 0.96, 0)
+		_haze_far = far
+	else:
+		_haze = Vector4.ZERO
+		_haze_far = 0.0
+	RenderingServer.global_shader_parameter_set("sh_haze_h", _haze)
+
+## With the haze thinning upward the view from high up reaches further,
+## so the far plane grows with the height above the map's ground (up to
+## the drone camera's own limit) - otherwise the end of the drawn world
+## would sit as a ring of fog 1 km away under a clear sky.
+var _haze := Vector4.ZERO
+var _haze_far: float = 0.0
+const FAR_PER_HEIGHT: float = 1.0 / 250.0
+
+func _update_far_with_height() -> void:
+	if _haze_far <= 0.0:
+		return
+	var cam: Camera3D = get_viewport().get_camera_3d()
+	if cam == null or not cam.has_meta("profile_far"):
+		return
+	var agl: float = maxf(cam.global_position.y - _haze.x, 0.0)
+	var far: float = minf(float(cam.get_meta("profile_far")), _haze_far * (1.0 + agl * FAR_PER_HEIGHT))
+	if absf(far - cam.far) < cam.far * 0.02:
+		return
+	cam.far = far
+	_haze.z = far * 0.96
+	RenderingServer.global_shader_parameter_set("sh_haze_h", _haze)
 
 func _apply_draw_distances(node: Node, small_range: float, medium_range: float) -> void:
 	if node is GeometryInstance3D and not (node.get_parent() is Drone) and not node.has_meta("geo_detail"):

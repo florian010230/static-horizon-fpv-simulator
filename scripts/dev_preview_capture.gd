@@ -180,6 +180,42 @@ func _drone_shots() -> void:
 		print("DRONE ", id)
 	Settings.selected_drone = before
 
+## `-- --dev-preview ceiling [map ids]`: from just under each outdoor
+## map's height limit, four views (N/E/S/W, 25 deg down) - to check how
+## the map's edges look from up there. previews/ceiling_<map>_<dir>.jpg.
+func _ceiling_shots() -> void:
+	Settings.osd_enabled = false
+	Settings.crosshair_enabled = false
+	Settings.camera_angle_deg = 0.0
+	WorldBorder.disabled = true
+	var args := OS.get_cmdline_user_args()
+	for m in MapCatalog.MAPS:
+		if m.get("indoor", false) or m.get("dev", false) or (args.size() > 2 and not args.has(m.id)):
+			continue
+		get_tree().change_scene_to_file(m.scene)
+		await get_tree().create_timer(4.0).timeout
+		var root: Node = get_tree().current_scene
+		var drone := root.find_child("Drone", true, false) as RigidBody3D
+		var ui := root.find_child("UI", true, false) as CanvasLayer
+		if ui:
+			ui.visible = false
+		if drone == null or not root.has_method("border"):
+			continue
+		drone.freeze = true
+		var b: Array = root.border()
+		var c: Vector2 = b[4] if b.size() > 4 else Vector2.ZERO
+		var p := Vector3(c.x, float(b[2]) - 10.0, c.y)
+		for dir in [["n", Vector3(0, 0, -1)], ["e", Vector3(1, 0, 0)], ["s", Vector3(0, 0, 1)], ["w", Vector3(-1, 0, 0)]]:
+			var d: Vector3 = (dir[1] as Vector3) * cos(deg_to_rad(25.0)) + Vector3.DOWN * sin(deg_to_rad(25.0))
+			drone.global_position = p
+			drone.look_at(p + d, Vector3.UP)
+			drone.reset_physics_interpolation()
+			await get_tree().create_timer(1.2).timeout
+			var img := get_viewport().get_texture().get_image()
+			img.resize(960, int(960.0 * img.get_height() / img.get_width()), Image.INTERPOLATE_LANCZOS)
+			img.save_jpg(ProjectSettings.globalize_path("res://previews/ceiling_%s_%s.jpg" % [m.id, dir[0]]), 0.85)
+		print("CEILING ", m.id, " fog ", RenderingServer.global_shader_parameter_get("sh_fog"), " haze ", RenderingServer.global_shader_parameter_get("sh_haze_h"), " far ", get_viewport().get_camera_3d().far)
+
 ## Pictures for the website: `-- --dev-preview beauty [map ids]` - from
 ## the map's hero spot and its own preview views, the camera turned toward
 ## the sun (low sun, glare and lit haze make the best pictures), High
@@ -296,6 +332,9 @@ func _go() -> void:
 		get_tree().quit()
 	if OS.get_cmdline_user_args().has("drones"):
 		await _drone_shots()
+		get_tree().quit()
+	if OS.get_cmdline_user_args().has("ceiling"):
+		await _ceiling_shots()
 		get_tree().quit()
 	if OS.get_cmdline_user_args().has("beauty"):
 		await _beauty_shots()

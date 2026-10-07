@@ -22,7 +22,7 @@ func map_env() -> Dictionary:
 		"shadow_ground_y": 0.0, "shadow_region": Rect2(-128, -128, 256, 256)}
 
 func border() -> Array:
-	return [140.0, 180.0, 60.0, 90.0]
+	return [140.0, 180.0, 250.0, 310.0]
 
 func preview_views() -> Array:
 	return [
