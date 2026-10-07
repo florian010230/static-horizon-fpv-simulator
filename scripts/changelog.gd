@@ -7,9 +7,12 @@ extends RefCounted
 ## with every release (and bump config/version in project.godot).
 
 const ENTRIES: Array = [
-	["0.10.1", """# Fixes
+	["0.10.1", """# Fixes and a higher sky
 - A reset switch on the radio no longer keeps the drone pinned to the start while the switch stays on.
 - Resetting the drone close to the start gate now also restarts the race at the first gate.
+- You can fly up to 250 m on the outdoor maps (higher on Harbour and Mountain Lake), and the haze thins with height so you can see the map from up there.
+- Grass no longer pops in a moment after a map loads.
+- The licences of the game, its font and the Godot Engine are now under About.
 - The game is now called Static Horizon FPV Simulator. Your settings, radio calibration, records, ghosts and found gnomes are carried over.
 """],
 	["0.10.0", """# New maps, camera looks and realism options
