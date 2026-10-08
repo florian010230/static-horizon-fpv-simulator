@@ -55,7 +55,7 @@ func _run() -> void:
 	var te: float = Settings.throttle_curve(0.75)
 	Settings.throttle_expo = 0.0
 	_check(absf(te - 0.5625) < 0.001, "throttle: Betaflight EXPO curve", "%.4f" % te)
-	# Dev aid: SH_SELFTEST_ONLY=menu,reset,realism,race runs just those parts.
+	# Dev aid: SH_SELFTEST_ONLY=menu,reset,realism,race,gnomes runs just those parts.
 	if OS.has_environment("SH_SELFTEST_ONLY"):
 		var only: PackedStringArray = OS.get_environment("SH_SELFTEST_ONLY").split(",")
 		if only.has("menu"):
@@ -68,6 +68,8 @@ func _run() -> void:
 			await _test_race()
 		if only.has("video"):
 			await _test_video_link()
+		if only.has("gnomes"):
+			await _test_collectibles()
 		if only.has("cache"):
 			await _test_map_cache()
 		print("SELFTEST DONE: %d checks, %d failed" % [_checks, _failures])
@@ -272,6 +274,11 @@ func _test_collectibles() -> void:
 	d.linear_velocity = Vector3.ZERO
 	await _wait(0.5)
 	_check(Collectibles.found_count("playground") == 1 and Collectibles.is_found("playground", 0), "gnomes: flying into the gnome collects it")
+	var model := g.get_node("Model") as MeshInstance3D
+	_check(model.mesh == sc.get_meta("gnome_mesh_found"), "gnomes: a found gnome turns grey")
+	d.global_position = g.global_position + Vector3(3, 1, 0)
+	await _wait(Collectibles.FADED_TIME + 0.5)
+	_check(model.mesh == sc.get_meta("gnome_mesh"), "gnomes: ... and looks normal again after %d s" % int(Collectibles.FADED_TIME))
 	var done: bool = false
 	for a in Achievements.list():
 		if a.name == "Map cleared":
@@ -462,6 +469,23 @@ func _test_video_link() -> void:
 	var sc: Node = get_tree().current_scene
 	var ui_root: Node = sc.get_node("UI")._root
 	_check(ui_root.get_node_or_null("SunGlare") != null and sc.get_node_or_null("GrassTufts") != null and sc.get_node_or_null("DustMotes") == null, "looks: village has sun glare and grass tufts, no dust")
+	# Trees switch to their stand-ins one by one (shader), never a whole
+	# chunk at once, and the stand-ins are never cut by a range.
+	var tree_bad: Array = []
+	for n in sc.find_children("*", "GeometryInstance3D", true, false):
+		var gi := n as GeometryInstance3D
+		var tm: ShaderMaterial = null
+		if gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh and (gi as MultiMeshInstance3D).multimesh.mesh:
+			tm = (gi as MultiMeshInstance3D).multimesh.mesh.surface_get_material(0) as ShaderMaterial
+		elif gi is MeshInstance3D and (gi as MeshInstance3D).mesh and (gi as MeshInstance3D).mesh.get_surface_count() > 0:
+			tm = (gi as MeshInstance3D).mesh.surface_get_material(0) as ShaderMaterial
+		if tm == null or tm.shader == null or not tm.shader.resource_path.ends_with("tree.gdshader"):
+			continue
+		if gi is MultiMeshInstance3D and gi.visibility_range_end > 0.0 and not (gi.material_override is ShaderMaterial and (gi.material_override as ShaderMaterial).get_shader_parameter("near_only")):
+			tree_bad.append(str(gi.get_path()))
+		elif gi is MeshInstance3D and gi.visibility_range_begin > 0.0:
+			tree_bad.append(str(gi.get_path()))
+	_check(tree_bad.is_empty(), "looks: trees are cut per tree, never per chunk", str(tree_bad.slice(0, 3)))
 	var q: int = Settings.graphics_quality
 	Settings.graphics_quality = 0
 	Settings.apply_graphics_settings()

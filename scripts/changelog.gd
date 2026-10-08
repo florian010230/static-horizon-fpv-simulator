@@ -14,6 +14,9 @@ const ENTRIES: Array = [
 - Grass no longer pops in a moment after a map loads.
 - "Unlimited" frame rate is really unlimited now (it stopped at the screen's refresh rate, usually 60 FPS).
 - The dust specks in the air on Medium and High are gone.
+- Trees no longer vanish for a moment in patches while you fly.
+- Turning away from the sun quickly no longer leaves a glare fading in the middle of the screen.
+- A gnome you found turns grey for a few seconds, then looks like itself again.
 - The licences of the game, its font and the Godot Engine are now under About.
 - The game is now called Static Horizon FPV Simulator. Your settings, radio calibration, records, ghosts and found gnomes are carried over.
 """],

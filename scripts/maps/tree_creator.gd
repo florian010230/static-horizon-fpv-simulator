@@ -129,7 +129,10 @@ static func plant(map: Node3D, geo: Geo, trees: Array) -> Dictionary:
 				_collider(body, list[i][0], list[i][2])
 			var mmi := MultiMeshInstance3D.new()
 			mmi.multimesh = mm
-			mmi.visibility_range_end = near_range
+			# Coarse cut per chunk; the shader cuts each tree at near_range
+			# (see Forest.near_material).
+			mmi.material_override = Forest.near_material()
+			mmi.visibility_range_end = near_range + Forest.CHUNK_SLACK
 			mmi.visibility_range_end_margin = 20.0
 			mmi.set_meta("geo_detail", true)
 			holder.add_child(mmi)
@@ -138,7 +141,9 @@ static func plant(map: Node3D, geo: Geo, trees: Array) -> Dictionary:
 		mesh.surface_set_material(0, Forest._material())
 		var mi := MeshInstance3D.new()
 		mi.mesh = mesh
-		mi.visibility_range_begin = near_range - 10.0
+		# Always drawn (a range begin measured from the 512 m chunk's centre
+		# hid them while the full trees were already cut - bare gardens);
+		# the stand-ins sit inside the full crowns.
 		mi.set_meta("geo_detail", true)
 		holder.add_child(mi)
 	return {"kept": kept, "extras": extras, "placed": placed}

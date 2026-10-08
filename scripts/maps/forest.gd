@@ -22,6 +22,8 @@ const CHUNK: float = 128.0
 const FAR_CHUNK: float = 512.0
 ## Full trees out to this distance, per graphics quality.
 const NEAR_RANGE: Array[float] = [140.0, 220.0, 320.0]
+## A chunk's centre to its farthest tree (half the diagonal, plus height).
+const CHUNK_SLACK: float = 110.0
 
 enum { SPRUCE, PINE, BROAD, BIRCH, POPLAR }
 ## Per species: [collision trunk height, crown radius, crown centre y, crown height]
@@ -83,7 +85,10 @@ static func plant(root: Node3D, trees: Array, _unused: Node3D = null) -> void:
 				_collider(body, list[i][3], sp, list[i][2])
 			var mmi := MultiMeshInstance3D.new()
 			mmi.multimesh = mm
-			mmi.visibility_range_end = near_range
+			# Only a coarse cut per chunk (its centre can be ~90 m from its
+			# corner trees); the shader cuts each tree at near_range.
+			mmi.material_override = near_material()
+			mmi.visibility_range_end = near_range + CHUNK_SLACK
 			mmi.visibility_range_end_margin = 20.0
 			mmi.set_meta("geo_detail", true) # keeps its own range (Settings)
 			holder.add_child(mmi)
@@ -119,6 +124,16 @@ static func _collider(body: StaticBody3D, pos: Vector3, sp: int, sc: float) -> v
 	cc.shape = crown
 	cc.position = pos + Vector3(0, s[2] * sc, 0)
 	body.add_child(cc)
+
+static var _near_mat: ShaderMaterial
+
+## The full trees' material: the same, but each tree drawn only within
+## sh_tree_near (Settings sets it per quality).
+static func near_material() -> ShaderMaterial:
+	if _near_mat == null:
+		_near_mat = _material().duplicate() as ShaderMaterial
+		_near_mat.set_shader_parameter("near_only", true)
+	return _near_mat
 
 static func _material() -> ShaderMaterial:
 	if _mat == null:

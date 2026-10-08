@@ -49,9 +49,16 @@ func _process(delta: float) -> void:
 	visible = _vis > 0.01
 	if not visible:
 		return
-	var sun_uv := Vector2(0.5, 0.5)
+	var sun_uv: Vector2
 	if not cam.is_position_behind(cam.global_position + to_sun * 100.0):
 		sun_uv = cam.unproject_position(cam.global_position + to_sun * 100.0) / get_viewport_rect().size
+	else:
+		# Sun behind the camera (a fast turn while the glare still fades):
+		# keep it off-screen on the side the sun went. It used to jump to
+		# the middle of the screen and fade out there.
+		var v: Vector3 = cam.global_transform.basis.inverse() * to_sun
+		var side := Vector2(v.x, -v.y)
+		sun_uv = Vector2(0.5, 0.5) + (side.normalized() if side.length() > 0.001 else Vector2(0.0, -1.0)) * 2.0
 	_mat.set_shader_parameter("sun_uv", sun_uv)
 	_mat.set_shader_parameter("strength", _vis)
 	_mat.set_shader_parameter("aspect", get_viewport_rect().size.aspect())

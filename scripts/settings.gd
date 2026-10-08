@@ -243,6 +243,7 @@ func apply_fps_cap(cap: int) -> void:
 ## Called once by every map in its _ready(): shadows, render scale,
 ## per-object draw distances and the drone camera's view distance.
 func apply_graphics_settings() -> void:
+	RenderingServer.global_shader_parameter_set("sh_tree_near", Forest.NEAR_RANGE[clampi(graphics_quality, 0, 2)])
 	apply_shadow_setting()
 	Engine.physics_ticks_per_second = PHYSICS_HZ_PERFORMANCE if performance_mode else PHYSICS_HZ_NORMAL
 	var q: int = clampi(graphics_quality, 0, 2)

@@ -14,9 +14,11 @@ extends RefCounted
 ## The gnome is NOT part of a map's Geo (no collision, not in the
 ## floating check or the map cache): one MeshInstance3D with a single
 ## vertex-colour surface, lit by baked colours like the rest of the game,
-## plus an Area3D. A found gnome stays and is drawn faded (grey-green).
+## plus an Area3D. A gnome turns faded (grey-green) for FADED_TIME when
+## it is found, then looks normal again (it stays found).
 
 const HEIGHT: float = 0.35
+const FADED_TIME: float = 5.0 ## s a just-found gnome stays grey
 const PICKUP_RADIUS: float = 0.45 ## m, from the gnome's middle: through it or close by
 
 ## Where progress lives. The self-test and --dev-preview use their own
@@ -70,7 +72,7 @@ static func gnome(root: Node3D, map_id: String, index: int, xf: Transform3D) -> 
 	node.set_meta("gnome", [map_id, index])
 	var mi := MeshInstance3D.new()
 	mi.name = "Model"
-	mi.mesh = _mesh(root, found)
+	mi.mesh = _mesh(root, false)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	node.add_child(mi)
 	var area := Area3D.new()
@@ -98,6 +100,9 @@ static func _collect(root: Node3D, node: Node3D, mi: MeshInstance3D, map_id: Str
 	node.set_meta("collected", true)
 	mark_found(map_id, index)
 	mi.mesh = _mesh(root, true)
+	node.get_tree().create_timer(FADED_TIME).timeout.connect(func():
+		if is_instance_valid(mi):
+			mi.mesh = _mesh(root, false))
 	var n: int = found_count(map_id)
 	var total: int = MapCatalog.gnome_total(map_id)
 	var ui: Node = root.get_node_or_null("UI")
