@@ -88,9 +88,9 @@ const CAMERA_HINTS: Array[String] = [
 ]
 const TAB_NAMES: Array[String] = ["Graphics", "Camera & HUD", "Flight", "Rates", "Radio"]
 const QUALITY_HINTS: Array[String] = [
-	"Low: reduced resolution (on big and Retina screens the whole picture is drawn smaller and scaled up), small objects only drawn nearby. For older laptops and integrated graphics.",
-	"Medium: reduced resolution on big and Retina screens, most details. For most laptops.",
-	"High: full screen resolution, every detail, longest tree distance. For gaming PCs."]
+	"Low: 55% render resolution, small objects only drawn nearby. For older laptops and integrated graphics.",
+	"Medium: 75% render resolution, most details. For most laptops.",
+	"High: full resolution, every detail, longest tree distance. For gaming PCs."]
 
 func _build_settings() -> Control:
 	var parts: Array = UIKit.screen_card(self, "Settings", "", 860, close, 1440)
@@ -279,7 +279,7 @@ func _hint_label() -> Label:
 	return l
 
 func _res_hint_text() -> String:
-	var t: String = "Off: on Retina and other high-resolution screens the whole game is drawn at half the pixels - much faster on weak graphics, a little softer."
+	var t: String = "Off: on Retina and other high-resolution screens the game is drawn with half the pixels each way - often twice the FPS on weak graphics. Text is a little softer; on Low the 3D picture keeps its detail."
 	if _res_restart_pending():
 		t += " Takes effect when the game restarts (a few seconds)."
 	return t

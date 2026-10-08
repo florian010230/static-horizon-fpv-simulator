@@ -16,8 +16,8 @@ const ENTRIES: Array = [
 - The dust specks in the air on Medium and High are gone.
 - Trees no longer vanish for a moment in patches while you fly.
 - Turning away from the sun quickly no longer leaves a glare fading in the middle of the screen.
-- Faster on big and Retina screens: Low and Medium now draw the picture at a lower resolution and scale it up (Village on Low on a 2015 MacBook: 28 to 43 FPS).
-- New in Settings -> Screen: "Full screen resolution". Switched off, Retina and other high-resolution screens draw the game at half the pixels - on the 2015 MacBook it is developed on, 43 to 62 FPS.
+- New in Settings -> Screen: "Full screen resolution". Switched off, Retina and other high-resolution screens draw the HUD, menus and camera effects at half the pixels, which is faster on weak graphics.
+- Mountain Lake: no more stripes across the lake's water.
 - The Whoop no longer starts under the launch mat (Village) or under the pier (Mountain Lake).
 - A gnome you found turns grey for a few seconds, then looks like itself again.
 - The licences of the game, its font and the Godot Engine are now under About.

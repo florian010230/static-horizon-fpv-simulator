@@ -646,6 +646,20 @@ func slab(rect: Rect2, top_y: float, thickness: float, mat: String, collide: boo
 	var c := Vector3(rect.get_center().x, top_y - thickness * 0.5, rect.get_center().y)
 	box(c, Vector3(rect.size.x, thickness, rect.size.y), mat, 0.0, collide, false)
 
+## A water tile: solid like slab() (collision, support for boats and
+## piers), but only its surface drawn - water is see-through, and tiled
+## slabs showed every tile's side walls through it as stripes.
+func water_slab(rect: Rect2, top_y: float, thickness: float, mat: String) -> void:
+	var c := Vector3(rect.get_center().x, top_y - thickness * 0.5, rect.get_center().y)
+	var hx: float = rect.size.x * 0.5
+	var hz: float = rect.size.y * 0.5
+	var cs: Array[Vector3] = []
+	for i in range(8):
+		cs.append(c + Vector3(hx if i & 1 else -hx, thickness * 0.5 if i & 2 else -thickness * 0.5, hz if i & 4 else -hz))
+	_begin(mat, c, true)
+	_obstacle_box(c, Vector3(hx, 0, 0), Vector3(0, 0, hz), cs, true)
+	_quad(cs[2], cs[6], cs[7], cs[3], Vector3.UP, true)
+
 ## Extrudes a 2D cross-section along a path (see Route): rails,
 ## ballast beds, roads, kerbs, pipes, conveyor galleries - one unbroken
 ## piece through every curve, so things that should connect do.

@@ -423,7 +423,7 @@ func _lake_water() -> void:
 			if z1 <= z0:
 				continue
 			# (a thin slab: boats and piers rest on it for the floating check)
-			geo.slab(Rect2(x0, z0, s, z1 - z0), WATER_Y, 0.2, "water")
+			geo.water_slab(Rect2(x0, z0, s, z1 - z0), WATER_Y, 0.2, "water")
 	geo.light_fn = Callable()
 
 ## z of the dam's upstream face at x (the arch bows north, into the lake).

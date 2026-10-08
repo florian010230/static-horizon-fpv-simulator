@@ -982,7 +982,7 @@ func _perf_detail() -> void:
 		if mm.id == id:
 			m = mm
 	Settings.selected_drone = m.drone if m.get("drone", "any") != "any" else OS.get_environment("SH_PERFD_DRONE") if OS.has_environment("SH_PERFD_DRONE") else "whoop"
-	Settings.graphics_quality = 0
+	Settings.graphics_quality = int(OS.get_environment("SH_PERFD_Q")) if OS.has_environment("SH_PERFD_Q") else 0
 	Settings.shadows_enabled = false
 	Settings.lens_fisheye = 1
 	Settings.camera_look = 0
@@ -1001,6 +1001,13 @@ func _perf_detail() -> void:
 	print("PERFD window %dx%d scale %.2f mode %d" % [sz.x, sz.y, get_viewport().scaling_3d_scale, get_tree().root.content_scale_mode])
 	if OS.has_environment("SH_PERFD_SPAWN"):
 		_shot("spawn_whoop_%s.png" % id)
+		var cam4: Camera3D = get_viewport().get_camera_3d()
+		var dr: Node3D = sc.get_node("Drone")
+		dr.freeze = true
+		for k in range(4):
+			dr.global_transform = Transform3D(Basis(Vector3.UP, k * PI * 0.5) * Basis(Vector3.RIGHT, -0.35), dr.global_position + Vector3(0, 1.5 if k == 0 else 0.0, 0))
+			await get_tree().create_timer(0.5).timeout
+			_shot("spawn_whoop_%s_%d.png" % [id, k])
 		return
 	if OS.has_environment("SH_PERFD_NEAR"):
 		var cam3: Camera3D = get_viewport().get_camera_3d()
@@ -1016,6 +1023,7 @@ func _perf_detail() -> void:
 			if over:
 				print("PERFD OVER ", v3.get_path(), " aabb ", ab)
 		return
+	print("PERFD screen scale %.2f max %.2f size %s dpi %d win %s" % [DisplayServer.screen_get_scale(), DisplayServer.screen_get_max_scale(), DisplayServer.screen_get_size(), DisplayServer.screen_get_dpi(), DisplayServer.window_get_size()])
 	if OS.has_environment("SH_PERFD_HOLD"):
 		print("PERFD hold pid %d" % OS.get_process_id())
 		await get_tree().create_timer(float(OS.get_environment("SH_PERFD_HOLD"))).timeout
@@ -1023,7 +1031,7 @@ func _perf_detail() -> void:
 	var variants: Array = [
 		["base", func(): pass, func(): pass],
 		["no fisheye", func(): Settings.lens_fisheye = 0, func(): Settings.lens_fisheye = 1],
-		["scale 0.35", func(): get_viewport().scaling_3d_scale = 0.35, func(): Settings.apply_render_resolution()],
+		["scale 0.35", func(): get_viewport().scaling_3d_scale = 0.35, func(): get_viewport().scaling_3d_scale = Settings.render_scale(Settings.graphics_quality)],
 		["medium", func(): _set_q(1), func(): _set_q(0)],
 		["high", func(): _set_q(2), func(): _set_q(0)],
 		["no UI", func(): sc.get_node("UI").visible = false, func(): sc.get_node("UI").visible = true],
@@ -1057,7 +1065,7 @@ func _perf_detail() -> void:
 			1000.0 / maxf(fps, 0.1), proc / n, phys / n, cpu_r / n, gpu / n,
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000])
-		if v[0] in ["base", "medium", "high", "scale 0.35", "no fisheye", "no UI", "far 300"]:
+		if v[0] in ["base", "medium", "high", "old low", "vp low 1.0"]:
 			_shot("perfd_%s.png" % v[0].replace(" ", "_"))
 		(v[2] as Callable).call()
 

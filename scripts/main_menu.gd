@@ -50,7 +50,6 @@ func _ready() -> void:
 	# ~50% just sitting here, measured). Settings.max_fps comes back the
 	# moment a map loads.
 	Settings.apply_fps_cap(MENU_FPS)
-	Settings.leave_map()
 
 	var bg := TextureRect.new()
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
