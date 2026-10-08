@@ -299,6 +299,30 @@ func leave_map() -> void:
 	_in_map = false
 	apply_render_resolution()
 
+## "Full screen resolution" (Settings -> Screen). Off writes this file,
+## which project.godot names as its project_settings_override: the next
+## start opens the window without HiDPI - on a Retina Mac or a scaled
+## Windows screen the whole game is then drawn at half the pixels.
+## Measured on the dev Mac (Iris 6100, 2880x1800), Village on Low:
+## 43 fps with full resolution, 62 fps without. Read only at startup.
+const DISPLAY_OVERRIDE: String = "user://display_override.cfg"
+
+func full_resolution() -> bool:
+	return not FileAccess.file_exists(DISPLAY_OVERRIDE)
+
+func set_full_resolution(on: bool) -> void:
+	if on:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(DISPLAY_OVERRIDE))
+	else:
+		var f := FileAccess.open(DISPLAY_OVERRIDE, FileAccess.WRITE)
+		if f:
+			f.store_string("[display]\n\nwindow/dpi/allow_hidpi=false\n")
+
+## True if the window runs at reduced resolution right now (the file was
+## there at startup).
+func reduced_resolution_active() -> bool:
+	return not bool(ProjectSettings.get_setting("display/window/dpi/allow_hidpi", true))
+
 ## Website screenshots (--dev-preview, except perfdetail) stay at full size.
 var _native_only: bool = false
 

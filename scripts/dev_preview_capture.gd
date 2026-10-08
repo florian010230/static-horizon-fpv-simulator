@@ -1029,6 +1029,9 @@ func _perf_detail() -> void:
 		["no UI", func(): sc.get_node("UI").visible = false, func(): sc.get_node("UI").visible = true],
 		["no trees", func(): _set_trees(sc, false), func(): _set_trees(sc, true)],
 		["far 300", func(): get_viewport().get_camera_3d().far = 300.0, func(): Settings.apply_graphics_settings()],
+		["no sky", func(): _sky(sc, false), func(): _sky(sc, true)],
+		["no 3D", func(): _world3d(sc, false), func(): _world3d(sc, true)],
+		["no 3D no UI", func(): _world3d(sc, false); sc.get_node("UI").visible = false, func(): _world3d(sc, true); sc.get_node("UI").visible = true],
 		["base again", func(): pass, func(): pass],
 	]
 	for v in variants:
@@ -1073,6 +1076,8 @@ func _cpu_prof() -> void:
 	get_tree().change_scene_to_file(m.scene)
 	await get_tree().create_timer(3.0).timeout
 	Engine.max_fps = 0
+	OS.low_processor_usage_mode = false
+	OS.low_processor_usage_mode_sleep_usec = 0
 	var sc: Node = get_tree().current_scene
 	var d: Drone = sc.get_node("Drone")
 	InputManager.armed = true
@@ -1095,6 +1100,17 @@ func _cpu_prof() -> void:
 			if not groups.has(cls):
 				groups[cls] = []
 			groups[cls].append(n)
+	# Physics per step: at 45 fps, sum the physics time over 3 s.
+	Engine.max_fps = 45
+	var steps0: int = Engine.get_physics_frames()
+	var tp: float = 0.0
+	var t0p: int = Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0p < 3000:
+		await get_tree().process_frame
+		tp += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+	var nsteps: int = Engine.get_physics_frames() - steps0
+	print("CPUP %s physics: %d steps in 3 s, %.2f ms per frame at 45 fps" % [id, nsteps, tp / 135.0])
+	Engine.max_fps = 0
 	var base: float = await _cpu_fps()
 	print("CPUP %s base fps=%.0f (%.2f ms)" % [id, base, 1000.0 / base])
 	for g in groups:
@@ -1121,6 +1137,23 @@ func _cpu_fps() -> float:
 	var t0: int = Time.get_ticks_usec()
 	await get_tree().create_timer(3.0).timeout
 	return (Engine.get_process_frames() - f0) * 1e6 / float(Time.get_ticks_usec() - t0)
+
+var _sky_mode: int = 0
+func _sky(sc: Node, on: bool) -> void:
+	var we := sc.get_node_or_null("WorldEnvironment") as WorldEnvironment
+	if we == null:
+		return
+	if not on:
+		_sky_mode = we.environment.background_mode
+		we.environment.background_mode = Environment.BG_COLOR
+	else:
+		we.environment.background_mode = _sky_mode
+
+func _world3d(sc: Node, on: bool) -> void:
+	for c in sc.get_children():
+		if c is Node3D and c.name != "Drone":
+			(c as Node3D).visible = on
+	_sky(sc, on)
 
 func _set_q(q: int) -> void:
 	Settings.graphics_quality = q

@@ -144,6 +144,13 @@ func _build_settings() -> Control:
 	UIKit.section(g2, "Screen")
 	UIKit.toggle(g2, "Fullscreen", Settings.is_fullscreen(), func(v: bool): Settings.set_fullscreen(v))
 	UIKit.gap(g2, 6)
+	var res_hint := _hint_label()
+	UIKit.toggle(g2, "Full screen resolution", Settings.full_resolution(), func(v: bool):
+		Settings.set_full_resolution(v)
+		res_hint.text = _res_hint_text())
+	res_hint.text = _res_hint_text()
+	g2.add_child(res_hint)
+	UIKit.gap(g2, 6)
 	var fps_initial: float = clamp(Settings.max_fps if Settings.max_fps > 0 else FPS_MAX, FPS_MIN, FPS_MAX)
 	_fps_value_label = UIKit.slider(g2, "Frame rate limit", FPS_MIN, FPS_MAX, 5, fps_initial, func(v: float):
 		# The main menu stays capped at MENU_FPS and applies this when a
@@ -265,6 +272,12 @@ func _hint_label() -> Label:
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.add_theme_color_override("font_color", UIKit.MUTED_LIGHT)
 	return l
+
+func _res_hint_text() -> String:
+	var t: String = "Off: on Retina and other high-resolution screens the whole game is drawn at half the pixels - much faster on weak graphics, a little softer."
+	if Settings.full_resolution() == Settings.reduced_resolution_active():
+		t += " Restart the game to apply."
+	return t
 
 func _hint(parent: Control, text: String) -> void:
 	var l := _hint_label()

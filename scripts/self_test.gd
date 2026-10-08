@@ -230,6 +230,8 @@ func _test_menu_flow() -> void:
 	var scene: Node = get_tree().current_scene
 	_check(scene != null and scene.scene_file_path == "res://scenes/maps/Village.tscn", "menu: Play -> Village loads the map")
 	_check(Engine.max_fps == Settings.max_fps, "menu: FPS cap restored in game", "max_fps=%d" % Engine.max_fps)
+	# "Full screen resolution" off works through this override file.
+	_check(ProjectSettings.get_setting("application/config/project_settings_override", "") == Settings.DISPLAY_OVERRIDE, "settings: the reduced-resolution file is the project's settings override")
 	# Unlimited must also switch VSync off, or the screen's refresh rate
 	# caps it anyway (60 FPS in 0.10.0). Headless has no real VSync.
 	if DisplayServer.get_name() != "headless":
