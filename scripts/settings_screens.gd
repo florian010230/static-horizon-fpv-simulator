@@ -241,7 +241,7 @@ func _build_settings() -> Control:
 	_assign_row(third, "Assign Reset Button", "reset", Callable(InputManager, "reset_control_name"), Callable(InputManager, "clear_reset_control"))
 	_assign_row(third, "Assign Line-of-Sight Button", "los", Callable(InputManager, "los_control_name"), Callable(InputManager, "clear_los_control"))
 	_assign_row(third, "Assign Restart Switch", "restart", Callable(InputManager, "restart_control_name"), Callable(InputManager, "clear_restart_control"))
-	_hint(third, "Restart reloads the map from the start (race, timer, drone) - Reset only puts the drone back.")
+	_hint(third, "For everyday flying, use Reset: it puts the drone back, starts the race fresh and fits a new pack and props, all in an instant. Restart reloads the whole map (a few seconds) - only needed if something gets stuck.")
 
 	UIKit.gap(third, 10)
 	UIKit.section(third, "Controller")
