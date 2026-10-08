@@ -318,6 +318,19 @@ func set_full_resolution(on: bool) -> void:
 		if f:
 			f.store_string("[display]\n\nwindow/dpi/allow_hidpi=false\n")
 
+## Closes the game and starts it again (settings saved first) - the
+## window's resolution mode can only change at startup.
+func restart_game() -> void:
+	if _persist:
+		_save()
+	var args: PackedStringArray = OS.get_cmdline_args()
+	if not OS.has_feature("template"):
+		# Run from the project folder: Godot's own arguments (--path) aren't
+		# in get_cmdline_args, and without them it opens the project manager.
+		args = PackedStringArray(["--path", ProjectSettings.globalize_path("res://")]) + args
+	OS.set_restart_on_exit(true, args)
+	get_tree().quit()
+
 ## True if the window runs at reduced resolution right now (the file was
 ## there at startup).
 func reduced_resolution_active() -> bool:

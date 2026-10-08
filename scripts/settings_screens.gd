@@ -145,11 +145,16 @@ func _build_settings() -> Control:
 	UIKit.toggle(g2, "Fullscreen", Settings.is_fullscreen(), func(v: bool): Settings.set_fullscreen(v))
 	UIKit.gap(g2, 6)
 	var res_hint := _hint_label()
+	var restart_btn := UIKit.button("Restart now", "PrimaryButton", 44)
 	UIKit.toggle(g2, "Full screen resolution", Settings.full_resolution(), func(v: bool):
 		Settings.set_full_resolution(v)
-		res_hint.text = _res_hint_text())
+		res_hint.text = _res_hint_text()
+		restart_btn.visible = _res_restart_pending())
 	res_hint.text = _res_hint_text()
 	g2.add_child(res_hint)
+	restart_btn.pressed.connect(Settings.restart_game)
+	restart_btn.visible = _res_restart_pending()
+	g2.add_child(restart_btn)
 	UIKit.gap(g2, 6)
 	var fps_initial: float = clamp(Settings.max_fps if Settings.max_fps > 0 else FPS_MAX, FPS_MIN, FPS_MAX)
 	_fps_value_label = UIKit.slider(g2, "Frame rate limit", FPS_MIN, FPS_MAX, 5, fps_initial, func(v: float):
@@ -275,9 +280,12 @@ func _hint_label() -> Label:
 
 func _res_hint_text() -> String:
 	var t: String = "Off: on Retina and other high-resolution screens the whole game is drawn at half the pixels - much faster on weak graphics, a little softer."
-	if Settings.full_resolution() == Settings.reduced_resolution_active():
-		t += " Restart the game to apply."
+	if _res_restart_pending():
+		t += " Takes effect when the game restarts (a few seconds)."
 	return t
+
+func _res_restart_pending() -> bool:
+	return Settings.full_resolution() == Settings.reduced_resolution_active()
 
 func _hint(parent: Control, text: String) -> void:
 	var l := _hint_label()
