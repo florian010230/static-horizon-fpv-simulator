@@ -15,7 +15,6 @@ uniform sampler2D leaves : source_color, filter_linear_mipmap_anisotropic, repea
 uniform sampler2D bark : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float leaf_scale = 0.7;
 uniform float bark_scale = 1.6;
-uniform float sway = 1.0;
 // The full trees (near MultiMeshes) draw only within sh_tree_near of the
 // camera, cut per tree here. Done per chunk by visibility ranges, a whole
 // 128 m block of trees vanished at once, measured from the block's centre
@@ -27,14 +26,11 @@ varying vec3 wpos;
 varying vec3 wnrm;
 
 void vertex() {
-	// A light breeze: crowns sway a few cm, more toward the top.
+	// (No breeze: the swaying crowns read as trees sliding about.)
 	vec3 o = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 	if (near_only && distance(o, INV_VIEW_MATRIX[3].xyz) > sh_tree_near) {
 		VERTEX = vec3(0.0); // every triangle of this tree collapses to a point
 	}
-	float h = max(VERTEX.y - 2.0, 0.0) * COLOR.a;
-	VERTEX.x += sin(TIME * 1.1 + o.x * 0.13 + o.z * 0.07) * 0.012 * h * sway;
-	VERTEX.z += sin(TIME * 0.9 + o.z * 0.11) * 0.009 * h * sway;
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	wnrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }

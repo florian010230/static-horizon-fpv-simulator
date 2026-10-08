@@ -14,7 +14,7 @@ const ENTRIES: Array = [
 - Grass no longer pops in a moment after a map loads.
 - "Unlimited" frame rate is really unlimited now (it stopped at the screen's refresh rate, usually 60 FPS).
 - The dust specks in the air on Medium and High are gone.
-- Trees no longer vanish for a moment in patches while you fly.
+- Trees no longer vanish for a moment in patches while you fly, and they stand still (no more swaying).
 - Turning away from the sun quickly no longer leaves a glare fading in the middle of the screen.
 - New in Settings -> Screen: "Full screen resolution". Switched off, Retina and other high-resolution screens draw the HUD, menus and camera effects at half the pixels, which is faster on weak graphics.
 - Mountain Lake: no more stripes across the lake's water.

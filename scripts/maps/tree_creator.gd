@@ -19,7 +19,7 @@ extends RefCounted
 ##
 ## Cost: meshes are built once per species variant (cached for the whole
 ## game) and drawn as MultiMesh - one draw call per variant and 128 m
-## chunk, with Forest's tree shader (lit in the shader, sways, takes the
+## chunk, with Forest's tree shader (lit in the shader, takes the
 ## sun shadow map). Beyond the near range a merged stand-in (a trunk and
 ## one blob) per 512 m chunk. Collision: trunk + crown cylinder.
 ## Sizes: garden maples 7-11 m, apple 4-5.5 m, birch 9-12 m, garden spruce 6-10 m, bushes 1-1.8 m.
