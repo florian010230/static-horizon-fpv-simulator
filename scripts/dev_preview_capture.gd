@@ -1035,6 +1035,9 @@ func _perf_detail() -> void:
 		["medium", func(): _set_q(1), func(): _set_q(0)],
 		["high", func(): _set_q(2), func(): _set_q(0)],
 		["no UI", func(): sc.get_node("UI").visible = false, func(): sc.get_node("UI").visible = true],
+		["no generated", func(): _child_vis(sc, "Generated", false), func(): _child_vis(sc, "Generated", true)],
+		["no terrain", func(): _child_vis(sc, "Terrain", false), func(): _child_vis(sc, "Terrain", true)],
+		["no sky", func(): _sky(sc, false), func(): _sky(sc, true)],
 		["no trees", func(): _set_trees(sc, false), func(): _set_trees(sc, true)],
 		["far 300", func(): get_viewport().get_camera_3d().far = 300.0, func(): Settings.apply_graphics_settings()],
 		["no glare", func(): _ui_part(sc, "SunGlare", false), func(): _ui_part(sc, "SunGlare", true)],
@@ -1044,7 +1047,10 @@ func _perf_detail() -> void:
 		["no 3D no UI", func(): _world3d(sc, false); sc.get_node("UI").visible = false, func(): _world3d(sc, true); sc.get_node("UI").visible = true],
 		["base again", func(): pass, func(): pass],
 	]
+	var only: PackedStringArray = OS.get_environment("SH_PERFD_ONLY").split(",") if OS.has_environment("SH_PERFD_ONLY") else PackedStringArray()
 	for v in variants:
+		if not only.is_empty() and not only.has(v[0]):
+			continue
 		(v[1] as Callable).call()
 		DisplayServer.window_move_to_foreground()
 		await get_tree().create_timer(1.5).timeout
@@ -1182,6 +1188,11 @@ func _set_q(q: int) -> void:
 	Settings.graphics_quality = q
 	Settings.apply_graphics_settings()
 	Settings.set_max_fps(0)
+
+func _child_vis(sc: Node, n: String, on: bool) -> void:
+	for c in sc.get_children():
+		if c is Node3D and String(c.name).begins_with(n):
+			(c as Node3D).visible = on
 
 func _set_trees(n: Node, on: bool) -> void:
 	if n is MultiMeshInstance3D or (n is MeshInstance3D and n.get_parent() and n.get_parent().name == "Forest"):
