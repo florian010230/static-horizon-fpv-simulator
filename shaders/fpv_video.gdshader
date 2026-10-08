@@ -37,7 +37,19 @@ render_mode unshaded;
 //
 // bad: 0 perfect link .. 1 lost, already per system (FpvVideo).
 
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear, repeat_disable;
+// The 3D view, rendered into FpvVideo's own SubViewport (at the render
+// scale) and read straight from there: this pass is the one full-screen
+// step between the 3D picture and the screen. (It used to read a copy of
+// the screen, after the 3D was scaled up onto it and the sun glare added
+// in another full-screen pass - three full-screen steps at 5 MP on a
+// Retina screen, ~10 ms a frame on the dev machine.)
+uniform sampler2D view : filter_linear, repeat_disable;
+// Sun glare (SunGlare computes where and how strong): added to the view
+// where it is read, so the camera look and the lens treat it as part of
+// the picture, as before when it was drawn onto the screen first.
+uniform float glare = 0.0;
+uniform vec2 sun_uv = vec2(0.5);
+uniform vec3 glare_tint : source_color = vec3(1.0, 0.95, 0.85);
 uniform int look = 0;          // 0 clean (lens only), 1 analog, 2 digital, 3 HDZero
 uniform float bad = 0.0;
 uniform float seed = 0.0;      // noise time - held while the picture is frozen
@@ -53,8 +65,22 @@ float hash12(vec2 p) {
 	return fract((p3.x + p3.y) * p3.z);
 }
 
+// Same formula as shaders/sun_glare.gdshader (halo, streak, veil).
+vec3 sun_glare(vec2 uv) {
+	vec2 d = (uv - sun_uv) * vec2(aspect, 1.0);
+	float r2 = dot(d, d);
+	float halo = 0.5 * exp(-r2 * 180.0) + 0.16 * exp(-sqrt(r2) * 5.0);
+	float streak = 0.18 * exp(-abs(d.y) * 120.0) * exp(-abs(d.x) * 3.0);
+	return glare_tint * glare * (halo + streak + 0.07);
+}
+
 vec3 tex(vec2 uv) {
-	return texture(screen_tex, clamp(uv, vec2(0.001), vec2(0.999))).rgb;
+	uv = clamp(uv, vec2(0.001), vec2(0.999));
+	vec3 c = texture(view, uv).rgb;
+	if (glare > 0.0) {
+		c = min(c + sun_glare(uv), vec3(1.0)); // (additive blending into the screen clipped at 1 too)
+	}
+	return c;
 }
 
 // YIQ (NTSC's own colour space): luma and the two chroma components.

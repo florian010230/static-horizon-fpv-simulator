@@ -467,7 +467,10 @@ func _test_video_link() -> void:
 	_check(vp_cam != cam and vp_cam != null and vp_cam.name == "FpvHoldCam", "video: digital camera shows the delayed picture", str(vp_cam))
 	Settings.camera_look = 0
 	await _wait(0.2)
-	_check(get_viewport().get_camera_3d() == cam and not v.visible and v.link_quality == -1, "video: Clean is the drone camera, no pass")
+	_check(get_viewport().get_camera_3d() == cam and v.link_quality == -1, "video: Clean is the drone camera, no link model")
+	# The video pass presents the 3D view: the window's own 3D is off, the
+	# view's camera follows the window's current camera.
+	_check(v.presenting and get_tree().root.disable_3d and v._view_cam.global_position.distance_to(cam.get_global_transform_interpolated().origin) < 0.01, "video: the 3D view is drawn through the video pass, from the current camera")
 	# The world extras (LooksFx): glare and grass outdoors, none of them
 	# on Low; no dust anywhere (removed in 0.10.1).
 	var sc: Node = get_tree().current_scene

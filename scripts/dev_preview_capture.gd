@@ -1037,6 +1037,8 @@ func _perf_detail() -> void:
 		["no UI", func(): sc.get_node("UI").visible = false, func(): sc.get_node("UI").visible = true],
 		["no trees", func(): _set_trees(sc, false), func(): _set_trees(sc, true)],
 		["far 300", func(): get_viewport().get_camera_3d().far = 300.0, func(): Settings.apply_graphics_settings()],
+		["no glare", func(): _ui_part(sc, "SunGlare", false), func(): _ui_part(sc, "SunGlare", true)],
+		["no HUD text", func(): _hud_text(sc, false), func(): _hud_text(sc, true)],
 		["no sky", func(): _sky(sc, false), func(): _sky(sc, true)],
 		["no 3D", func(): _world3d(sc, false), func(): _world3d(sc, true)],
 		["no 3D no UI", func(): _world3d(sc, false); sc.get_node("UI").visible = false, func(): _world3d(sc, true); sc.get_node("UI").visible = true],
@@ -1065,7 +1067,7 @@ func _perf_detail() -> void:
 			1000.0 / maxf(fps, 0.1), proc / n, phys / n, cpu_r / n, gpu / n,
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000])
-		if v[0] in ["base", "medium", "high", "old low", "vp low 1.0"]:
+		if v[0] in ["base", "no UI"]:
 			_shot("perfd_%s.png" % v[0].replace(" ", "_"))
 		(v[2] as Callable).call()
 
@@ -1145,6 +1147,19 @@ func _cpu_fps() -> float:
 	var t0: int = Time.get_ticks_usec()
 	await get_tree().create_timer(3.0).timeout
 	return (Engine.get_process_frames() - f0) * 1e6 / float(Time.get_ticks_usec() - t0)
+
+func _ui_part(sc: Node, n: String, on: bool) -> void:
+	var r: Control = sc.get_node("UI")._root
+	var c: Node = r.get_node_or_null(n)
+	if c:
+		c.set_process(on)
+		(c as CanvasItem).visible = on
+
+func _hud_text(sc: Node, on: bool) -> void:
+	var r: Control = sc.get_node("UI")._root
+	for c in r.get_children():
+		if c is CanvasItem and not (c is FpvVideo or c is SunGlare):
+			(c as CanvasItem).visible = on
 
 var _sky_mode: int = 0
 func _sky(sc: Node, on: bool) -> void:

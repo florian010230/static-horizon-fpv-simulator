@@ -16,6 +16,7 @@ const ENTRIES: Array = [
 - The dust specks in the air on Medium and High are gone.
 - Trees no longer vanish for a moment in patches while you fly, and they stand still (no more swaying).
 - Turning away from the sun quickly no longer leaves a glare fading in the middle of the screen.
+- Faster everywhere, same picture: the 3D view, camera look, lens and sun glare now reach the screen in one step instead of three (Village on a 2015 MacBook at full Retina resolution: 28 to 43 FPS).
 - New in Settings -> Screen: "Full screen resolution". Switched off, Retina and other high-resolution screens draw the HUD, menus and camera effects at half the pixels, which is faster on weak graphics.
 - Mountain Lake: no more stripes across the lake's water.
 - The Whoop no longer starts under the launch mat (Village) or under the pier (Mountain Lake).

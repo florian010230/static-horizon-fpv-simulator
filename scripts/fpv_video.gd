@@ -5,8 +5,17 @@ extends ColorRect
 ## Digital or HDZero - the look of each system (shaders/fpv_video.gdshader)
 ## and a video link from the drone to the pilot that weakens with
 ## distance and with walls and hills in between. Also the lens fisheye.
-## A full-screen pass under the OSD, made by ui.gd; hidden (free) on
-## Clean without fisheye. Only for the FPV view (and the replay's FPV
+## A full-screen pass under the OSD, made by ui.gd. It also PRESENTS the
+## 3D view: the map is rendered into this node's own SubViewport (at the
+## graphics quality's render scale) by a camera that copies whichever
+## camera is current, and this pass draws it onto the screen - with the
+## look, the lens and the sun glare (SunGlare) in the same step. The main
+## window's own 3D rendering is off meanwhile. (Before, the 3D was drawn
+## and scaled onto the screen, the glare added in a second full-screen
+## pass and the screen copied for this one - at a Retina screen's 5 MP
+## that cost the dev Mac 28 vs 45 fps on Village, Low, light fisheye.)
+## When the UI layer is hidden (screenshot tools) the window renders the
+## 3D itself again. Looks only for the FPV view (and the replay's FPV
 ## camera - a DVR records what the goggles showed), not chase/LOS.
 ##
 ## The link (link budget in dB, the way RF people reason about range):
@@ -62,8 +71,16 @@ var _freeze_t: float = 0.0
 var _hold_cam: Camera3D
 var _hist: Array = [] # [time, Transform3D] of the FPV camera, newest last
 var _rng := RandomNumberGenerator.new()
+## True while this pass draws the 3D view (see the class comment).
+var presenting: bool = false
+var _view: SubViewport
+var _view_cam: Camera3D
 
 func _init() -> void:
+	name = "FpvVideo"
+	# Last in the frame: the camera copy sees every camera move made in
+	# other nodes' _process (chase, line of sight, replay, hold).
+	process_priority = 1000
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_mat = ShaderMaterial.new()
@@ -81,6 +98,57 @@ func _ready() -> void:
 	var g: Node = get_parent().get_node_or_null("SunGlare")
 	if g:
 		get_parent().move_child.call_deferred(g, 0)
+	_view = SubViewport.new()
+	_view.name = "View3D"
+	_view.world_3d = get_tree().root.find_world_3d()
+	_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_view_cam = Camera3D.new()
+	_view_cam.name = "ViewCam"
+	_view_cam.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	_view.add_child(_view_cam)
+	add_child(_view)
+	_view_cam.current = true
+	_mat.set_shader_parameter("view", _view.get_texture())
+
+## Copies the window's current camera into the view (or hands the 3D
+## back to the window while this layer is hidden).
+func _present() -> void:
+	var root: Window = get_tree().root
+	var src: Camera3D = root.get_camera_3d()
+	var on: bool = is_visible_in_tree() and src != null
+	if on != presenting:
+		presenting = on
+		root.disable_3d = on
+		_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS if on else SubViewport.UPDATE_DISABLED
+	if not on:
+		return
+	var sz := Vector2i((Vector2(root.size) * Settings.render_scale(Settings.graphics_quality)).round())
+	if _view.size != sz:
+		_view.size = sz.max(Vector2i.ONE)
+	_view_cam.global_transform = src.get_global_transform_interpolated()
+	_view_cam.projection = src.projection
+	_view_cam.fov = src.fov
+	_view_cam.size = src.size
+	_view_cam.near = src.near
+	_view_cam.far = src.far
+	_view_cam.keep_aspect = src.keep_aspect
+	_view_cam.cull_mask = src.cull_mask
+	_view_cam.h_offset = src.h_offset
+	_view_cam.v_offset = src.v_offset
+	_view_cam.environment = src.environment
+	_view_cam.attributes = src.attributes
+	var g := get_parent().get_node_or_null("SunGlare") as SunGlare
+	_mat.set_shader_parameter("glare", g.strength if g else 0.0)
+	if g and g.strength > 0.0:
+		_mat.set_shader_parameter("sun_uv", g.sun_uv)
+		_mat.set_shader_parameter("glare_tint", g.tint)
+
+func _exit_tree() -> void:
+	if presenting:
+		get_tree().root.disable_3d = false
+		presenting = false
+	if _hold_cam and is_instance_valid(_hold_cam):
+		_hold_cam.queue_free()
 
 func _drone() -> Drone:
 	return ui.get("_drone") as Drone if ui else null
@@ -114,12 +182,9 @@ func _process(delta: float) -> void:
 	else:
 		badness = 0.0
 	link_quality = -1 if look == 0 or cam == null else int(round(100.0 * (1.0 - badness)))
-	visible = look != 0 or fish > 0.0
 	_update_events(delta, look)
 	var flying_cam: bool = cam != null and not replaying
 	_update_hold(flying_cam, delta, look)
-	if not visible:
-		return
 	var vsz: Vector2 = get_viewport_rect().size
 	_mat.set_shader_parameter("look", look)
 	_mat.set_shader_parameter("bad", badness)
@@ -129,6 +194,7 @@ func _process(delta: float) -> void:
 	_mat.set_shader_parameter("flash", clampf(_flash_t * 8.0, 0.0, 1.0))
 	_mat.set_shader_parameter("tear", _tear)
 	_mat.set_shader_parameter("roll", _roll)
+	_present()
 
 # --- the link --------------------------------------------------------------------
 
@@ -285,6 +351,4 @@ func _delayed(t: float) -> Transform3D:
 			return _hist[i][1]
 	return _hist[0][1]
 
-func _exit_tree() -> void:
-	if _hold_cam and is_instance_valid(_hold_cam):
-		_hold_cam.queue_free()
+
