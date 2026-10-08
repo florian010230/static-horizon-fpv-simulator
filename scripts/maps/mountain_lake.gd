@@ -640,7 +640,9 @@ func _cabin_and_pier() -> void:
 	# The pier, posts down into the lake bed.
 	var pz: float = -151.0
 	while pz < -106.0:
-		geo.box(Vector3(0, DECK_Y - 0.06, pz), Vector3(2.6, 0.12, 1.9), "ml_deck")
+		# 3 cm between the sections: with 10 cm the whoop, set down right on
+		# a gap at the spawn, fell through under the pier.
+		geo.box(Vector3(0, DECK_Y - 0.06, pz), Vector3(2.6, 0.12, 1.97), "ml_deck")
 		for sx in [-1.2, 1.2]:
 			var bed: float = land.ground(sx, pz) - 0.5
 			geo.box(Vector3(sx, (bed + DECK_Y - 0.12) * 0.5, pz), Vector3(0.2, DECK_Y - 0.12 - bed, 0.2), "ml_wood")

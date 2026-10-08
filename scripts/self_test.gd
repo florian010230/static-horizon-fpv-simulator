@@ -323,6 +323,8 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 	await _wait(1.0)
 	var settle_speed: float = d.linear_velocity.length()
 	_check(settle_speed < 0.05 and absf(d.global_position.y - y0) < 0.02, tag + ": rests still at spawn", "v=%.3f dy=%.3f" % [settle_speed, d.global_position.y - y0])
+	# (The whoop once dropped through a gap in Mountain Lake's pier.)
+	_check(d.global_position.y > d._spawn_transform.origin.y - 0.5, tag + ": rests where it was set down, not fallen through", "%.2f below spawn" % (d._spawn_transform.origin.y - d.global_position.y))
 	var ui: Node = get_tree().current_scene.get_node_or_null("UI")
 	var warn: bool = ui != null and ui._border_label.visible
 	_check(not warn, tag + ": spawn inside the flight area")

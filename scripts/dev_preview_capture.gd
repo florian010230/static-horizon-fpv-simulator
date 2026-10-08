@@ -348,6 +348,14 @@ func _go() -> void:
 		await _lab_shots()
 		get_tree().quit()
 		return
+	if OS.get_cmdline_user_args().has("cpuprof"):
+		await _cpu_prof()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("perfdetail"):
+		await _perf_detail()
+		get_tree().quit()
+		return
 	if OS.get_cmdline_user_args().has("perf"):
 		await _perf_run()
 		get_tree().quit()
@@ -961,6 +969,169 @@ func _perf_run() -> void:
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000,
 			OS.get_static_memory_usage() / 1048576, int(rss)]
 	print(line)
+
+## `-- --dev-preview perfdetail <map id>`: where a frame goes on Low with
+## a weak machine's settings (fullscreen, light fisheye, no shadows):
+## FPS, process / physics CPU ms, GPU ms, draw calls - for the base and
+## with one thing changed at a time. Prints PERFD lines.
+func _perf_detail() -> void:
+	var args := OS.get_cmdline_user_args()
+	var id: String = args[args.find("perfdetail") + 1] if args.find("perfdetail") + 1 < args.size() else "village"
+	var m: Dictionary = {}
+	for mm in MapCatalog.MAPS:
+		if mm.id == id:
+			m = mm
+	Settings.selected_drone = m.drone if m.get("drone", "any") != "any" else OS.get_environment("SH_PERFD_DRONE") if OS.has_environment("SH_PERFD_DRONE") else "whoop"
+	Settings.graphics_quality = 0
+	Settings.shadows_enabled = false
+	Settings.lens_fisheye = 1
+	Settings.camera_look = 0
+	Settings.set_fullscreen(true)
+	get_tree().change_scene_to_file(m.scene)
+	for k in range(4):
+		await get_tree().process_frame
+	await _drawn_frames(3)
+	await get_tree().create_timer(3.0).timeout
+	Settings.set_max_fps(0)
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	var vp_rid: RID = get_viewport().get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(vp_rid, true)
+	var sc: Node = get_tree().current_scene
+	var sz: Vector2i = DisplayServer.window_get_size()
+	print("PERFD window %dx%d scale %.2f mode %d" % [sz.x, sz.y, get_viewport().scaling_3d_scale, get_tree().root.content_scale_mode])
+	if OS.has_environment("SH_PERFD_SPAWN"):
+		_shot("spawn_whoop_%s.png" % id)
+		return
+	if OS.has_environment("SH_PERFD_NEAR"):
+		var cam3: Camera3D = get_viewport().get_camera_3d()
+		print("PERFD cam ", cam3.get_path(), " pos ", cam3.global_position, " near ", cam3.near, " far ", cam3.far, " mask ", cam3.cull_mask)
+		for vi in sc.find_children("*", "VisualInstance3D", true, false):
+			var v3 := vi as VisualInstance3D
+			if not v3.is_visible_in_tree() or (v3.layers & cam3.cull_mask) == 0:
+				continue
+			var ab: AABB = v3.global_transform * v3.get_aabb()
+			var cp: Vector3 = cam3.global_position
+			var cl := Vector3(clampf(cp.x, ab.position.x, ab.end.x), clampf(cp.y, ab.position.y, ab.end.y), clampf(cp.z, ab.position.z, ab.end.z))
+			var over: bool = ab.position.y > cp.y and ab.position.y < cp.y + 0.4 and cp.x > ab.position.x and cp.x < ab.end.x and cp.z > ab.position.z and cp.z < ab.end.z
+			if over:
+				print("PERFD OVER ", v3.get_path(), " aabb ", ab)
+		return
+	if OS.has_environment("SH_PERFD_HOLD"):
+		print("PERFD hold pid %d" % OS.get_process_id())
+		await get_tree().create_timer(float(OS.get_environment("SH_PERFD_HOLD"))).timeout
+		return
+	var variants: Array = [
+		["base", func(): pass, func(): pass],
+		["no fisheye", func(): Settings.lens_fisheye = 0, func(): Settings.lens_fisheye = 1],
+		["scale 0.35", func(): get_viewport().scaling_3d_scale = 0.35, func(): Settings.apply_render_resolution()],
+		["medium", func(): _set_q(1), func(): _set_q(0)],
+		["high", func(): _set_q(2), func(): _set_q(0)],
+		["no UI", func(): sc.get_node("UI").visible = false, func(): sc.get_node("UI").visible = true],
+		["no trees", func(): _set_trees(sc, false), func(): _set_trees(sc, true)],
+		["far 300", func(): get_viewport().get_camera_3d().far = 300.0, func(): Settings.apply_graphics_settings()],
+		["base again", func(): pass, func(): pass],
+	]
+	for v in variants:
+		(v[1] as Callable).call()
+		DisplayServer.window_move_to_foreground()
+		await get_tree().create_timer(1.5).timeout
+		var f0: int = Engine.get_frames_drawn()
+		var t0: int = Time.get_ticks_msec()
+		var proc: float = 0.0
+		var phys: float = 0.0
+		var gpu: float = 0.0
+		var cpu_r: float = 0.0
+		var n: int = 0
+		while Time.get_ticks_msec() - t0 < 3000:
+			await get_tree().process_frame
+			proc += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+			phys += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+			gpu += RenderingServer.viewport_get_measured_render_time_gpu(vp_rid)
+			cpu_r += RenderingServer.viewport_get_measured_render_time_cpu(vp_rid) + RenderingServer.get_frame_setup_time_cpu()
+			n += 1
+		var fps: float = (Engine.get_frames_drawn() - f0) * 1000.0 / maxf(Time.get_ticks_msec() - t0, 1)
+		print("PERFD %s %-11s fps=%5.1f frame=%5.1fms process=%5.2fms physics=%5.2fms render_cpu=%5.2fms gpu=%5.2fms draws=%d prims=%dk" % [id, v[0], fps,
+			1000.0 / maxf(fps, 0.1), proc / n, phys / n, cpu_r / n, gpu / n,
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000])
+		if v[0] in ["base", "medium", "high", "scale 0.35", "no fisheye", "no UI", "far 300"]:
+			_shot("perfd_%s.png" % v[0].replace(" ", "_"))
+		(v[2] as Callable).call()
+
+## `--headless -- --dev-preview cpuprof <map id>`: the CPU side alone
+## (no GPU in headless): the drone hovering, frames per second uncapped,
+## then with one per-frame part switched off at a time. Prints CPUP lines.
+func _cpu_prof() -> void:
+	var args := OS.get_cmdline_user_args()
+	var id: String = args[args.find("cpuprof") + 1] if args.find("cpuprof") + 1 < args.size() else "village"
+	var m: Dictionary = {}
+	for mm in MapCatalog.MAPS:
+		if mm.id == id:
+			m = mm
+	Settings.selected_drone = m.drone if m.get("drone", "any") != "any" else "whoop"
+	Settings.graphics_quality = 0
+	get_tree().change_scene_to_file(m.scene)
+	await get_tree().create_timer(3.0).timeout
+	Engine.max_fps = 0
+	var sc: Node = get_tree().current_scene
+	var d: Drone = sc.get_node("Drone")
+	InputManager.armed = true
+	InputManager.test_override = {"roll": 0.0, "pitch": 0.0, "yaw": 0.0, "throttle": 0.6}
+	await get_tree().create_timer(1.0).timeout
+	InputManager.test_override.throttle = 0.42
+	var groups := {
+		"drone _process": [d],
+		"ui": [sc.get_node("UI")],
+		"map _process": [sc],
+		"settings": [Settings],
+		"input": [InputManager],
+	}
+	for n in sc.find_children("*", "", true, false):
+		var cls: String = ""
+		var scr: Script = n.get_script()
+		if scr and scr.get_global_name() != "":
+			cls = scr.get_global_name()
+		if cls in ["FpvVideo", "SunGlare", "Replay", "MotorAudio", "DroneShadow", "RaceCourse", "GrassTufts"]:
+			if not groups.has(cls):
+				groups[cls] = []
+			groups[cls].append(n)
+	var base: float = await _cpu_fps()
+	print("CPUP %s base fps=%.0f (%.2f ms)" % [id, base, 1000.0 / base])
+	for g in groups:
+		for n in groups[g]:
+			n.set_process(false)
+		var f: float = await _cpu_fps()
+		print("CPUP %s without %-16s fps=%.0f  saves %.2f ms" % [id, g, f, 1000.0 / base - 1000.0 / f])
+		for n in groups[g]:
+			n.set_process(true)
+	# Physics: the whole 120 Hz step (drone, collisions, race gates).
+	d.set_physics_process(false)
+	var f2: float = await _cpu_fps()
+	print("CPUP %s without drone physics script fps=%.0f  saves %.2f ms" % [id, f2, 1000.0 / base - 1000.0 / f2])
+	d.set_physics_process(true)
+	Engine.physics_ticks_per_second = 30
+	var f3: float = await _cpu_fps()
+	print("CPUP %s physics at 30 Hz fps=%.0f  saves %.2f ms" % [id, f3, 1000.0 / base - 1000.0 / f3])
+	Engine.physics_ticks_per_second = 120
+	InputManager.test_override = {}
+
+func _cpu_fps() -> float:
+	await get_tree().create_timer(0.5).timeout
+	var f0: int = Engine.get_process_frames()
+	var t0: int = Time.get_ticks_usec()
+	await get_tree().create_timer(3.0).timeout
+	return (Engine.get_process_frames() - f0) * 1e6 / float(Time.get_ticks_usec() - t0)
+
+func _set_q(q: int) -> void:
+	Settings.graphics_quality = q
+	Settings.apply_graphics_settings()
+	Settings.set_max_fps(0)
+
+func _set_trees(n: Node, on: bool) -> void:
+	if n is MultiMeshInstance3D or (n is MeshInstance3D and n.get_parent() and n.get_parent().name == "Forest"):
+		(n as Node3D).visible = on
+	for c in n.get_children():
+		_set_trees(c, on)
 
 ## `-- --dev-preview flight`: the realism OSD (battery low, prop
 ## damage), the race ghost in front of the FPV camera, the Flight tab.

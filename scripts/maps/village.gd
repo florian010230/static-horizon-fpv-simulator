@@ -512,10 +512,12 @@ func _club(trees: Array) -> Array:
 		geo.polygon([Vector3(x0, y + 0.02, CLUB.position.y), Vector3(x0 + 6.0, y + 0.02, CLUB.position.y), Vector3(x0 + 6.0, y + 0.02, CLUB.end.y), Vector3(x0, y + 0.02, CLUB.end.y)], "vg_mown", false)
 	geo.tint = Color.WHITE
 	# Launch pad: a rubber mat with a white H... an X, it's a quad.
-	geo.polygon([PAD + Vector3(-1.8, 0.05, -1.8), PAD + Vector3(1.8, 0.05, -1.8), PAD + Vector3(1.8, 0.05, 1.8), PAD + Vector3(-1.8, 0.05, 1.8)], "vg_mat", false)
+	# The mat is solid: a whoop resting on the ground below it had its
+	# camera (2 cm up) under the mat and saw only its grey underside.
+	geo.polygon([PAD + Vector3(-1.8, 0.05, -1.8), PAD + Vector3(1.8, 0.05, -1.8), PAD + Vector3(1.8, 0.05, 1.8), PAD + Vector3(-1.8, 0.05, 1.8)], "vg_mat", true)
 	geo.tint = Color(0.95, 0.95, 0.95)
-	geo.box(PAD + Vector3(0, 0.06, 0), Vector3(3.0, 0.02, 0.18), "vg_paint", PI * 0.25, false, false)
-	geo.box(PAD + Vector3(0, 0.06, 0), Vector3(3.0, 0.02, 0.18), "vg_paint", -PI * 0.25, false, false)
+	geo.box(PAD + Vector3(0, 0.055, 0), Vector3(3.0, 0.01, 0.18), "vg_paint", PI * 0.25, false, false)
+	geo.box(PAD + Vector3(0, 0.055, 0), Vector3(3.0, 0.01, 0.18), "vg_paint", -PI * 0.25, false, false)
 	geo.tint = Color.WHITE
 	# The course, flown anticlockwise from the pad: west through the
 	# start, north through the ladder, east under the tower gate, the

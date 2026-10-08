@@ -88,9 +88,9 @@ const CAMERA_HINTS: Array[String] = [
 ]
 const TAB_NAMES: Array[String] = ["Graphics", "Camera & HUD", "Flight", "Rates", "Radio"]
 const QUALITY_HINTS: Array[String] = [
-	"Low: 55% render resolution, small objects only drawn nearby. For older laptops and integrated graphics.",
-	"Medium: 75% render resolution, most details. For most laptops.",
-	"High: full resolution, every detail, longest tree distance. For gaming PCs."]
+	"Low: reduced resolution (on big and Retina screens the whole picture is drawn smaller and scaled up), small objects only drawn nearby. For older laptops and integrated graphics.",
+	"Medium: reduced resolution on big and Retina screens, most details. For most laptops.",
+	"High: full screen resolution, every detail, longest tree distance. For gaming PCs."]
 
 func _build_settings() -> Control:
 	var parts: Array = UIKit.screen_card(self, "Settings", "", 860, close, 1440)
@@ -167,7 +167,7 @@ func _build_settings() -> Control:
 	_hint(c1, "Wider shows more but makes speed look faster. Real FPV cams: ~120-150 deg diagonal.")
 	UIKit.gap(c1, 6)
 	_segmented(c1, "Lens", ["Flat", "Light fisheye", "Strong fisheye"], Settings.lens_fisheye, func(i: int): Settings.lens_fisheye = i)
-	_hint(c1, "The barrel distortion of a real wide FPV lens: straight lines bend toward the edges.")
+	_hint(c1, "The barrel distortion of a real wide FPV lens: straight lines bend toward the edges. Costs a few FPS - Flat on a slow computer.")
 	UIKit.gap(c1, 6)
 	var cam_hint := _hint_label()
 	_segmented(c1, "Camera", FpvVideo.LOOK_NAMES, Settings.camera_look, func(i: int):

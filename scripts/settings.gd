@@ -28,6 +28,17 @@ const PHYSICS_HZ_NORMAL: int = 120
 const PHYSICS_HZ_PERFORMANCE: int = 240
 const QUALITY_NAMES: Array[String] = ["Low", "Medium", "High"]
 const QUALITY_RENDER_SCALE: Array[float] = [0.55, 0.75, 1.0]
+## On a big screen (a Retina Mac, a 4K laptop) Low and Medium draw the
+## whole picture - 3D, camera look, glare, HUD - at the 1600x900 layout
+## size and let the screen scale it up (Window CONTENT_SCALE_MODE_VIEWPORT),
+## the 3D at this share of it. Measured on the dev Mac's Iris 6100 at
+## 2880x1800, Village on Low: 28 fps at native size, 42-48 fps like this -
+## the full-screen passes at native size cost more than the 3D itself.
+## High (and every screen not much bigger than 1600x900) stays native
+## with QUALITY_RENDER_SCALE.
+const QUALITY_LAYOUT_SCALE: Array[float] = [0.8, 1.0, 0.0]
+## True while a map runs (apply_graphics_settings); the menu stays native.
+var _in_map: bool = false
 ## Beyond these distances objects smaller than SMALL_OBJECT_SIZE /
 ## MEDIUM_OBJECT_SIZE aren't drawn (0 = no limit).
 const QUALITY_SMALL_RANGE: Array[float] = [80.0, 150.0, 300.0]
@@ -166,6 +177,10 @@ var _fullscreen_saved: bool = false
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	_persist = not (args.has("--selftest") or args.has("--dev-preview"))
+	_native_only = args.has("--dev-preview") and not args.has("perfdetail")
+	get_tree().root.size_changed.connect(func():
+		if _in_map:
+			apply_render_resolution())
 	if _persist:
 		_load()
 	apply_fps_cap(max_fps)
@@ -249,7 +264,8 @@ func apply_graphics_settings() -> void:
 	var q: int = clampi(graphics_quality, 0, 2)
 	var vp: Viewport = get_viewport()
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
-	vp.scaling_3d_scale = QUALITY_RENDER_SCALE[q]
+	_in_map = true
+	apply_render_resolution()
 	var scene: Node = get_tree().current_scene
 	if scene == null:
 		return
@@ -264,6 +280,27 @@ func apply_graphics_settings() -> void:
 		cam.far = minf(cam.get_meta("profile_far", cam.far), clampf(view_distance, VIEW_DISTANCE_MIN, VIEW_DISTANCE_MAX))
 		_fit_fog(scene, cam.far)
 	LooksFx.attach(scene)
+
+## How big the picture is drawn (see QUALITY_LAYOUT_SCALE). Again on every
+## window size change (fullscreen on/off).
+func apply_render_resolution() -> void:
+	var root: Window = get_tree().root
+	var q: int = clampi(graphics_quality, 0, 2)
+	var base := Vector2(float(ProjectSettings.get_setting("display/window/size/viewport_width", 1600)),
+		float(ProjectSettings.get_setting("display/window/size/viewport_height", 900)))
+	var win := Vector2(root.size)
+	var k: float = minf(win.x / base.x, win.y / base.y)
+	var small_draw: bool = _in_map and QUALITY_LAYOUT_SCALE[q] > 0.0 and k > 1.15 and not _native_only
+	root.content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT if small_draw else Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	root.scaling_3d_scale = QUALITY_LAYOUT_SCALE[q] if small_draw else QUALITY_RENDER_SCALE[q]
+
+## The menu: always drawn at the screen's own size.
+func leave_map() -> void:
+	_in_map = false
+	apply_render_resolution()
+
+## Website screenshots (--dev-preview, except perfdetail) stay at full size.
+var _native_only: bool = false
 
 ## Haze scale height (m): how fast the low-level haze thins with height.
 const HAZE_SCALE_HEIGHT: float = 220.0
