@@ -176,9 +176,11 @@ func _build_settings() -> Control:
 	var c1: VBoxContainer = pages[1][0]
 	var c2: VBoxContainer = pages[1][1]
 	UIKit.section(c1, "FPV camera")
-	UIKit.slider(c1, "Camera angle", 0.0, 60.0, 1.0, Settings.camera_angle_deg, func(v: float): Settings.camera_angle_deg = v, " deg")
+	var ang_lbl: Label = UIKit.slider(c1, "Camera angle", 0.0, 60.0, 1.0, Settings.camera_angle_deg, func(v: float): Settings.set_camera_angle(v), " deg")
+	Settings.follow_camera(c1, ang_lbl, func() -> float: return Settings.camera_angle_deg, " deg")
 	_hint(c1, "Uptilt. Freestyle 25-40 deg, racing 35-50, cinematic 10-20.")
-	UIKit.slider(c1, "Field of view", 60.0, 140.0, 1.0, Settings.camera_fov_deg, func(v: float): Settings.camera_fov_deg = v, " deg")
+	var fov_lbl: Label = UIKit.slider(c1, "Field of view", 60.0, 140.0, 1.0, Settings.camera_fov_deg, func(v: float): Settings.set_camera_fov(v), " deg")
+	Settings.follow_camera(c1, fov_lbl, func() -> float: return Settings.camera_fov_deg, " deg")
 	_hint(c1, "Wider shows more but makes speed look faster. Real FPV cams: ~120-150 deg diagonal.")
 	UIKit.gap(c1, 6)
 	_segmented(c1, "Lens", ["Flat", "Light fisheye", "Strong fisheye"], Settings.lens_fisheye, func(i: int): Settings.lens_fisheye = i)

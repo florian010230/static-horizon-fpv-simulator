@@ -519,6 +519,22 @@ func _test_pause_menu(tag: String, d: Drone, map: String) -> void:
 	settings_btn.pressed.emit()
 	await _wait(0.1)
 	_check(pm._settings.visible and not pm._card.visible, tag + ": pause -> Settings opens")
+	# FOV from the Settings screen: the drone's camera follows at once and
+	# the pause menu's own FOV slider shows the same value.
+	var fov0: float = Settings.camera_fov_deg
+	var fov1: float = 117.0 if fov0 != 117.0 else 103.0
+	var fov_slider: HSlider = null
+	for sl in pm._settings.find_children("*", "HSlider", true, false):
+		if is_equal_approx((sl as HSlider).value, fov0) and (sl as HSlider).max_value == 140.0:
+			fov_slider = sl
+	if fov_slider:
+		fov_slider.value = fov1
+	var synced: int = 0
+	for sl in pm.find_children("*", "HSlider", true, false):
+		if is_equal_approx((sl as HSlider).value, fov1):
+			synced += 1
+	_check(fov_slider != null and is_equal_approx(d._camera.fov, fov1) and synced >= 2, tag + ": FOV slider in Settings moves the camera and the pause menu's slider", "camera %.0f, sliders at %.0f: %d" % [d._camera.fov, fov1, synced])
+	Settings.set_camera_fov(fov0)
 	await _tap(KEY_ESCAPE)
 	await _wait(0.1)
 	_check(pm.visible and pm._card.visible and not pm._settings.visible and get_tree().paused, tag + ": Esc in Settings returns to the pause menu (still paused)")

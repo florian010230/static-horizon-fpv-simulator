@@ -19,6 +19,7 @@ const ENTRIES: Array = [
 - Faster everywhere, same picture: the 3D view, camera look, lens and sun glare now reach the screen in one step instead of three (Village on a 2015 MacBook at full Retina resolution: 28 to 43 FPS).
 - New in Settings -> Screen: "Full screen resolution". Switched off, Retina and other high-resolution screens draw the HUD, menus and camera effects at half the pixels, which is faster on weak graphics.
 - The mouse cursor no longer stays visible over the flight view after switching apps.
+- The camera angle and FOV sliders in Settings work during a flight too, and stay in step with the ones in the pause menu.
 - Mountain Lake: no more stripes across the lake's water.
 - The Whoop no longer starts under the launch mat (Village) or under the pier (Mountain Lake).
 - A gnome you found turns grey for a few seconds, then looks like itself again.

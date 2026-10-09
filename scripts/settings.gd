@@ -230,6 +230,31 @@ func _load() -> void:
 	if cfg.get_value("settings", "fullscreen", false):
 		set_fullscreen.call_deferred(true)
 
+## Camera angle / FOV changed (Settings screen or pause menu): the drone
+## and every open slider follow.
+signal camera_changed
+
+func set_camera_angle(v: float) -> void:
+	camera_angle_deg = v
+	camera_changed.emit()
+
+func set_camera_fov(v: float) -> void:
+	camera_fov_deg = v
+	camera_changed.emit()
+
+## Keeps a slider (UIKit.slider: the HSlider is the last child of
+## `parent` right after the call) in step with a camera value changed
+## elsewhere.
+func follow_camera(parent: Control, value_label: Label, getter: Callable, suffix: String) -> void:
+	var sl := parent.get_child(parent.get_child_count() - 1) as HSlider
+	camera_changed.connect(func():
+		if not is_instance_valid(sl):
+			return
+		var v: float = getter.call()
+		if not is_equal_approx(sl.value, v):
+			sl.set_value_no_signal(v)
+			value_label.text = str(int(round(v))) + suffix)
+
 func set_max_fps(v: int) -> void:
 	max_fps = v
 	apply_fps_cap(v)

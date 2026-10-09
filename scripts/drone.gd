@@ -403,6 +403,10 @@ var flight_time: float = 0.0
 func _ready() -> void:
 	camera_angle_deg = Settings.camera_angle_deg
 	camera_fov_deg = Settings.camera_fov_deg
+	Settings.camera_changed.connect(func():
+		camera_angle_deg = Settings.camera_angle_deg
+		camera_fov_deg = Settings.camera_fov_deg
+		_apply_camera_settings())
 	InputManager.new_flight()
 	# Indoor whoop maps force their drone (see MapCatalog).
 	var map_info: Dictionary = MapCatalog.for_scene(owner.scene_file_path if owner else "")

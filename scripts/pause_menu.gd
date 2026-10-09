@@ -80,14 +80,10 @@ func _build_card() -> Control:
 	UIKit.gap(content, 6)
 
 	UIKit.section(content, "Camera")
-	UIKit.slider(content, "Camera angle", 0.0, 60.0, 1.0, _drone.camera_angle_deg, func(v: float):
-		Settings.camera_angle_deg = v
-		_drone.camera_angle_deg = v
-		_drone._apply_camera_settings(), "°")
-	UIKit.slider(content, "Field of view (FOV)", 60.0, 140.0, 1.0, _drone.camera_fov_deg, func(v: float):
-		Settings.camera_fov_deg = v
-		_drone.camera_fov_deg = v
-		_drone._apply_camera_settings(), "°")
+	var ang_lbl: Label = UIKit.slider(content, "Camera angle", 0.0, 60.0, 1.0, Settings.camera_angle_deg, func(v: float): Settings.set_camera_angle(v), "°")
+	Settings.follow_camera(content, ang_lbl, func() -> float: return Settings.camera_angle_deg, "°")
+	var fov_lbl: Label = UIKit.slider(content, "Field of view (FOV)", 60.0, 140.0, 1.0, Settings.camera_fov_deg, func(v: float): Settings.set_camera_fov(v), "°")
+	Settings.follow_camera(content, fov_lbl, func() -> float: return Settings.camera_fov_deg, "°")
 	UIKit.gap(content, 6)
 
 	UIKit.section(content, "Drone")
