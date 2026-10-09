@@ -9,7 +9,7 @@ starting with the RadioMaster Pocket — over USB.
 **Download** (Windows, macOS, Linux):
 [itch.io](https://static-horizon-fpv.itch.io/static-horizon-fpv-simulator)
 (the itch.io app keeps the game up to date),
-[GitHub releases](../../releases/latest) or
+[GitHub releases](https://github.com/florian010230/static-horizon-fpv-simulator/releases/latest) or
 [statichorizonfpv.com](https://statichorizonfpv.com).
 
 This is a first playable slice: a main menu in the companion website's
