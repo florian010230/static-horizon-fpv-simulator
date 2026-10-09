@@ -168,6 +168,9 @@ func _build_settings() -> Control:
 	)
 	_fps_value_label.text = _fps_label_text(int(fps_initial))
 	_hint(g2, "Caps the FPS to save battery and heat. Far right = unlimited.")
+	UIKit.gap(g2, 6)
+	UIKit.toggle(g2, "VSync", Settings.vsync, func(v: bool): Settings.set_vsync(v))
+	_hint(g2, "On: smooth, at most your screen's refresh rate. Off: more FPS on a strong PC, but uneven or torn frames on a weak one.")
 
 	# Camera & HUD
 	var c1: VBoxContainer = pages[1][0]

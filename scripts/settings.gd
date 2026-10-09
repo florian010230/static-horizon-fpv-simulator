@@ -41,6 +41,12 @@ const VIEW_DISTANCE_MAX: float = 3000.0
 const SMALL_OBJECT_SIZE: float = 3.0
 const MEDIUM_OBJECT_SIZE: float = 12.0
 var max_fps: int = 60 ## 0 means uncapped ("Unlimited" in the menu slider).
+## VSync (Settings -> Screen): on, frames wait for the screen - smooth,
+## at most the screen's refresh rate. Off, as many frames as the computer
+## manages (an FPS limit above 60 or "Unlimited" really goes past 60) -
+## but on a weak machine frames then come unevenly (seen as jerking at
+## ~45 fps on the dev Mac), and the picture can tear.
+var vsync: bool = true
 
 ## FPV camera, set from the in-game pause menu and kept across maps.
 var camera_angle_deg: float = 25.0
@@ -154,7 +160,7 @@ var selected_drone: String = "seeker3"
 ## pilot's own file.
 const SETTINGS_PATH: String = "user://settings.cfg"
 const SAVED_FIELDS: Array[String] = ["crosshair_enabled", "shadows_enabled", "graphics_quality", "performance_mode",
-	"max_fps", "camera_angle_deg", "camera_fov_deg", "view_distance", "rates_type", "rates_roll", "rates_pitch", "rates_yaw",
+	"max_fps", "vsync", "camera_angle_deg", "camera_fov_deg", "view_distance", "rates_type", "rates_roll", "rates_pitch", "rates_yaw",
 	"selected_drone", "game_mode", "osd_enabled", "battery_enabled", "video_effect", "wind_level", "units",
 	"stick_overlay", "prop_wash", "throttle_mid", "throttle_expo", "lens_fisheye",
 	"prop_damage", "race_ghost", "check_updates", "camera_look"]
@@ -228,17 +234,14 @@ func set_max_fps(v: int) -> void:
 	max_fps = v
 	apply_fps_cap(v)
 
-## Sets the frame cap. VSync stays on only while the cap is at or below the
-## screen's refresh rate: with VSync on, "Unlimited" or a cap above the
-## refresh rate still stopped at the screen's rate (60 FPS on a 60 Hz
-## screen, reported on Windows in 0.10.0).
+## Sets the frame cap, and VSync as chosen (see `vsync`).
 func apply_fps_cap(cap: int) -> void:
 	Engine.max_fps = cap
-	var hz: float = DisplayServer.screen_get_refresh_rate()
-	if hz <= 0.0:
-		hz = 60.0
-	var vsync: bool = cap > 0 and cap <= int(round(hz))
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
+
+func set_vsync(on: bool) -> void:
+	vsync = on
+	apply_fps_cap(Engine.max_fps)
 
 ## Called once by every map in its _ready(): shadows, render scale,
 ## per-object draw distances and the drone camera's view distance.

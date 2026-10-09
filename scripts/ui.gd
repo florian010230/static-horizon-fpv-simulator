@@ -253,6 +253,27 @@ func _process(delta: float) -> void:
 		_border_blink_t += delta
 		_border_label.modulate.a = 0.4 + 0.6 * absf(sin(_border_blink_t * 6.0))
 
+# The OS can show the cursor again behind Godot's back (macOS: switching
+# apps, the Dock, a notification) while Input.mouse_mode still says
+# HIDDEN - then _process never hides it again. So hide it anew when the
+# window gets focus back or the mouse moves during a flight (at most twice
+# a second).
+var _rehide_t: int = 0
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_WM_MOUSE_ENTER or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
+		_rehide_cursor()
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion and Time.get_ticks_msec() - _rehide_t > 500:
+		_rehide_cursor()
+
+func _rehide_cursor() -> void:
+	if _panel_visible or get_tree().paused or Input.mouse_mode != Input.MOUSE_MODE_HIDDEN:
+		return
+	_rehide_t = Time.get_ticks_msec()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
+
 func set_border_warning(active: bool) -> void:
 	_border_label.visible = active
 

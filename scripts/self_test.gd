@@ -237,7 +237,10 @@ func _test_menu_flow() -> void:
 	if DisplayServer.get_name() != "headless":
 		var cap: int = Settings.max_fps
 		Settings.set_max_fps(0)
-		_check(Engine.max_fps == 0 and DisplayServer.window_get_vsync_mode() == DisplayServer.VSYNC_DISABLED, "menu: Unlimited FPS turns VSync off")
+		Settings.set_vsync(false)
+		_check(Engine.max_fps == 0 and DisplayServer.window_get_vsync_mode() == DisplayServer.VSYNC_DISABLED, "menu: VSync off really lets Unlimited past the refresh rate")
+		Settings.set_vsync(true)
+		_check(DisplayServer.window_get_vsync_mode() == DisplayServer.VSYNC_ENABLED, "menu: VSync back on")
 		Settings.set_max_fps(cap)
 
 ## Version compare, GitHub's release JSON, the offline notes, markdown.
