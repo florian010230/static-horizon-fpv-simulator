@@ -58,14 +58,17 @@ static func list() -> Array:
 	out.append({"name": "Explorer", "text": "Fly on every map.", "done": explored >= maps.size(), "progress": "%d/%d" % [explored, maps.size()]})
 	var race_maps: Array[String] = _race_maps()
 	var finished: bool = false
-	var pb_maps: int = 0
+	var pb_tracks: int = 0
+	var n_tracks: int = 0
 	for id in race_maps:
-		if not RaceCourse.boards(id).is_empty():
-			finished = true
-		if not RaceCourse.records(id).is_empty():
-			pb_maps += 1
-	out.append({"name": "Race finished", "text": "Complete a three-lap race.", "done": finished, "progress": ""})
-	out.append({"name": "Personal best everywhere", "text": "Set a lap time on every race track.", "done": pb_maps >= race_maps.size() and not race_maps.is_empty(), "progress": "%d/%d" % [pb_maps, race_maps.size()]})
+		for t in range(1, RaceCourse.track_list(id).size() + 1):
+			n_tracks += 1
+			if not RaceCourse.boards(id, t).is_empty():
+				finished = true
+			if not RaceCourse.records(id, t).is_empty():
+				pb_tracks += 1
+	out.append({"name": "Race finished", "text": "Complete a %d-lap race." % RaceCourse.LAPS, "done": finished, "progress": ""})
+	out.append({"name": "Personal best everywhere", "text": "Set a lap time on every race track.", "done": pb_tracks >= n_tracks and n_tracks > 0, "progress": "%d/%d" % [pb_tracks, n_tracks]})
 	var total_found: int = Collectibles.found_total()
 	out.append({"name": "Gnome spotter", "text": "Find your first garden gnome.", "done": total_found > 0, "progress": ""})
 	var all_total: int = 0

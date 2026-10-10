@@ -87,28 +87,6 @@ func build() -> void:
 	geo.slab(FIELD, 0.05, 0.1, "field")
 	geo.slab(Rect2(-40, 58, 90, 22), 0.05, 0.1, "gravel") # pits + car park
 
-	course = RaceCourse.new()
-	course.name = "RaceCourse"
-	add_child(course)
-	var E: float = -PI * 0.5
-	var W: float = PI * 0.5
-	var S: float = PI
-	course.start_gate(geo, Vector3(0, 0.05, 30), E)
-	course.gate(geo, Vector3(25, 0.05, 30), E)
-	course.gate(geo, Vector3(45, 0.05, 8), 0.0, 1, 0.0, 0, "gate_b")
-	course.gate(geo, Vector3(45, 0.05, -20), 0.0, 3, 0.0, 2)           # ladder, top opening
-	course.dive_gate(geo, Vector3(35, 0.05, -45), 0.0, 5.0)
-	course.hurdle(geo, Vector3(10, 0.05, -55), W, "gate_a")
-	course.gate(geo, Vector3(-15, 0.05, -52), W, 2, 0.0, 1, "gate_b")  # double gate, upper
-	course.gate(geo, Vector3(-45, 0.05, -50), W, 1, 1.52)              # tower gate
-	course.gate(geo, Vector3(-62, 0.05, -20), S, 1, 0.0, 0, "gate_b")
-	course.dive_gate(geo, Vector3(-60, 0.05, 5), 0.0, 4.0, "gate_a")
-	course.hurdle(geo, Vector3(-40, 0.05, 28), E)
-	course.gate(geo, Vector3(-20, 0.05, 30), E, 1, 0.0, 0, "gate_b")
-	# Turn flags at the corners.
-	for p in [Vector3(56, 0.05, 40), Vector3(52, 0.05, -58), Vector3(-68, 0.05, -60), Vector3(-70, 0.05, 36)]:
-		course.flag(geo, p, "gate_b")
-
 	_anchors()
 	_safety_net(52.0, -60.0, 50.0)
 	_pilot_stand(Vector3(12, 0.05, 56))
@@ -164,6 +142,7 @@ func _country_road(rng: RandomNumberGenerator) -> void:
 		city.building(Vector3(-30 + k * 22, 0, 135), Vector2(18, 12), 0.0, 2, "cty_brick", "gable", false)
 
 func after_build() -> void:
+	course = RaceCourse.make(self, tracks())
 	course.setup("race_field", drone, ui)
 
 ## Tall black net between the course and the people.
@@ -283,3 +262,29 @@ func _anchors() -> void:
 		k += 1
 	# Tractor with a bale trailer on the west edge.
 	FarmCreator.tractor(geo, ANCHORS.tractor + Vector3(0, 0.05, 0), 0.0, "fm_red", true, r)
+
+## The map's tracks (RaceCourse.make builds the one Settings.race_track
+## picks, at load time on top of the cached map). Tracks 2-6 are
+## placeholders (track 1's course) until they are designed.
+func tracks() -> Array:
+	var t1: Array = [
+		["start", Vector3(0, 0.05, 30), -PI * 0.5],
+		["gate", Vector3(25, 0.05, 30), -PI * 0.5],
+		["gate", Vector3(45, 0.05, 8), 0.0, 1, 0.0, 0, "gate_b"],
+		["gate", Vector3(45, 0.05, -20), 0.0, 3, 0.0, 2], # ladder, top opening
+		["dive", Vector3(35, 0.05, -45), 0.0, 5.0],
+		["hurdle", Vector3(10, 0.05, -55), PI * 0.5, "gate_a"],
+		["gate", Vector3(-15, 0.05, -52), PI * 0.5, 2, 0.0, 1, "gate_b"], # double gate, upper
+		["gate", Vector3(-45, 0.05, -50), PI * 0.5, 1, 1.52], # tower gate
+		["gate", Vector3(-62, 0.05, -20), PI, 1, 0.0, 0, "gate_b"],
+		["dive", Vector3(-60, 0.05, 5), 0.0, 4.0, "gate_a"],
+		["hurdle", Vector3(-40, 0.05, 28), -PI * 0.5],
+		["gate", Vector3(-20, 0.05, 30), -PI * 0.5, 1, 0.0, 0, "gate_b"],
+		# Turn flags at the corners.
+		["flag", Vector3(56, 0.05, 40), "gate_b"], ["flag", Vector3(52, 0.05, -58), "gate_b"],
+		["flag", Vector3(-68, 0.05, -60), "gate_b"], ["flag", Vector3(-70, 0.05, 36), "gate_b"],
+	]
+	var out: Array = [{"name": "Club Loop", "level": "easy", "calls": t1}]
+	for k in range(2, 7):
+		out.append({"name": "Track %d" % k, "level": ["easy", "medium", "medium", "hard", "hard"][k - 2], "calls": t1})
+	return out

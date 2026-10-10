@@ -89,28 +89,12 @@ func build() -> void:
 	_screen()
 	_booth()
 
-	course = RaceCourse.new()
-	course.name = "RaceCourse"
-	add_child(course)
-	var E: float = -PI * 0.5 # fly toward +x
-	var W: float = PI * 0.5  # toward -x
-	var S: float = PI        # toward +z
-	course.start_gate(geo, Vector3(-30, 0.02, 20), E)
-	course.gate(geo, Vector3(0, 0.02, 20), E, 1, 0.0, 0, "led_blue")
+	# The tunnel and the scaffold tower are the hall's (every track's).
 	_tunnel(Vector3(12, 0, 20), Vector3(32, 0, 20))
-	course.gate_sized(geo, Vector3(12.2, 0.02, 20), E, 2.6, 2.6, 0.15, 0.0, "led_green") # tunnel mouth
-	course.gate(geo, Vector3(48, 0.02, 5), 0.0, 3, 0.0, 2, "led_orange")
-	course.dive_gate(geo, Vector3(40, 0.02, -20), 0.0, 6.0, "led_pink")
 	_scaffold(Vector3(15, 0, -22), 8.0)
-	course.gate(geo, Vector3(15, 8.02, -22), W, 1, 0.0, 0, "led_blue")
-	course.gate(geo, Vector3(-12, 0.02, -22), W, 2, 0.0, 0, "led_orange")
-	course.hurdle(geo, Vector3(-38, 0.02, -12), S, "led_green")
-	course.gate(geo, Vector3(-50, 0.02, 6), S, 1, 0.0, 0, "led_pink")
-	# Last: a gate hung from the roof between two trusses - left turn out
-	# of the pink gate, climb through it, drop back down to START.
-	course.hanging_gate(geo, Vector3(-42, 3.4, 20), E, 18.2, "led_blue")
 
 func after_build() -> void:
+	course = RaceCourse.make(self, tracks(), {"ao_height": 2.0})
 	course.setup("race_arena", drone, ui)
 
 ## A square tunnel, 3 m inside, open at both ends.
@@ -227,3 +211,26 @@ func _booth() -> void:
 	geo.box(b + Vector3(0, 1.05, 1.0), Vector3(5.6, 0.1, 1.6), "table", 0.0, false)
 	geo.box(b + Vector3(0, 2.0, 1.9), Vector3(5.6, 1.9, 0.04), "glass", 0.0, false, false)
 	geo.box(b + Vector3(0, 3.25, 2.05), Vector3(4.0, 0.4, 0.08), "banner", 0.0, false, false)
+
+## The map's tracks (RaceCourse.make builds the one Settings.race_track
+## picks, at load time on top of the cached map). Tracks 2-6 are
+## placeholders (track 1's course) until they are designed.
+func tracks() -> Array:
+	var t1: Array = [
+		["start", Vector3(-30, 0.02, 20), -PI * 0.5],
+		["gate", Vector3(0, 0.02, 20), -PI * 0.5, 1, 0.0, 0, "led_blue"],
+		["sized", Vector3(12.2, 0.02, 20), -PI * 0.5, 2.6, 2.6, 0.15, 0.0, "led_green"], # tunnel mouth
+		["gate", Vector3(48, 0.02, 5), 0.0, 3, 0.0, 2, "led_orange"],
+		["dive", Vector3(40, 0.02, -20), 0.0, 6.0, "led_pink"],
+		["gate", Vector3(15, 8.02, -22), PI * 0.5, 1, 0.0, 0, "led_blue"], # on the scaffold
+		["gate", Vector3(-12, 0.02, -22), PI * 0.5, 2, 0.0, 0, "led_orange"],
+		["hurdle", Vector3(-38, 0.02, -12), PI, "led_green"],
+		["gate", Vector3(-50, 0.02, 6), PI, 1, 0.0, 0, "led_pink"],
+		# Last: a gate hung from the roof between two trusses - left turn out
+		# of the pink gate, climb through it, drop back down to START.
+		["hanging", Vector3(-42, 3.4, 20), -PI * 0.5, 18.2, "led_blue"],
+	]
+	var out: Array = [{"name": "League Night", "level": "easy", "calls": t1}]
+	for k in range(2, 7):
+		out.append({"name": "Track %d" % k, "level": ["easy", "medium", "medium", "hard", "hard"][k - 2], "calls": t1})
+	return out

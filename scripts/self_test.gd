@@ -66,6 +66,8 @@ func _run() -> void:
 			await _test_realism()
 		if only.has("race"):
 			await _test_race()
+		if only.has("tracks"):
+			await _test_tracks()
 		if only.has("video"):
 			await _test_video_link()
 		if only.has("gnomes"):
@@ -105,6 +107,7 @@ func _run() -> void:
 	for c in cases:
 		await _test_map(c[0], c[1], false)
 	await _test_race()
+	await _test_tracks()
 	await _test_realism()
 	await _test_video_link()
 	await _test_reset_switch()
@@ -755,6 +758,8 @@ func _test_race() -> void:
 	var gh_backup: String = FileAccess.get_file_as_string(gh) if FileAccess.file_exists(gh) else ""
 	var bd: String = RaceCourse.BOARD_PATH
 	var bd_backup: String = FileAccess.get_file_as_string(bd) if FileAccess.file_exists(bd) else ""
+	var st: String = RaceCourse.STATS_PATH
+	var st_backup: String = FileAccess.get_file_as_string(st) if FileAccess.file_exists(st) else ""
 	Settings.selected_drone = "five"
 	Settings.game_mode = Settings.MODE_RACE
 	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
@@ -789,8 +794,8 @@ func _test_race() -> void:
 	Settings.race_ghost = true
 	var cfg := ConfigFile.new()
 	cfg.load(RaceCourse.GHOST_PATH)
-	_check(cfg.has_section_key(RaceCourse.section("race_field"), "five_q"), "race: the ghost is saved per track + drone")
-	# Two more laps finish the 3-lap race: results, a top-5 entry.
+	_check(cfg.has_section_key(RaceCourse.section("race_field", 1), "five_q"), "race: the ghost is saved per track + drone")
+	# The remaining laps finish the race: results, a top-5 entry.
 	for _l in range(RaceCourse.LAPS - 1):
 		for p in pts.slice(2):
 			while pos.distance_to(p) > 0.01:
@@ -814,6 +819,16 @@ func _test_race() -> void:
 			d.global_position = pos
 			await get_tree().physics_frame
 	_check(course._lap == lap_before, "race: cutting the course doesn't complete a lap")
+	# ...and gate 2 stays missed - "go back" - until it is flown.
+	_check(course._missed_gate == 2, "race: a skipped gate stays MISSED until flown", "missed %d" % course._missed_gate)
+	for p in [course._gates[2].xf * Vector3(0, 0, 2.0), course._gates[2].xf * Vector3(0, 0, -2.0)]:
+		while pos.distance_to(p) > 0.01:
+			pos = pos.move_toward(p, 2.5)
+			d.global_position = pos
+			await get_tree().physics_frame
+	_check(course._missed_gate == -1 and course._next == 3, "race: flying the missed gate clears it, the race goes on", "missed %d next %d" % [course._missed_gate, course._next])
+	_check(not RaceCourse.stats("race_field", 1).get("five", [0, 0]).is_empty() and int(RaceCourse.stats("race_field", 1).five[0]) >= 2 and int(RaceCourse.stats("race_field", 1).five[1]) >= 1,
+		"race: races started / finished are counted", str(RaceCourse.stats("race_field", 1)))
 	_check(RaceCourse.records("race_field").has("five"), "race: the personal best is saved for the menu")
 	d.freeze = false
 	if backup != "":
@@ -834,6 +849,13 @@ func _test_race() -> void:
 		bf.close()
 	else:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(bd))
+	if st_backup != "":
+		var sf := FileAccess.open(st, FileAccess.WRITE)
+		sf.store_string(st_backup)
+		sf.close()
+	else:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(st))
+	await _test_race_migration()
 	# Freestyle: the same map, no timing at all.
 	Settings.game_mode = Settings.MODE_FREESTYLE
 	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
@@ -1112,3 +1134,71 @@ func _test_map_cache() -> void:
 		_check(a.fp == b.fp, "cache %s: cached map identical to the fresh build" % m.id, b.fp if a.fp == b.fp else "%s vs %s" % [a.fp, b.fp])
 		_check(a.views == b.views and a.gates == b.gates and b.rest, "cache %s: views, gates, drone at rest" % m.id, "views %d/%d gates %d/%d rest %s" % [a.views, b.views, a.gates, b.gates, b.rest])
 	MapCache.force = false
+
+## Race map tracks (RaceCourse.make): every track of every race map builds
+## its own gates at load time on top of ONE map cache - the first load
+## writes the cache, the rest come from it, each with its own gate count
+## and exactly one course.
+func _test_tracks() -> void:
+	MapCache.force = true
+	Settings.game_mode = Settings.MODE_RACE
+	for m in MapCatalog.MAPS:
+		if not m.get("race", false):
+			continue
+		for t in range(1, 7):
+			Settings.race_track = t
+			InputManager.armed = false
+			get_tree().change_scene_to_file(m.scene)
+			await _wait(1.5)
+			var sc: BuiltMap = get_tree().current_scene as BuiltMap
+			var course: RaceCourse = sc.get("course")
+			var want: int = RaceCourse.gate_count(sc.tracks()[t - 1].calls)
+			var n_courses: int = sc.get_children().filter(func(c: Node) -> bool: return c is RaceCourse).size()
+			_check(course != null and course.track == t and course._gates.size() == want and n_courses == 1 and (t == 1 or sc.from_cache),
+				"tracks: %s track %d builds its %d gates (cached map: %s)" % [m.id, t, want, sc.from_cache],
+				"gates %d, courses %d" % [course._gates.size() if course else -1, n_courses])
+	Settings.race_track = 1
+	Settings.game_mode = Settings.MODE_FREESTYLE
+	MapCache.force = false
+
+## Saves from before the tracks (0.10.x): the best lap, splits and ghost
+## of the current layout ("race_field@2") move to track 1, a stale layout
+## ("race_field") and the 3-lap boards are dropped, a .bak is kept, the
+## files say version 2. Runs on fixture files; the real ones are restored.
+func _test_race_migration() -> void:
+	var paths: Array[String] = [RaceCourse.RECORDS_PATH, RaceCourse.GHOST_PATH, RaceCourse.BOARD_PATH]
+	var keep: Dictionary = {}
+	for p: String in paths + paths.map(func(x: String) -> String: return x + ".bak"):
+		keep[p] = FileAccess.get_file_as_string(p) if FileAccess.file_exists(p) else null
+	var rec := ConfigFile.new()
+	rec.set_value("race_field@2", "five", 30.5)
+	rec.set_value("race_field@2", "five_date", "2026-10-01")
+	rec.set_value("race_field", "five", 40.0)
+	rec.save(RaceCourse.RECORDS_PATH)
+	var gh := ConfigFile.new()
+	gh.set_value("race_field@2", "five_pos", PackedVector3Array([Vector3.ONE]))
+	gh.save(RaceCourse.GHOST_PATH)
+	var bd := ConfigFile.new()
+	bd.set_value("race_field@2", "five", [[95.0, 30.5, "2026-10-01"]])
+	bd.save(RaceCourse.BOARD_PATH)
+	RaceCourse._migrated = false
+	RaceCourse.migrate_saves()
+	var r: Dictionary = RaceCourse.records("race_field", 1)
+	var rc := ConfigFile.new()
+	rc.load(RaceCourse.RECORDS_PATH)
+	var gc := ConfigFile.new()
+	gc.load(RaceCourse.GHOST_PATH)
+	_check(r.has("five") and is_equal_approx(float(r.five[0]), 30.5) and not rc.has_section("race_field") and not rc.has_section("race_field@2"),
+		"race saves: the best lap moves to track 1, stale layouts go", str(r))
+	_check(gc.has_section_key("race_field#1", "five_pos"), "race saves: the lap ghost moves to track 1")
+	_check(RaceCourse.boards("race_field", 1).is_empty(), "race saves: old 3-lap race totals start fresh")
+	_check(FileAccess.file_exists(RaceCourse.RECORDS_PATH + ".bak") and int(rc.get_value("meta", "version", 1)) == RaceCourse.SAVE_VERSION,
+		"race saves: a .bak is kept and the file says version %d" % RaceCourse.SAVE_VERSION)
+	for p: String in keep:
+		if keep[p] == null:
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+		else:
+			var f := FileAccess.open(p, FileAccess.WRITE)
+			f.store_string(keep[p])
+			f.close()
+	RaceCourse._migrated = false

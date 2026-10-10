@@ -26,6 +26,11 @@ const PANEL: float = 0.28 ## frame panel width
 const FOOT: float = 0.04
 
 var map_id: String = ""
+## Which of the map's tracks this is (1-based; RaceCourse.make).
+var track: int = 1
+## The track's layout revision (a track's "rev": a redesigned track starts
+## a fresh record table).
+var rev: int = 1
 var drone: Drone
 var ui: Node
 var _gates: Array[Dictionary] = [] # {xf: Transform3D (opening centre, -Z = fly direction), w, h}
@@ -62,6 +67,7 @@ func setup(p_map_id: String, p_drone: Drone, p_ui: Node) -> void:
 		set_physics_process(false)
 		set_process(false)
 		return
+	migrate_saves()
 	_best = _load_best()
 	_prev_pos = drone.global_position
 	_build_marker()
@@ -249,22 +255,78 @@ func flag(geo: Geo, pos: Vector3, mat: String = "gate_a") -> void:
 		var w: float = 0.55 * sin((t * 0.85 + 0.1) * PI)
 		geo.box(pos + Vector3(w * 0.5 + 0.03, 3.4 - t * 2.6, 0), Vector3(w, 0.44, 0.02), mat, 0.0, false)
 
+# --- tracks ------------------------------------------------------------------
+
+## A race map's course, built at load time on top of the (cached) map:
+## `tracks` is the map's list of {"name", "level", "calls"} (Settings
+## .race_track picks one), `calls` the gate builders as data (see
+## build_track). The gates get their own small Geo, committed under the
+## course node - so one map cache serves every track. They are marked
+## "dynamic" (left out of the static shadow map, which is cached with the
+## map and would otherwise keep the shadows of whichever track was built
+## first). opts: "ao_height", "ao_min" for the gates' baked AO.
+static func make(map: BuiltMap, tracks: Array, opts: Dictionary = {}) -> RaceCourse:
+	var t: int = clampi(Settings.race_track, 1, tracks.size())
+	var g := Geo.new()
+	for p in ["sun_dir", "sun", "sun_tint", "ambient", "sky"]:
+		g.set(p, map.geo.get(p))
+	g.ao_height = float(opts.get("ao_height", 1.5))
+	g.ao_min = float(opts.get("ao_min", g.ao_min))
+	add_materials(g)
+	var rc := RaceCourse.new()
+	rc.name = "RaceCourse"
+	rc.track = t
+	rc.rev = int(tracks[t - 1].get("rev", 1))
+	map.add_child(rc)
+	rc.build_track(g, tracks[t - 1].calls)
+	g.commit(rc)
+	rc.set_meta("dynamic", true)
+	return rc
+
+## Builds a track from data: each call is [kind, args...] with kind one of
+## "start" | "gate" | "sized" | "dive" | "hurdle" | "flag" | "hanging"
+## (the builders above, args in their order after geo) or "box" (a plain
+## prop: centre, size, colour - e.g. the desk under a gate; its own flat
+## material, since the map's are not there on a cached load).
+func build_track(geo: Geo, calls: Array) -> void:
+	var fn: Dictionary = {"start": "start_gate", "gate": "gate", "sized": "gate_sized", "dive": "dive_gate",
+		"hurdle": "hurdle", "flag": "flag", "hanging": "hanging_gate"}
+	for c: Array in calls:
+		var kind: String = c[0]
+		if kind == "box":
+			var m: String = "prop_" + (c[3] as Color).to_html(false)
+			if not geo.has_material(m):
+				geo.add_material(m, Geo.flat_mat(c[3]))
+			geo.box(c[1], c[2], m)
+			continue
+		assert(fn.has(kind), "unknown track call " + kind)
+		callv(fn[kind], [geo] + c.slice(1))
+
+## How many gates a track's calls register (for the self-test and menus).
+static func gate_count(calls: Array) -> int:
+	var n: int = 0
+	for c: Array in calls:
+		if c[0] in ["start", "gate", "sized", "dive", "hurdle", "hanging"]:
+			n += 1
+	return n
+
 # --- running the race --------------------------------------------------------
 #
 # A race is LAPS laps from a flying start: the clock starts at the first
 # pass of the START gate and stops at the end of the last lap. Every
-# gate shows the split against the best lap (green ahead, red behind);
-# flying past the next gate through a later one says MISSED GATE. At the
-# finish: lap times, total, and the track's top-5 races (per drone).
+# gate shows the split against the best lap (green ahead, red behind).
+# Gates count strictly in order: flying through a later gate instead of
+# the next one says "MISSED GATE n - go back" (with the way to it) until
+# the missed gate is flown - the clock keeps running. At the finish: lap
+# times, total, and the track's top-5 races (per drone).
 
-const LAPS: int = 3
+const LAPS: int = 2
 const BOARD_PATH: String = "user://race_board.cfg"
 var _race_laps: Array[float] = []
 var _splits: Array[float] = []      # this lap: time at each gate
 var _best_splits: Array = []        # the best lap's
 var _delta_text: String = ""
 var _delta_t: float = 0.0
-var _missed_t: float = 0.0
 var _missed_gate: int = -1
 var _beep: AudioStreamPlayer
 
@@ -273,7 +335,6 @@ func _physics_process(delta: float) -> void:
 		return
 	_time += delta
 	_delta_t = maxf(_delta_t - delta, 0.0)
-	_missed_t = maxf(_missed_t - delta, 0.0)
 	var pos: Vector3 = drone.global_position
 	if pos.distance_to(_prev_pos) > 8.0:
 		_reset_run() # R / crash reset / world border: the run is void
@@ -282,9 +343,9 @@ func _physics_process(delta: float) -> void:
 	elif _lap_start >= 0.0:
 		for i in range(_gates.size()):
 			if i != _next and i != (_next - 1 + _gates.size()) % _gates.size() and _crossed(_gates[i], _prev_pos, pos):
-				_missed_gate = _next
-				_missed_t = 2.0
-				_play("miss")
+				if _missed_gate != _next:
+					_play("miss")
+				_missed_gate = _next # until it is flown (_passed)
 				break
 	_prev_pos = pos
 	if _lap_start >= 0.0:
@@ -308,6 +369,7 @@ func _crossed(g: Dictionary, a: Vector3, b: Vector3) -> bool:
 	return absf(hit.x) <= g.w * 0.5 and absf(hit.y) <= g.h * 0.5
 
 func _passed() -> void:
+	_missed_gate = -1
 	if _next == 0:
 		if _lap_start >= 0.0:
 			_last_lap = _time - _lap_start
@@ -328,6 +390,7 @@ func _passed() -> void:
 				return
 		else:
 			_race_laps.clear()
+			_count_stat(0)
 			_play("go")
 		_lap_samples.clear()
 		_lap_rot.clear()
@@ -364,8 +427,9 @@ func _finish() -> void:
 	board = board.slice(0, 5)
 	var cfg := ConfigFile.new()
 	cfg.load(BOARD_PATH)
-	cfg.set_value(section(map_id), _key(), board)
+	cfg.set_value(_section(), _key(), board)
 	cfg.save(BOARD_PATH)
+	_count_stat(1)
 	_play("finish")
 	if ui and ui.has_method("show_race_results"):
 		var lines: Array[String] = []
@@ -392,13 +456,14 @@ func _board() -> Array:
 	var cfg := ConfigFile.new()
 	if cfg.load(BOARD_PATH) != OK:
 		return []
-	return cfg.get_value(section(map_id), _key(), [])
+	return cfg.get_value(_section(), _key(), [])
 
 ## The track's top-5 races for the menu: {drone id: [[total, best lap, date], ...]}.
-static func boards(p_map_id: String) -> Dictionary:
+static func boards(p_map_id: String, p_track: int = 1) -> Dictionary:
+	migrate_saves()
 	var out := {}
 	var cfg := ConfigFile.new()
-	var sec: String = section(p_map_id)
+	var sec: String = section(p_map_id, p_track)
 	if cfg.load(BOARD_PATH) != OK or not cfg.has_section(sec):
 		return out
 	for k in cfg.get_section_keys(sec):
@@ -413,6 +478,7 @@ func _reset_run() -> void:
 	_next = 0
 	_lap = 0
 	_lap_start = -1.0
+	_missed_gate = -1
 	_place_marker()
 
 func current_lap_time() -> float:
@@ -432,11 +498,26 @@ func _update_hud() -> void:
 		ui.set_race_info("Fly through START - %d laps    Best lap %s" % [LAPS, best])
 		return
 	var line: String = "LAP %d/%d    %s    GATE %d/%d    BEST %s" % [_lap, LAPS, _fmt(current_lap_time()), (_next - 1 + _gates.size()) % _gates.size() + 1, _gates.size(), best]
-	if _missed_t > 0.0:
-		line += "\nMISSED GATE %d" % (_missed_gate + 1)
+	var missed: bool = _missed_gate >= 0
+	if missed:
+		line += "\nMISSED GATE %d - go back   %s" % [_missed_gate + 1, _way_to(_gates[_missed_gate])]
 	elif _delta_t > 0.0:
 		line += "\n" + _delta_text
-	ui.set_race_info(line, _delta_text.begins_with("-") and _delta_t > 0.0 and _missed_t <= 0.0, _missed_t > 0.0 or (_delta_t > 0.0 and _delta_text.begins_with("+")))
+	ui.set_race_info(line, _delta_text.begins_with("-") and _delta_t > 0.0 and not missed, missed or (_delta_t > 0.0 and _delta_text.begins_with("+")))
+
+## Which way to turn for a gate, from the drone's heading: "<<< LEFT",
+## "AHEAD", "RIGHT >>>", "BEHIND YOU".
+func _way_to(g: Dictionary) -> String:
+	var to: Vector3 = (g.xf.origin - drone.global_position) * Vector3(1, 0, 1)
+	var fwd: Vector3 = -drone.global_transform.basis.z * Vector3(1, 0, 1)
+	if to.length() < 0.5 or fwd.length() < 0.01:
+		return "AHEAD"
+	var a: float = rad_to_deg(fwd.signed_angle_to(to, Vector3.UP)) # + = to the left
+	if absf(a) < 25.0:
+		return "AHEAD"
+	if absf(a) > 140.0:
+		return "BEHIND YOU"
+	return "<<< LEFT" if a > 0.0 else "RIGHT >>>"
 
 # --- sounds -------------------------------------------------------------------
 # Short synthesized beeps (no audio files): gate, lap, personal best,
@@ -615,10 +696,10 @@ func _update_ghost() -> void:
 func _save_ghost() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(GHOST_PATH)
-	cfg.set_value(section(map_id), _key() + "_pos", _ghost_pos)
-	cfg.set_value(section(map_id), _key() + "_q", _ghost_rot)
-	if cfg.has_section_key(section(map_id), _key() + "_rot"):
-		cfg.erase_section_key(section(map_id), _key() + "_rot")
+	cfg.set_value(_section(), _key() + "_pos", _ghost_pos)
+	cfg.set_value(_section(), _key() + "_q", _ghost_rot)
+	if cfg.has_section_key(_section(), _key() + "_rot"):
+		cfg.erase_section_key(_section(), _key() + "_rot")
 	cfg.save(GHOST_PATH)
 
 ## (Ghosts saved before 2026-10-04 kept Euler angles at 20 Hz under
@@ -627,7 +708,7 @@ func _load_ghost() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(GHOST_PATH) != OK:
 		return
-	var sec: String = section(map_id)
+	var sec: String = _section()
 	_ghost_pos = cfg.get_value(sec, _key() + "_pos", PackedVector3Array())
 	if cfg.has_section_key(sec, _key() + "_q"):
 		_ghost_rot = cfg.get_value(sec, _key() + "_q", PackedVector4Array())
@@ -655,14 +736,92 @@ func _load_ghost() -> void:
 		_ghost_pos = pos
 		_ghost_rot = rot
 
-## Records are kept per track layout: a redesigned track (MapCatalog
-## "track": n) starts a fresh record table instead of comparing against
-## laps flown on the old layout.
-static func section(p_map_id: String) -> String:
+## Records are kept per map, track and drone (the drone is the key in
+## the section): "race_field#2", and "race_field#2@3" once that track's
+## layout has been redesigned twice (its "rev") - a fresh record table
+## instead of comparing against laps flown on the old layout.
+static func section(p_map_id: String, p_track: int = 1) -> String:
+	var r: int = 1
+	var tl: Array = track_list(p_map_id)
+	if p_track >= 1 and p_track <= tl.size():
+		r = int(tl[p_track - 1].get("rev", 1))
+	return "%s#%d" % [p_map_id, p_track] + ("@%d" % r if r > 1 else "")
+
+func _section() -> String:
+	return section(map_id, track)
+
+## A race map's tracks ({"name", "level", "calls", "rev"?}), read from its
+## scene's script without adding it to the tree (cached).
+static var _track_lists: Dictionary = {}
+static func track_list(p_map_id: String) -> Array:
+	if _track_lists.has(p_map_id):
+		return _track_lists[p_map_id]
+	var out: Array = []
 	for m in MapCatalog.MAPS:
-		if m.id == p_map_id and int(m.get("track", 1)) > 1:
-			return "%s@%d" % [p_map_id, int(m.track)]
-	return p_map_id
+		if m.id == p_map_id and m.get("race", false):
+			var n: Node = (load(m.scene) as PackedScene).instantiate()
+			if n.has_method("tracks"):
+				out = n.tracks()
+			n.free()
+	_track_lists[p_map_id] = out
+	return out
+
+# --- saves: version 2 (tracks) -----------------------------------------------
+#
+# Before the tracks (0.10.x) the records were kept per map ("race_field",
+# or "race_field@2" after a redesign - MapCatalog "track") and drone, a
+# race was 3 laps. Version 2: per map + track ("race_field#1"). Once, at
+# the first race-map load: best laps, their splits and the lap ghosts of
+# the current layout move to track 1 (the same course); the boards (3-lap
+# race totals, not comparable) and stale layouts are dropped. Every file
+# is copied to <file>.bak first.
+const SAVE_VERSION: int = 2
+const STATS_PATH: String = "user://race_stats.cfg"
+
+static var _migrated: bool = false
+static func migrate_saves() -> void:
+	if _migrated:
+		return
+	_migrated = true
+	for path: String in [RECORDS_PATH, GHOST_PATH, BOARD_PATH]:
+		var cfg := ConfigFile.new()
+		if cfg.load(path) != OK:
+			continue
+		if int(cfg.get_value("meta", "version", 1)) >= SAVE_VERSION:
+			continue
+		DirAccess.copy_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(path + ".bak"))
+		var out := ConfigFile.new()
+		if path != BOARD_PATH:
+			for m in MapCatalog.MAPS:
+				if not m.get("race", false):
+					continue
+				var old: String = "%s@%d" % [m.id, int(m.track)] if int(m.get("track", 1)) > 1 else m.id
+				if cfg.has_section(old):
+					for k in cfg.get_section_keys(old):
+						out.set_value("%s#1" % m.id, k, cfg.get_value(old, k))
+		out.set_value("meta", "version", SAVE_VERSION)
+		out.save(path)
+
+## Races started / finished per drone on a track: {drone: [started, finished]}.
+static func stats(p_map_id: String, p_track: int = 1) -> Dictionary:
+	migrate_saves()
+	var out := {}
+	var cfg := ConfigFile.new()
+	var sec: String = section(p_map_id, p_track)
+	if cfg.load(STATS_PATH) != OK or not cfg.has_section(sec):
+		return out
+	for k in cfg.get_section_keys(sec):
+		out[k] = cfg.get_value(sec, k)
+	return out
+
+## i = 0: a race started, 1: a race finished.
+func _count_stat(i: int) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(STATS_PATH)
+	var v: Array = cfg.get_value(_section(), _key(), [0, 0])
+	v[i] = int(v[i]) + 1
+	cfg.set_value(_section(), _key(), v)
+	cfg.save(STATS_PATH)
 
 func _key() -> String:
 	return Settings.selected_drone
@@ -671,22 +830,23 @@ func _load_best() -> float:
 	var cfg := ConfigFile.new()
 	if cfg.load(RECORDS_PATH) != OK:
 		return -1.0
-	_best_splits = cfg.get_value(section(map_id), _key() + "_splits", [])
-	return cfg.get_value(section(map_id), _key(), -1.0)
+	_best_splits = cfg.get_value(_section(), _key() + "_splits", [])
+	return cfg.get_value(_section(), _key(), -1.0)
 
 func _save_best() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(RECORDS_PATH)
-	cfg.set_value(section(map_id), _key(), _best)
-	cfg.set_value(section(map_id), _key() + "_splits", _splits.duplicate())
-	cfg.set_value(section(map_id), _key() + "_date", Time.get_date_string_from_system())
+	cfg.set_value(_section(), _key(), _best)
+	cfg.set_value(_section(), _key() + "_splits", _splits.duplicate())
+	cfg.set_value(_section(), _key() + "_date", Time.get_date_string_from_system())
 	cfg.save(RECORDS_PATH)
 
 ## Personal bests of a map for the menu: {drone id: [seconds, date]}.
-static func records(p_map_id: String) -> Dictionary:
+static func records(p_map_id: String, p_track: int = 1) -> Dictionary:
+	migrate_saves()
 	var out := {}
 	var cfg := ConfigFile.new()
-	var sec: String = section(p_map_id)
+	var sec: String = section(p_map_id, p_track)
 	if cfg.load(RECORDS_PATH) != OK or not cfg.has_section(sec):
 		return out
 	for k in cfg.get_section_keys(sec):

@@ -89,26 +89,9 @@ func build() -> void:
 		geo.lathe(p + Vector3(0, 0.45, 0), [Vector2(0.2, 0), Vector2(0.45, 0.4), Vector2(0.35, 1.0), Vector2(0.05, 1.3)], "plant", 9)
 	_city()
 
-	course = RaceCourse.new()
-	course.name = "RaceCourse"
-	add_child(course)
-	var E: float = -PI * 0.5
-	var W: float = PI * 0.5
-	var S: float = PI
-	var w: float = 0.6
-	var bar: float = 0.05
-	course.gate_sized(geo, Vector3(-11, 0.02, -3.5), E, w, w, bar, 0.3, "gate_dark")
-	course.gate_sized(geo, Vector3(0, 0.02, -3.5), E, w, w, bar, 1.0, "gate_a")
-	course.gate_sized(geo, Vector3(7, 0.02, 0.5), S, w, w, bar, 0.3, "gate_b")
-	course.gate_sized(geo, Vector3(2, 0.02, 8.5), W, w, w, bar, 1.4, "gate_a")
-	# Up under the ceiling between the high gate and the desk gate: a gate
-	# hung from the ceiling on two wires.
-	course.hanging_gate(geo, Vector3(-2, 2.2, 8.5), W, 2.98, "gate_b", 0.6, w)
-	geo.box(Vector3(-6, 0.37, 8.5), Vector3(1.2, 0.74, 0.8), "desk")
-	course.gate_sized(geo, Vector3(-6, 0.76, 8.5), W, w, w, bar, 0.0, "gate_b")
-	course.gate_sized(geo, Vector3(-13, 0.02, 2), 0.0, w, w, bar, 0.3, "gate_a")
 
 func after_build() -> void:
+	course = RaceCourse.make(self, tracks(), {"ao_height": 0.8, "ao_min": 0.65})
 	course.setup("office", drone, ui)
 	Collectibles.gnome(self, "office", 0, GNOME)
 
@@ -255,3 +238,24 @@ func _booths() -> void:
 		geo.box(q + Vector3(0, 0.75, -0.3), Vector3(0.9, 0.04, 0.4), "wood")
 		geo.box(q + Vector3(0, 0.45, 0.1), Vector3(0.45, 0.06, 0.45), "chair")
 		geo.box(q + Vector3(0, 0.22, 0.1), Vector3(0.08, 0.42, 0.08), "metal")
+
+## The map's tracks (RaceCourse.make builds the one Settings.race_track
+## picks, at load time on top of the cached map). Tracks 2-6 are
+## placeholders (track 1's course) until they are designed.
+func tracks() -> Array:
+	var t1: Array = [
+		["sized", Vector3(-11, 0.02, -3.5), -PI * 0.5, 0.6, 0.6, 0.05, 0.3, "gate_dark"],
+		["sized", Vector3(0, 0.02, -3.5), -PI * 0.5, 0.6, 0.6, 0.05, 1.0, "gate_a"],
+		["sized", Vector3(7, 0.02, 0.5), PI, 0.6, 0.6, 0.05, 0.3, "gate_b"],
+		["sized", Vector3(2, 0.02, 8.5), PI * 0.5, 0.6, 0.6, 0.05, 1.4, "gate_a"],
+		# Up under the ceiling between the high gate and the desk gate: a gate
+		# hung from the ceiling on two wires.
+		["hanging", Vector3(-2, 2.2, 8.5), PI * 0.5, 2.98, "gate_b", 0.6, 0.6],
+		["box", Vector3(-6, 0.37, 8.5), Vector3(1.2, 0.74, 0.8), Color(0.82, 0.8, 0.76)], # the desk
+		["sized", Vector3(-6, 0.76, 8.5), PI * 0.5, 0.6, 0.6, 0.05, 0.0, "gate_b"],
+		["sized", Vector3(-13, 0.02, 2), 0.0, 0.6, 0.6, 0.05, 0.3, "gate_a"],
+	]
+	var out: Array = [{"name": "After Hours", "level": "easy", "calls": t1}]
+	for k in range(2, 7):
+		out.append({"name": "Track %d" % k, "level": ["easy", "medium", "medium", "hard", "hard"][k - 2], "calls": t1})
+	return out

@@ -151,6 +151,9 @@ var game_mode: int = MODE_FREESTYLE
 ## Which real frame Drone.apply_profile() should spawn as - "seeker3" or
 ## "whoop" (see drone.gd's PROFILES). Set by the menu's drone-choice panel.
 var selected_drone: String = "seeker3"
+## Race maps: which of the map's tracks (1-based, RaceCourse.make) the
+## next race map load builds. Set by the track menu.
+var race_track: int = 1
 
 ## Everything above that a pilot sets survives a restart. Rather than a
 ## save() call at every place a setting changes (menu, pause menu, the
