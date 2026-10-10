@@ -9,7 +9,23 @@ extends BuiltMap
 ##   -> scaffold gate 8 m up (15,-22) west -> double gate lower (-12,-22)
 ##   -> hurdle (-38,-12) south -> gate (-50,6) south -> START.
 
+## Rebuilt 2026-10-10 for the race mode rework (6 tracks per race map,
+## DEV_TODO "Race mode rework"): fixed hall furniture every track can use
+## (ANCHORS) - a gallery along the south wall with the team pits under it,
+## a lighting rig hung over the infield, the video wall on the east wall,
+## the commentator booth by the stand; the tunnel and scaffold tower stay.
+## Track 1 is the course below, unchanged; the infield stays clear for
+## the other tracks' gates.
 const HALL := AABB(Vector3(-60, 0, -30), Vector3(120, 22, 60))
+const ANCHORS: Dictionary = {
+	"tunnel": [Vector3(12, 0, 20), Vector3(32, 0, 20)], ## 3 m inside, open both ends
+	"scaffold": Vector3(15, 0, -22), ## 3 x 3 m tower, deck at 8 m
+	"gallery": Rect2(-50, 26, 100, 4), ## deck 6 m up on columns every 10 m; pits under it - fly under, over, or along
+	"rig": AABB(Vector3(-10, 12, -12), Vector3(20, 0.6, 20)), ## square truss ring hung 12 m up - fly through its middle
+	"screen": Vector3(59.6, 11, 0), ## video wall on the east wall, 24 x 9 m
+	"booth": Vector3(48, 0, -27), ## commentator booth by the stand, 3.2 m tall
+	"infield": Rect2(-30, -12, 60, 22), ## kept clear: gates of the other tracks (under the rig)
+}
 
 var course: RaceCourse
 
@@ -28,6 +44,9 @@ func preview_views() -> Array:
 		["start", Vector3(-40, 1.3, 20), Vector3(0, 1.3, 20)],
 		["tunnel", Vector3(8, 1.2, 20), Vector3(40, 1.2, 20)],
 		["scaffold", Vector3(35, 10, -22), Vector3(0, 8, -22)],
+		["gallery", Vector3(-55, 3, 18), Vector3(0, 3, 28)],
+		["rig", Vector3(-25, 14, 15), Vector3(0, 12, -2)],
+		["screen", Vector3(20, 8, 0), Vector3(59.6, 11, 0)],
 	]
 
 func build() -> void:
@@ -41,6 +60,8 @@ func build() -> void:
 	geo.add_material("tunnel", Geo.flat_mat(Color(0.14, 0.14, 0.16), 0.8))
 	geo.add_material("banner", Geo.glow_mat(Color(0.12, 0.43, 0.88), 1.2))
 	geo.add_material("banner_o", Geo.glow_mat(Color(0.91, 0.33, 0.1), 1.2))
+	geo.add_material("table", Geo.flat_mat(Color(0.85, 0.85, 0.83), 0.6))
+	geo.add_material("glass", Geo.flat_mat(Color(0.1, 0.13, 0.16), 0.1, 0.5))
 
 	var h: AABB = HALL
 	geo.slab(Rect2(h.position.x, h.position.z, h.size.x, h.size.z), 0.0, 0.4, "floor")
@@ -62,6 +83,11 @@ func build() -> void:
 	# Spectator stand along the north wall: stepped tiers.
 	for t in range(6):
 		geo.box(Vector3(0, (6 - t) * 0.35, h.position.z + 1.0 + t * 0.9), Vector3(80, (6 - t) * 0.7, 0.9), "seat")
+
+	_gallery()
+	_rig()
+	_screen()
+	_booth()
 
 	course = RaceCourse.new()
 	course.name = "RaceCourse"
@@ -106,3 +132,98 @@ func _scaffold(o: Vector3, h: float) -> void:
 		for dz in [-1.5, 1.5]:
 			geo.beam(o + Vector3(-1.5, y - 2.0, dz), o + Vector3(1.5, y, dz), Vector2(0.06, 0.06), "truss")
 	geo.box(o + Vector3(0, h - 0.05, 0), Vector3(3.3, 0.1, 3.3), "truss")
+
+
+## Gallery along the south wall: a deck 6 m up on steel columns, a
+## railing, stairs at the west end; under it the team pits (tables,
+## chairs, battery cases, a flight case or two).
+func _gallery() -> void:
+	var g: Rect2 = ANCHORS.gallery
+	var y: float = 6.0
+	geo.box(Vector3(g.get_center().x, y - 0.15, g.get_center().y), Vector3(g.size.x, 0.3, g.size.y), "truss")
+	var x: float = g.position.x
+	while x <= g.end.x + 0.1:
+		geo.box(Vector3(x, (y - 0.3) * 0.5, g.position.y + 0.3), Vector3(0.4, y - 0.3, 0.4), "truss")
+		x += 10.0
+	geo.box(Vector3(g.get_center().x, y + 0.55, g.position.y + 0.05), Vector3(g.size.x, 0.08, 0.08), "truss", 0.0, false)
+	x = g.position.x
+	while x <= g.end.x + 0.1:
+		geo.box(Vector3(x, y + 0.27, g.position.y + 0.05), Vector3(0.06, 0.55, 0.06), "truss", 0.0, false)
+		x += 2.5
+	geo.box(Vector3(g.get_center().x, y + 0.05, g.position.y + 0.02), Vector3(g.size.x, 0.1, 0.06), "led_blue", 0.0, false, false)
+	# Stairs at the west end, against the wall.
+	for k in range(15):
+		geo.box(Vector3(g.position.x - 1.5 - (14 - k) * 0.4, (0.4 + k * 0.4) * 0.5, g.end.y - 1.0), Vector3(0.4, 0.4 + k * 0.4, 1.6), "truss")
+	# Pits under the deck.
+	var r := RandomNumberGenerator.new()
+	r.seed = 66
+	for k in range(9):
+		var px: float = g.position.x + 6.0 + k * 10.0
+		var q := Vector3(px, 0, g.end.y - 1.4)
+		geo.box(q + Vector3(0, 0.74, 0), Vector3(3.0, 0.06, 1.0), "table")
+		for sx in [-1.4, 1.4]:
+			geo.box(q + Vector3(sx, 0.36, 0), Vector3(0.06, 0.72, 0.9), "truss")
+		for j in range(r.randi_range(1, 3)):
+			geo.box(q + Vector3(r.randf_range(-1.0, 1.0), 0.77 + 0.1, r.randf_range(-0.2, 0.2)), Vector3(0.4, 0.2, 0.3), ["led_blue", "led_orange", "truss"][r.randi() % 3], r.randf_range(-0.4, 0.4))
+		for c in range(2):
+			var cp := q + Vector3(-0.8 + c * 1.6, 0, -1.2)
+			geo.box(cp + Vector3(0, 0.23, 0), Vector3(0.45, 0.46, 0.45), "seat")
+			geo.box(cp + Vector3(0, 0.75, -0.2), Vector3(0.45, 0.6, 0.06), "seat")
+		if r.randf() < 0.6:
+			geo.box(q + Vector3(2.2, 0.35, -0.4), Vector3(0.9, 0.7, 0.6), "wall") # flight case
+
+## Lighting rig: a square box truss ring hung on four cables from the
+## roof trusses, lamp cans under it.
+func _rig() -> void:
+	var a: AABB = ANCHORS.rig
+	var y: float = a.position.y + 0.3
+	var x0: float = a.position.x
+	var x1: float = a.end.x
+	var z0: float = a.position.z
+	var z1: float = a.end.z
+	for e: Array in [[Vector3(x0, y, z0), Vector3(x1, y, z0)], [Vector3(x0, y, z1), Vector3(x1, y, z1)],
+			[Vector3(x0, y, z0), Vector3(x0, y, z1)], [Vector3(x1, y, z0), Vector3(x1, y, z1)]]:
+		for oy in [-0.25, 0.25]:
+			geo.beam(e[0] + Vector3(0, oy, 0), e[1] + Vector3(0, oy, 0), Vector2(0.08, 0.08), "truss")
+		var d: Vector3 = e[1] - e[0]
+		var n: int = int(d.length() / 1.0)
+		for k in range(n + 1):
+			var q: Vector3 = e[0] + d * (float(k) / n)
+			geo.box(q, Vector3(0.05, 0.5, 0.05), "truss", 0.0, false)
+	for cx in [x0, x1]:
+		for cz in [z0, z1]:
+			geo.beam(Vector3(cx, y + 0.25, cz), Vector3(cx, 22.0, cz), Vector2(0.03, 0.03), "truss", false) # (to the roof, between the trusses)
+	for k in range(8):
+		var t: float = (k + 0.5) / 8.0
+		for q: Vector3 in [Vector3(lerpf(x0, x1, t), y - 0.25, z0), Vector3(lerpf(x0, x1, t), y - 0.25, z1)]:
+			geo.cylinder(q + Vector3(0, -0.5, 0), q, 0.18, "truss", 8)
+			geo.cylinder(q + Vector3(0, -0.52, 0), q + Vector3(0, -0.5, 0), 0.15, "lamp", 8, false, true, false)
+	# Its own light: an LED band round the ring.
+	for e: Array in [[Vector3((x0 + x1) * 0.5, y, z0), Vector3(x1 - x0, 0.1, 0.1)], [Vector3((x0 + x1) * 0.5, y, z1), Vector3(x1 - x0, 0.1, 0.1)],
+			[Vector3(x0, y, (z0 + z1) * 0.5), Vector3(0.1, 0.1, z1 - z0)], [Vector3(x1, y, (z0 + z1) * 0.5), Vector3(0.1, 0.1, z1 - z0)]]:
+		geo.box(e[0], e[1], "led_orange", 0.0, false, false)
+
+## Video wall on the east wall: dark screen, the league's horizon mark.
+func _screen() -> void:
+	if not geo.has_material("screen"):
+		geo.add_material("screen", Geo.glow_mat(Color(0.05, 0.1, 0.22), 0.8))
+	var c: Vector3 = ANCHORS.screen
+	geo.box(c + Vector3(0.15, 0, 0), Vector3(0.3, 9.6, 24.6), "wall", 0.0, false)
+	geo.box(c, Vector3(0.1, 9.0, 24.0), "screen", 0.0, false, false)
+	# The mark: a ring with the horizon line through it.
+	for k in range(32):
+		var a: float = TAU * k / 32.0
+		geo.box(c + Vector3(-0.06, sin(a) * 3.0, cos(a) * 3.0), Vector3(0.04, 0.6, 0.6), "banner_o", -0.0, false, false)
+	geo.box(c + Vector3(-0.07, 0, 0), Vector3(0.04, 0.35, 9.0), "banner", 0.0, false, false)
+
+## Commentator booth by the stand: a glazed box on a plinth.
+func _booth() -> void:
+	var b: Vector3 = ANCHORS.booth
+	geo.box(b + Vector3(0, 0.5, 0), Vector3(6.0, 1.0, 4.0), "wall")
+	geo.box(b + Vector3(0, 2.6, -1.0), Vector3(6.0, 2.2, 2.0), "wall")
+	geo.box(b + Vector3(0, 3.1, 0.0), Vector3(6.0, 0.2, 4.0), "wall")
+	for sx in [-2.9, 2.9]:
+		geo.box(b + Vector3(sx, 2.05, 1.0), Vector3(0.2, 2.1, 2.0), "wall")
+	geo.box(b + Vector3(0, 1.05, 1.0), Vector3(5.6, 0.1, 1.6), "table", 0.0, false)
+	geo.box(b + Vector3(0, 2.0, 1.9), Vector3(5.6, 1.9, 0.04), "glass", 0.0, false, false)
+	geo.box(b + Vector3(0, 3.25, 2.05), Vector3(4.0, 0.4, 0.08), "banner", 0.0, false, false)

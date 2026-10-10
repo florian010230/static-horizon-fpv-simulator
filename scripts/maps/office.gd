@@ -9,7 +9,22 @@ extends BuiltMap
 ##   -> (-6,8.5) on a table -> (-13,2) north -> START.
 ## Windows are real glass (collides - no flying out); a city below.
 
+## Rebuilt 2026-10-10 for the race mode rework (6 tracks per race map,
+## DEV_TODO "Race mode rework"): the empty east half is furnished as
+## places the tracks can use (ANCHORS) - the meeting room got a second
+## door (fly through it), a lounge with a ping-pong table, a server room
+## with rack aisles, two phone booths by the reception. Track 1 is the
+## course below, unchanged (its line stays clear of all of them).
 const ROOM := AABB(Vector3(-18, 0, -11), Vector3(36, 3.0, 22))
+const ANCHORS: Dictionary = {
+	"meeting": Rect2(8, -11, 10, 8), ## doors: west wall z -5..-4, south wall x 15.6..16.6
+	"lounge": Rect2(10, -1.5, 7.5, 5.5), ## sofas, ping-pong table at (13.5, 1) - under, over, round
+	"server": Rect2(11.5, 5.5, 6.5, 5.5), ## door in the west wall z 7..8; two rack aisles running east-west
+	"booths": [Vector3(-6.5, 0, -10.1), Vector3(-3.5, 0, -10.1)], ## phone booths, open fronts facing south
+	"open": Rect2(4, -2, 5, 12), ## kept clear: gates of the other tracks
+}
+## The garden gnome: on top of the server rack by the window.
+const GNOME := Transform3D(Basis(Vector3.UP, 2.4), Vector3(15.9, 2.0, 9.4))
 
 var course: RaceCourse
 
@@ -25,6 +40,11 @@ func preview_views() -> Array:
 		["start", Vector3(-15, 0.7, -3.5), Vector3(0, 0.6, -3.5)],
 		["meeting", Vector3(6, 1.5, -2), Vector3(14, 0.8, -8)],
 		["kitchen", Vector3(-8, 1.6, 4), Vector3(-16, 0.8, 9)],
+		["lounge", Vector3(8, 1.4, 4), Vector3(14, 0.6, 0)],
+		["server", Vector3(11, 1.2, 7.5), Vector3(17, 1.0, 7.5)],
+		["meeting_door", Vector3(16, 1.0, 1), Vector3(16, 0.9, -6)],
+		["booths", Vector3(-5, 1.3, -5), Vector3(-5, 1.0, -10)],
+		["gnome", Vector3(13.8, 2.6, 8.2), Vector3(15.9, 2.0, 9.4)],
 	]
 
 func build() -> void:
@@ -59,6 +79,9 @@ func build() -> void:
 	_desks()
 	_meeting_room(Rect2(8, -11, 10, 8))
 	_kitchen()
+	_lounge()
+	_server_room()
+	_booths()
 	for p in [Vector3(-10, 0, -5), Vector3(-10, 0, 5), Vector3(5.5, 0, 5)]:
 		geo.box(p + Vector3(0, 1.5, 0), Vector3(0.5, 3.0, 0.5), "wall")
 	for p in [Vector3(-17, 0, -10), Vector3(17, 0, 10), Vector3(5, 0, -10)]:
@@ -87,6 +110,7 @@ func build() -> void:
 
 func after_build() -> void:
 	course.setup("office", drone, ui)
+	Collectibles.gnome(self, "office", 0, GNOME)
 
 ## Outer walls: solid below 0.9 m and above 2.6 m, glass between.
 func _outer_walls() -> void:
@@ -120,7 +144,10 @@ func _meeting_room(rr: Rect2) -> void:
 	# Glass walls on the open-office sides, a door gap facing the desks.
 	geo.box(Vector3(rr.position.x, 1.5, rr.get_center().y - 1.0), Vector3(0.05, 3.0, rr.size.y - 2.0), "glass", 0.0, true, false)
 	geo.box(Vector3(rr.position.x, 1.5, rr.end.y - 0.5), Vector3(0.05, 3.0, 1.0), "glass", 0.0, true, false)
-	geo.box(Vector3(rr.get_center().x, 1.5, rr.end.y), Vector3(rr.size.x, 3.0, 0.05), "glass", 0.0, true, false)
+	# South wall: glass with a second door near the east end (x 15.6..16.6).
+	geo.box(Vector3((rr.position.x + 15.6) * 0.5, 1.5, rr.end.y), Vector3(15.6 - rr.position.x, 3.0, 0.05), "glass", 0.0, true, false)
+	geo.box(Vector3((16.6 + rr.end.x) * 0.5, 1.5, rr.end.y), Vector3(rr.end.x - 16.6, 3.0, 0.05), "glass", 0.0, true, false)
+	geo.box(Vector3(16.1, 2.55, rr.end.y), Vector3(1.0, 0.9, 0.05), "glass", 0.0, true, false)
 	var c := Vector3(rr.get_center().x, 0, rr.get_center().y)
 	geo.box(c + Vector3(0, 0.74, 0), Vector3(5, 0.05, 1.8), "wood")
 	for dx in [-2.0, 2.0]:
@@ -169,3 +196,62 @@ func _city() -> void:
 			city.filler_block(Rect2(c.x - 38.0, c.y - 33.0, 76.0, 66.0), y, 4, 12)
 	# This building's own shell below the office floor.
 	geo.box(Vector3(0, -10.2, 0), Vector3(36.4, 20, 22.4), "wall", 0.0, false, false)
+
+## Lounge: an L-sofa, two beanbags, a coffee table, a floor lamp, and the
+## ping-pong table (a 2.74 x 1.525 m table, 76 cm high, net 15.25 cm).
+func _lounge() -> void:
+	var a: Rect2 = ANCHORS.lounge
+	var x0: float = a.position.x
+	var z1: float = a.end.y
+	geo.box(Vector3(x0 + 3.0, 0.22, z1 - 0.45), Vector3(4.0, 0.44, 0.9), "accent")
+	geo.box(Vector3(x0 + 3.0, 0.6, z1 - 0.1), Vector3(4.0, 0.5, 0.2), "accent")
+	geo.box(Vector3(a.end.x - 0.45, 0.22, z1 - 1.9), Vector3(0.9, 0.44, 2.0), "accent")
+	geo.box(Vector3(a.end.x - 0.1, 0.6, z1 - 1.9), Vector3(0.2, 0.5, 2.0), "accent")
+	for q in [Vector3(x0 + 0.6, 0, z1 - 2.0), Vector3(x0 + 1.5, 0, z1 - 2.6)]:
+		geo.lathe(q, [Vector2(0.38, 0), Vector2(0.42, 0.18), Vector2(0.3, 0.4), Vector2(0.05, 0.48)], "chair", 10)
+	geo.box(Vector3(x0 + 3.0, 0.2, z1 - 1.6), Vector3(1.2, 0.4, 0.6), "wood")
+	var fl := Vector3(a.end.x - 0.4, 0, z1 - 0.4)
+	geo.cylinder(fl, fl + Vector3(0, 1.6, 0), 0.02, "metal", 6)
+	geo.cylinder(fl + Vector3(0, 1.5, 0), fl + Vector3(0, 1.75, 0), 0.18, "lamp", 10)
+	# Ping-pong table: top on two folding frames, the net across.
+	var t := Vector3(13.5, 0, 0.2)
+	geo.tint = Color(0.15, 0.35, 0.25)
+	geo.box(t + Vector3(0, 0.74, 0), Vector3(2.74, 0.03, 1.525), "desk")
+	geo.tint = Color.WHITE
+	geo.box(t + Vector3(0, 0.756, 0), Vector3(2.74, 0.004, 0.02), "pot", 0.0, false, false)
+	for sx in [-0.9, 0.9]:
+		geo.box(t + Vector3(sx, 0.36, 0), Vector3(0.05, 0.72, 1.3), "metal")
+	geo.box(t + Vector3(0, 0.83, 0), Vector3(0.02, 0.15, 1.7), "chair", 0.0, false)
+
+## Server room in the south-east corner: solid walls, a door in the west
+## wall, two rows of racks (2 m tall) with an aisle between and round them.
+func _server_room() -> void:
+	var a: Rect2 = ANCHORS.server
+	var x0: float = a.position.x
+	var z0: float = a.position.y
+	# North wall (to the open office), west wall with the door at z 7..8.
+	geo.box(Vector3(a.get_center().x, 1.5, z0), Vector3(a.size.x, 3.0, 0.15), "wall")
+	geo.box(Vector3(x0, 1.5, (z0 + 7.0) * 0.5), Vector3(0.15, 3.0, 7.0 - z0), "wall")
+	geo.box(Vector3(x0, 1.5, (8.0 + a.end.y) * 0.5), Vector3(0.15, 3.0, a.end.y - 8.0), "wall")
+	geo.box(Vector3(x0, 2.6, 7.5), Vector3(0.15, 0.8, 1.0), "wall")
+	for rz in [6.6, 9.4]:
+		for k in range(6):
+			var q := Vector3(x0 + 1.6 + k * 0.62, 0, rz)
+			geo.box(q + Vector3(0, 1.0, 0), Vector3(0.6, 2.0, 1.0), "screen")
+			geo.box(q + Vector3(0, 1.0, 0.505 * signf(8.0 - rz)), Vector3(0.5, 1.8, 0.01), "lamp" if k % 3 == 1 else "metal", 0.0, false, false)
+	# Cable tray over the racks, a cooling unit on the east wall.
+	geo.box(Vector3(x0 + 3.2, 2.7, 8.0), Vector3(4.0, 0.08, 0.4), "metal", 0.0, false)
+	for sx in [-1.8, 1.8]:
+		geo.box(Vector3(x0 + 3.2 + sx, 2.87, 8.0), Vector3(0.04, 0.26, 0.04), "metal", 0.0, false)
+	geo.box(Vector3(a.end.x - 0.45, 0.9, 8.0), Vector3(0.7, 1.8, 1.2), "desk")
+
+## Two phone booths by the reception: acoustic pods, open fronts.
+func _booths() -> void:
+	for q: Vector3 in ANCHORS.booths:
+		geo.box(q + Vector3(0, 1.1, -0.55), Vector3(1.2, 2.2, 0.1), "accent")
+		for sx in [-0.6, 0.6]:
+			geo.box(q + Vector3(sx, 1.1, 0), Vector3(0.08, 2.2, 1.2), "accent")
+		geo.box(q + Vector3(0, 2.24, 0), Vector3(1.28, 0.08, 1.2), "accent")
+		geo.box(q + Vector3(0, 0.75, -0.3), Vector3(0.9, 0.04, 0.4), "wood")
+		geo.box(q + Vector3(0, 0.45, 0.1), Vector3(0.45, 0.06, 0.45), "chair")
+		geo.box(q + Vector3(0, 0.22, 0.1), Vector3(0.08, 0.42, 0.08), "metal")

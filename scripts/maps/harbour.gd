@@ -38,6 +38,20 @@ var rails: Rails
 var roads: Roads
 var city: City
 var _colors: Array[String] = []
+var _tc_trees: Array = [] ## TreeCreator entries (the lost drone's tree)
+
+## Garden gnome spots (Collectibles): 0 on a pallet in the open warehouse
+## on the basin, 1 on the machinery house of the first ship-to-shore
+## crane, 2 under the fish market's roof on a crate stack.
+const GNOMES: Array[Transform3D] = [
+	Transform3D(Basis(Vector3.UP, 0.4), Vector3(-386.0, 10.3, -186.0)),
+	Transform3D(Basis(Vector3.UP, 3.1), Vector3(62.0, 48.0, -40.0)),
+	Transform3D(Basis(Vector3.UP, 1.0), Vector3(-612.0, 1.4, -84.0)),
+]
+
+func after_build() -> void:
+	for i in range(GNOMES.size()):
+		Collectibles.gnome(self, "harbour", i, GNOMES[i])
 
 func map_env() -> Dictionary:
 	# Sunset over the port: the sun low in the west, long shadows down
@@ -75,6 +89,13 @@ func preview_views() -> Array:
 		["horizon", Vector3(-100, 90, -820), Vector3(-100, 0, -2200)],
 		["town_houses", Vector3(-250, 30, -700), Vector3(-200, 10, -790)],
 		["town_street", Vector3(-290, 6, -640), Vector3(-290, 8, -800)],
+		["speicher", Vector3(-405, 12, -125), Vector3(-405, 9, -170)],
+		["speicher_in", Vector3(-405, 6.4, -170), Vector3(-445, 5.6, -182)],
+		["fish_market", Vector3(-560, 8, -110), Vector3(-600, 4, -60)],
+		["transit_shed", Vector3(-150, 4, -185), Vector3(-215, 3, -185)],
+		["workshops", Vector3(30, 15, -440), Vector3(-15, 5, -500)],
+		["depot", Vector3(-515, 15, -290), Vector3(-515, 4, -338)],
+		["gnome_crane", Vector3(62, 51, -30), Vector3(62, 48, -40)],
 	]
 
 func build() -> void:
@@ -101,7 +122,7 @@ func build() -> void:
 	geo.add_material("tank_white", Geo.flat_mat(Color(0.86, 0.86, 0.84)))
 	geo.add_material("platform", Geo.tex_mat(MapTextures.get_tex("paving_slabs"), Color(0.9, 0.9, 0.9), 3.0))
 	geo.add_material("platform_edge", Geo.flat_mat(Color(0.92, 0.92, 0.9)))
-	geo.add_material("groove", Geo.ground_flat(Color(0.14, 0.14, 0.15), 3))
+	geo.add_material("groove", Geo.ground_flat(Color(0.14, 0.14, 0.15), 4)) # (over the road's lines where rails cross)
 	var shed_glass := Geo.flat_mat(Color(0.75, 0.85, 0.9, 0.35))
 	shed_glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	shed_glass.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -142,6 +163,7 @@ func build() -> void:
 	# pallets, barriers, skips.
 	YardProps.scatter(geo, Rect2(-40, -300, 510, 300), 0.0, 60, rng)
 	Forest.plant(self, city.trees, self)
+	TreeCreator.plant(self, geo, _tc_trees)
 
 # --- land ------------------------------------------------------------------------
 
@@ -247,7 +269,7 @@ func _station() -> void:
 		var c := Vector3((PLAT_X0 + PLAT_X1) * 0.5, 0.38, pz)
 		geo.box(c, Vector3(PLAT_X1 - PLAT_X0, 0.76, 9.0), "platform")
 		for s in [-1.0, 1.0]:
-			geo.box(c + Vector3(0, 0.385, s * 4.1), Vector3(PLAT_X1 - PLAT_X0, 0.01, 0.35), "platform_edge", 0.0, false, false)
+			geo.box(c + Vector3(0, 0.41, s * 4.1), Vector3(PLAT_X1 - PLAT_X0, 0.06, 0.35), "platform_edge", 0.0, false, false) # (proud of the paving: flush, it flickered)
 		for k in range(12):
 			var px: float = PLAT_X0 + 12.0 + k * 21.5
 			geo.cylinder(Vector3(px, 0.76, pz), Vector3(px, 4.2, pz), 0.08, "steel", 6)
@@ -604,10 +626,9 @@ func _bulk_berth() -> void:
 		Vehicles.tipper(geo, Vector3(-170.0 + k * 14.0, 0.02, -150), 0.0, Vehicles.random_paint(rng), "")
 	# Transit shed for general cargo, steel coils and timber on the quay,
 	# a forklift lane - keeping the spawn (-200, -40) clear.
-	geo.box(Vector3(-215, 7, -175), Vector3(80, 14, 44), "warehouse")
-	geo.box(Vector3(-215, 14.3, -175), Vector3(81, 0.6, 45), "cty_roof", 0.0, false, false)
-	for q in range(5):
-		geo.box(Vector3(-247 + q * 16, 2.5, -152.95), Vector3(6, 5, 0.1), "cty_dark", 0.0, false, false)
+	# (IndustryCreator hall: docks on the quay side, its open door at the
+	# east end - fly in from the tipper lane.)
+	_port_hall(Vector3(-215, 0, -175), 80.0, 40.0, 11.0, 5, {"office": false, "roof": "gable"}, "")
 	for i in range(6):
 		for j in range(3):
 			var cp := Vector3(-95 + i * 4.2, 1.1, -30 + j * 4.5)
@@ -631,7 +652,10 @@ func _basin() -> void:
 					Vehicles.boat(geo, Vector3(x + s2 * 8.0, -2.8, -105 + k * 15), PI * 0.5 * s2 + PI * 0.5, rng.randf() < 0.6)
 	for k in range(3):
 		var c := Vector3(BASIN.position.x + 55 + k * 100, 0, -180)
-		geo.box(c + Vector3(0, 9, 0), Vector3(90, 18, 30), "brick")
+		if k == 1:
+			_speicher(c)
+		else:
+			geo.box(c + Vector3(0, 9, 0), Vector3(90, 18, 30), "brick")
 		for gx in [-30.0, 0.0, 30.0]:
 			var pts: Array = []
 			for i in range(8):
@@ -645,16 +669,17 @@ func _basin() -> void:
 			geo.hexa(pts, "cty_slate")
 		for wx in range(-40, 41, 8):
 			for fy in [4.0, 8.0, 12.0, 16.0]:
+				if k == 1 and absf(wx) in [0, 32] and fy > 5.0:
+					continue # the open loading doors
 				geo.box(c + Vector3(wx, fy, 15.02), Vector3(2.0, 2.2, 0.06), "glass", 0.0, false, false)
 	for k in range(14):
 		var p := Vector3(BASIN.position.x + 10 + k * 22, 0, -140)
 		city.trees.append([p, 1, rng.randf_range(0.7, 0.9)])
 		if k % 2 == 0:
 			roads.lamp(p + Vector3(8, 0, 4), Vector3(0, 0, 1))
-	var fm := Vector3(-600, 0, -60)
-	geo.box(fm + Vector3(0, 5, 0), Vector3(40, 10, 80), "sandstone")
-	for s2 in [-1.0, 1.0]:
-		geo.box_xf(Transform3D(Basis(Vector3.FORWARD, s2 * 0.55), fm + Vector3(s2 * 10.5, 13.0, 0)), Vector3(23.5, 0.4, 82), "crane_red")
+	_fish_market(Vector3(-600, 0, -60))
+	# A lost drone in a plane tree on the basin promenade.
+	_tc_trees.append([Vector3(BASIN.position.x + 10 + 9 * 22 + 11.0, 0.0, -146.0), "maple", 9, "drone", true, 1.0])
 
 ## Oil terminal east of the container terminal: tanks in bunded pairs,
 ## a pipe rack out along the jetty to a moored tanker.
@@ -818,11 +843,7 @@ func _south_district() -> void:
 	# Parcel depot: two long sheds with loading docks and lorries.
 	for k in range(2):
 		var c := Vector3(-560 + k * 90, 0, zt + 55.0)
-		geo.box(c + Vector3(0, 6, 0), Vector3(70, 12, 40), "warehouse")
-		for q in range(6):
-			geo.box(c + Vector3(-28 + q * 11, 2.2, 20.05), Vector3(4, 4.4, 0.1), "cty_dark", 0.0, false, false)
-			if rng.randf() < 0.6:
-				Vehicles.box_truck(geo, c + Vector3(-28 + q * 11, 0.02, 25.0), 0.0, Vehicles.random_paint(rng))
+		_port_hall(c, 70.0, 40.0, 10.0, 6, {"office": false, "roof": "gable"}, "box")
 		geo.slab(Rect2(c.x - 38, c.z + 20, 76, 30), 0.03, 0.1, "cty_lot", false)
 	# Along the north side of the waterfront road: a row of houses and
 	# a hotel with shops, between the two bridges.
@@ -841,11 +862,7 @@ func _south_district() -> void:
 func _sidings_district() -> void:
 	for k in range(5):
 		var c := Vector3(-15 + k * 120.0, 0, -500.0)
-		geo.box(c + Vector3(0, 5, 0), Vector3(60, 10, 34), "warehouse" if k % 2 else "brick")
-		geo.box(c + Vector3(0, 10.3, 0), Vector3(61, 0.6, 35), "cty_roof", 0.0, false, false)
-		for q in range(3):
-			if rng.randf() < 0.6:
-				Vehicles.box_truck(geo, c + Vector3(-20 + q * 20, 0.02, 21.0), 0.0, Vehicles.random_paint(rng))
+		_port_hall(c, 56.0, 34.0, 10.0, 3, {}, "box")
 
 ## Past the playable area: the street grid carries on (the streets
 ## that run out of the map) with cheap blocks between them, on asphalt,
@@ -941,3 +958,365 @@ func _tug(p: Vector3) -> void:
 	geo.box(p + Vector3(0, -1.5, 0), Vector3(9, 3, 28), "hull_red")
 	geo.box(p + Vector3(0, 2, -3), Vector3(7, 4, 9), "white")
 	geo.box(p + Vector3(0, 4.5, -3), Vector3(7.2, 1.2, 9.2), "glass")
+
+## The old warehouse (Speicher) in the middle of the basin row, open:
+## four floors on timber posts, a column of loading doors open on each
+## floor of the basin front (fly in on any floor), sacks and crates -
+## and on the top floor, in the north-west corner behind a partition,
+## the dockers' toilet.
+func _speicher(c: Vector3) -> void:
+	if not geo.has_material("hb_wood"):
+		geo.add_material("hb_wood", Geo.tex_mat(MapTextures.get_tex("wood"), Color(0.85, 0.7, 0.55), 1.6))
+		geo.add_material("hb_sack", Geo.tex_mat(MapTextures.get_tex("fabric"), Color(0.85, 0.75, 0.55), 1.0))
+		# Lamp-lit inside: the floors and goods are not left in the roof's
+		# shadow (the shadow map can't tell a lit loft from a dark one).
+		for m in ["hb_wood", "hb_sack"]:
+			geo.material(m).set_meta("no_shadow", true)
+	IndustryCreator.ensure_materials(geo) # in_lamp
+	var r := RandomNumberGenerator.new()
+	r.seed = 1888
+	var L: float = 90.0
+	var B: float = 30.0
+	var H: float = 18.0
+	var t: float = 0.6
+	var floors: Array = [0.2, 4.6, 9.0, 13.4]
+	# Back and end walls, solid.
+	geo.box(c + Vector3(0, H * 0.5, -B * 0.5 + t * 0.5), Vector3(L, H, t), "brick")
+	for sx in [-1.0, 1.0]:
+		geo.box(c + Vector3(sx * (L * 0.5 - t * 0.5), H * 0.5, 0), Vector3(t, H, B - 2.0 * t), "brick")
+	# The basin front: 8 m bays by floor, open where the loading doors are.
+	var bay: float = 8.0
+	var x: float = -L * 0.5
+	while x < L * 0.5 - 0.1:
+		var w: float = minf(bay, L * 0.5 - x)
+		var mid: float = x + w * 0.5
+		for f in range(4):
+			var y0: float = 0.0 if f == 0 else floors[f]
+			var y1: float = floors[f + 1] if f < 3 else H
+			var door: bool = absf(mid) < 4.1 or absf(absf(mid) - 32.0) < 4.1
+			if door:
+				# a door 3 m wide in the bay, wall either side, lintel over it
+				var dh: float = 3.4 if f > 0 else 4.0
+				for sd in [-1.0, 1.0]:
+					geo.box(c + Vector3(mid + sd * (1.5 + (w - 3.0) * 0.25), (y0 + y1) * 0.5, B * 0.5 - t * 0.5), Vector3((w - 3.0) * 0.5, y1 - y0, t), "brick")
+				geo.box(c + Vector3(mid, (y0 + dh + y1) * 0.5, B * 0.5 - t * 0.5), Vector3(3.0, y1 - y0 - dh, t), "brick")
+				if f > 0:
+					# the door leaf swung open against the wall, a hoist beam over it
+					geo.box(c + Vector3(mid + 2.2, y0 + 1.7, B * 0.5 + 0.7), Vector3(0.08, 3.2, 1.4), "hb_wood", 0.0, false)
+			else:
+				geo.box(c + Vector3(mid, (y0 + y1) * 0.5, B * 0.5 - t * 0.5), Vector3(w, y1 - y0, t), "brick")
+		x += w
+	for hx in [-32.0, 0.0, 32.0]:
+		geo.box(c + Vector3(hx, H + 0.6, B * 0.5 + 1.0), Vector3(0.5, 0.6, 2.6), "hb_wood")
+	# Floors and timber posts.
+	for f in range(4):
+		var fy: float = floors[f]
+		geo.box(c + Vector3(0, fy - 0.15, 0), Vector3(L - 2.0 * t, 0.3, B - 2.0 * t), "hb_wood")
+	geo.box(c + Vector3(0, H - 0.15, 0), Vector3(L, 0.3, B), "brick") # the top ceiling under the roofs
+	for px in range(-40, 41, 10):
+		for pz in [-7.0, 7.0]:
+			for f in range(3):
+				geo.box(c + Vector3(px, (floors[f] + floors[f + 1] - 0.3) * 0.5, pz), Vector3(0.4, floors[f + 1] - floors[f] - 0.3, 0.4), "hb_wood")
+			geo.box(c + Vector3(px, (floors[3] + H - 0.3) * 0.5, pz), Vector3(0.4, H - floors[3] - 0.3, 0.4), "hb_wood")
+	# A row of lamps under each ceiling, over the middle aisle.
+	for f in range(4):
+		var top: float = (floors[f + 1] if f < 3 else H) - 0.3
+		for lx in range(-36, 37, 12):
+			geo.box(c + Vector3(lx, top - 0.5, 0), Vector3(0.6, 0.12, 0.6), "in_lamp", 0.0, false, false)
+			geo.box(c + Vector3(lx, top - 0.22, 0), Vector3(0.04, 0.44, 0.04), "steel", 0.0, false, false)
+	# Goods: sacks on pallets, crates.
+	for f in range(4):
+		for k in range(10):
+			var q := c + Vector3(r.randf_range(-L * 0.5 + 4.0, L * 0.5 - 4.0), floors[f], r.randf_range(-B * 0.5 + 3.0, B * 0.5 - 5.0))
+			if absf(q.x - c.x) < 6.0 or absf(absf(q.x - c.x) - 32.0) < 5.0:
+				continue # keep the ways in clear
+			geo.box(q + Vector3(0, 0.07, 0), Vector3(1.2, 0.14, 1.0), "hb_wood")
+			var n: int = r.randi_range(1, 4)
+			for j in range(n):
+				geo.box(q + Vector3(r.randf_range(-0.05, 0.05), 0.14 + 0.15 + j * 0.3, 0), Vector3(1.0, 0.3, 0.75), "hb_sack", r.randf_range(-0.1, 0.1))
+	# More clutter: crates, sacks on pallets, pallet stacks, barrels and old
+	# machinery, scattered by their own dice, kept off the loading-door aisles,
+	# the middle lane (|dz| < 2.5), the posts and the gnome's pallet.
+	var r2 := RandomNumberGenerator.new()
+	r2.seed = 4711
+	var r2_rects: Array = [[], [], [], []] # Rect2(dx, dz) per floor, for the third pass
+	for f in range(4):
+		var fy2: float = floors[f]
+		var placed: Array = [] # Vector3(dx, dz, radius)
+		var tries: int = 0
+		var made: int = 0
+		while made < 24 and tries < 200:
+			tries += 1
+			var kind: int = r2.randi() % 9
+			var rad: float = [1.0, 0.95, 0.9, 1.25, 1.5, 0.75, 1.1, 2.3, 1.2][kind]
+			var mag: float = r2.randf_range(6.5, 44.0) if r2.randf() < 0.8 else r2.randf_range(37.0, 44.0)
+			var dx: float = mag * (1.0 if r2.randf() < 0.5 else -1.0)
+			var dz: float = r2.randf_range(2.5 + rad, 13.8 - rad) * (1.0 if r2.randf() < 0.5 else -1.0)
+			if absf(dx) - rad < 6.2 or absf(dx) + rad > 44.2 or absf(absf(dx) - 32.0) < 5.2 + rad:
+				continue
+			var ok: bool = true
+			for px in range(-40, 41, 10):
+				for pz in [-7.0, 7.0]:
+					if Vector2(dx - px, dz - pz).length() < rad + 0.6:
+						ok = false
+			for pl in placed:
+				if Vector2(dx - pl.x, dz - pl.y).length() < rad + pl.z + 0.4:
+					ok = false
+			if f == 2 and Vector2(c.x + dx + 386.0, c.z + dz + 186.0).length() < rad + 3.0:
+				ok = false
+			if not ok:
+				continue
+			placed.append(Vector3(dx, dz, rad))
+			r2_rects[f].append(Rect2(dx - rad, dz - rad, 2.0 * rad, 2.0 * rad))
+			made += 1
+			var q := Vector3(c.x + dx, fy2, c.z + dz)
+			var yaw: float = r2.randf_range(-PI, PI)
+			var bs := Basis(Vector3.UP, yaw)
+			match kind:
+				0: # a stack of crates, 1 to 2 high
+					var nc: int = r2.randi_range(1, 2)
+					for j in range(nc):
+						geo.box(q + Vector3(0, 0.45 + j * 0.9, 0), Vector3(1.0, 0.9, 1.0), "hb_wood", yaw + j * 0.15)
+					if r2.randf() < 0.6:
+						geo.box(q + bs * Vector3(1.0, 0.3, 0.3), Vector3(0.8, 0.6, 0.7), "hb_wood", yaw + 0.4)
+				1: # sacks on a pallet, 3 to 5 layers
+					geo.box(q + Vector3(0, 0.07, 0), Vector3(1.2, 0.14, 1.0), "hb_wood", yaw)
+					for j in range(r2.randi_range(3, 5)):
+						for sx in [-0.28, 0.28]:
+							geo.box(q + bs * Vector3(sx, 0.14 + 0.15 + j * 0.3, 0), Vector3(0.52, 0.3, 0.8), "hb_sack", yaw + r2.randf_range(-0.08, 0.08))
+				2: # empty pallets piled up
+					for j in range(r2.randi_range(3, 6)):
+						geo.box(q + Vector3(0, 0.07 + j * 0.14, 0), Vector3(1.2, 0.14, 1.0), "hb_wood", yaw + r2.randf_range(-0.08, 0.08))
+				3: # barrels, upright
+					for o in [Vector3(0, 0, 0), Vector3(0.85, 0, 0.1), Vector3(0.4, 0, 0.8), Vector3(-0.4, 0, 0.75)]:
+						if o != Vector3.ZERO and r2.randf() < 0.3:
+							continue
+						var bq: Vector3 = q + bs * o
+						geo.cylinder(bq, bq + Vector3(0, 1.0, 0), 0.38, "hb_wood", 10)
+						geo.cylinder(bq + Vector3(0, 0.25, 0), bq + Vector3(0, 0.3, 0), 0.4, "steel", 10)
+						geo.cylinder(bq + Vector3(0, 0.7, 0), bq + Vector3(0, 0.75, 0), 0.4, "steel", 10)
+				4: # a hoist drum on two timber cheeks
+					geo.box(q + Vector3(0, 0.06, 0), Vector3(2.4, 0.12, 0.8), "hb_wood", yaw)
+					for sx in [-0.95, 0.95]:
+						geo.box(q + bs * Vector3(sx, 0.7, 0), Vector3(0.25, 1.2, 0.5), "hb_wood", yaw)
+					geo.cylinder(q + bs * Vector3(-1.0, 0.8, 0), q + bs * Vector3(1.0, 0.8, 0), 0.35, "steel", 12)
+					geo.cylinder(q + bs * Vector3(1.0, 0.8, 0), q + bs * Vector3(1.5, 0.8, 0), 0.07, "in_steel", 6)
+					geo.box(q + bs * Vector3(1.5, 0.8, 0), Vector3(0.08, 0.5, 0.08), "in_steel", yaw)
+				5: # an old sack scale
+					geo.box(q + Vector3(0, 0.05, 0), Vector3(0.8, 0.1, 0.6), "in_steel", yaw)
+					geo.box(q + Vector3(0, 0.7, 0), Vector3(0.12, 1.2, 0.12), "in_steel", yaw)
+					geo.box(q + bs * Vector3(0, 1.3, 0), Vector3(0.9, 0.08, 0.1), "in_steel", yaw)
+					geo.box(q + bs * Vector3(0.4, 0.12, 0), Vector3(0.7, 0.04, 0.5), "steel", yaw)
+				6: # a hand cart with a few sacks
+					for wz in [-0.4, 0.4]:
+						for wx in [-0.6, 0.6]:
+							var wq: Vector3 = q + bs * Vector3(wx, 0.25, wz)
+							geo.cylinder(wq - bs * Vector3(0, 0, 0.05), wq + bs * Vector3(0, 0, 0.05), 0.25, "in_steel", 10)
+					geo.box(q + Vector3(0, 0.5, 0), Vector3(1.6, 0.1, 0.8), "hb_wood", yaw)
+					geo.box(q + bs * Vector3(-1.0, 0.8, 0), Vector3(0.7, 0.05, 0.1), "in_steel", yaw)
+					geo.box(q + bs * Vector3(-0.7, 0.75, 0), Vector3(0.06, 0.55, 0.7), "in_steel", yaw)
+					for j in range(r2.randi_range(1, 3)):
+						geo.box(q + bs * Vector3(0.2, 0.55 + 0.15 + j * 0.3, 0), Vector3(0.9, 0.3, 0.6), "hb_sack", yaw)
+				7: # a belt conveyor section
+					for sz in [-0.3, 0.3]:
+						geo.box(q + bs * Vector3(0, 0.8, sz), Vector3(4.0, 0.15, 0.1), "in_steel", yaw)
+					for lx in [-1.8, 1.8]:
+						for sz in [-0.3, 0.3]:
+							geo.box(q + bs * Vector3(lx, 0.36, sz), Vector3(0.1, 0.72, 0.1), "in_steel", yaw)
+					geo.box(q + bs * Vector3(0, 0.84, 0), Vector3(4.0, 0.06, 0.5), "steel", yaw)
+					for lx in [-1.8, 1.8]:
+						geo.box(q + bs * Vector3(lx, 0.1, 0), Vector3(0.1, 0.06, 0.7), "in_steel", yaw)
+				8: # a fallen crate with its lid and a broken slat
+					geo.box(q + Vector3(0, 0.3, 0), Vector3(1.1, 0.6, 0.8), "hb_wood", yaw)
+					geo.box(q + bs * Vector3(0.8, 0.03, 0.4), Vector3(0.9, 0.06, 0.6), "hb_wood", yaw + 0.5)
+					geo.box(q + bs * Vector3(-0.2, 0.03, -0.9), Vector3(1.0, 0.06, 0.12), "hb_wood", yaw - 0.3)
+	# Third pass (own dice): density and height. Racks along the back and end
+	# walls, crate towers in clusters, a big sack pile. Same keep-clear rules.
+	var r3 := RandomNumberGenerator.new()
+	r3.seed = 9090
+	var p3: Array = [[], [], [], []]
+	var can_put := func(f: int, dx: float, dz: float, rx: float, rz: float, lim_x: float, lim_z: float) -> bool:
+		if absf(dx) - rx < 6.2 or absf(dx) + rx > lim_x or absf(dz) + rz > lim_z:
+			return false
+		if absf(dx) + rx > 26.8 and absf(dx) - rx < 37.2:
+			return false
+		if dz - rz < 2.5 and dz + rz > -2.5:
+			return false
+		var rect := Rect2(dx - rx, dz - rz, 2.0 * rx, 2.0 * rz)
+		for ppx in range(-40, 41, 10):
+			for ppz in [-7.0, 7.0]:
+				var qx: float = clampf(ppx, rect.position.x, rect.end.x)
+				var qz: float = clampf(ppz, rect.position.y, rect.end.y)
+				if Vector2(qx - ppx, qz - ppz).length() < 0.8:
+					return false
+		if f == 2 and Vector2(c.x + dx + 386.0, c.z + dz + 186.0).length() < maxf(rx, rz) + 3.0:
+			return false
+		if f == 3 and dx - rx < -39.5 and dz - rz < -9.5:
+			return false
+		var grown: Rect2 = rect.grow(0.3)
+		for o in r2_rects[f]:
+			if grown.intersects(o):
+				return false
+		for o in p3[f]:
+			if grown.intersects(o):
+				return false
+		return true
+	var build_rack := func(base: Vector3, yaw: float, bays: int) -> void:
+		var bs := Basis(Vector3.UP, yaw)
+		var ln: float = bays * 2.7
+		geo.tint = Color(0.22, 0.36, 0.6)
+		for i in range(bays + 1):
+			for sz in [-0.5, 0.5]:
+				geo.box(base + bs * Vector3(-ln * 0.5 + i * 2.7, 1.775, sz), Vector3(0.1, 3.55, 0.1), "in_steel", yaw)
+		geo.tint = Color(0.85, 0.45, 0.12)
+		for i in range(bays):
+			for ly in [1.35, 2.55]:
+				for sz in [-0.5, 0.5]:
+					geo.box(base + bs * Vector3(-ln * 0.5 + 1.35 + i * 2.7, ly, sz), Vector3(2.7, 0.12, 0.08), "in_paint", yaw)
+		geo.tint = Color.WHITE
+		for i in range(bays):
+			for sx in [-0.65, 0.65]:
+				for lv in range(3):
+					if r3.randf() < 0.12:
+						continue
+					var py: float = 0.07 if lv == 0 else [0.0, 1.35, 2.55][lv] + 0.13
+					var lx: float = -ln * 0.5 + 1.35 + i * 2.7 + sx
+					geo.box(base + bs * Vector3(lx, py, 0), Vector3(1.2, 0.14, 1.0), "hb_wood", yaw)
+					var top: float = py + 0.07
+					var hmax: float = [1.0, 0.9, 0.75][lv]
+					if r3.randf() < 0.5:
+						var h: float = hmax - r3.randf_range(0.05, 0.25)
+						geo.box(base + bs * Vector3(lx + r3.randf_range(-0.04, 0.04), top + h * 0.5, 0), Vector3(1.05, h, 0.85), "hb_wood", yaw + r3.randf_range(-0.05, 0.05))
+					else:
+						for j in range(int(hmax / 0.3 + 0.01)):
+							for sk in [-0.26, 0.26]:
+								geo.box(base + bs * Vector3(lx + sk, top + 0.15 + j * 0.3, 0), Vector3(0.5, 0.3, 0.8), "hb_sack", yaw + r3.randf_range(-0.05, 0.05))
+	for f in range(4):
+		var fy3: float = floors[f]
+		# Racks on the back wall (inner face at dz = -14.4).
+		var got: int = 0
+		for tr in range(40):
+			if got >= (2 if f % 2 == 0 else 1):
+				break
+			var mag3: float = r3.randf_range(9.1, 23.9) if r3.randf() < 0.65 else r3.randf_range(40.2, 41.5)
+			var dx3: float = mag3 * (1.0 if r3.randf() < 0.5 else -1.0)
+			if can_put.call(f, dx3, -13.8, 2.9, 0.6, 44.45, 14.45):
+				p3[f].append(Rect2(dx3 - 2.9, -13.8 - 0.6, 5.8, 1.2))
+				build_rack.call(Vector3(c.x + dx3, fy3, c.z - 13.8), 0.0, 2)
+				got += 1
+		# One rack on an end wall.
+		for tr in range(30):
+			var sd: float = 1.0 if r3.randf() < 0.5 else -1.0
+			var dz3: float = r3.randf_range(4.1, 12.9) * (1.0 if r3.randf() < 0.5 else -1.0)
+			if can_put.call(f, sd * 43.8, dz3, 0.6, 1.5, 44.45, 14.45):
+				p3[f].append(Rect2(sd * 43.8 - 0.6, dz3 - 1.5, 1.2, 3.0))
+				build_rack.call(Vector3(c.x + sd * 43.8, fy3, c.z + dz3), -PI * 0.5 * sd, 1)
+				break
+		# Crate-tower clusters.
+		for cl in range(r3.randi_range(5, 6)):
+			var cdx: float = (r3.randf_range(8.0, 25.0) if r3.randf() < 0.6 else r3.randf_range(38.5, 42.5)) * (1.0 if r3.randf() < 0.5 else -1.0)
+			var cdz: float = r3.randf_range(4.5, 12.5) * (1.0 if r3.randf() < 0.5 else -1.0)
+			var nt: int = r3.randi_range(3, 6)
+			var made_t: int = 0
+			for k in range(nt * 5):
+				if made_t >= nt:
+					break
+				var tdx: float = cdx + r3.randf_range(-3.2, 3.2)
+				var tdz: float = cdz + r3.randf_range(-2.8, 2.8)
+				var tw: float = r3.randf_range(0.9, 1.2)
+				var td: float = r3.randf_range(0.9, 1.2)
+				var rr: float = 0.5 * sqrt(tw * tw + td * td) + 0.05
+				if not can_put.call(f, tdx, tdz, rr, rr, 44.2, 13.9):
+					continue
+				p3[f].append(Rect2(tdx - rr, tdz - rr, 2.0 * rr, 2.0 * rr))
+				made_t += 1
+				var tall: float = r3.randf_range(2.0, 3.3)
+				var nn: int = maxi(2, int(round(tall / 0.9)))
+				var yaw_t: float = r3.randf_range(-PI, PI)
+				var ycur: float = fy3
+				var g: float = r3.randf_range(0.8, 1.05)
+				geo.tint = Color(g, g, g)
+				for j in range(nn):
+					var h: float = tall / nn * r3.randf_range(0.9, 1.1)
+					geo.box(Vector3(c.x + tdx + r3.randf_range(-0.05, 0.05), ycur + h * 0.5, c.z + tdz + r3.randf_range(-0.05, 0.05)), Vector3(tw, h, td), "hb_wood", yaw_t + r3.randf_range(-0.2, 0.2))
+					ycur += h
+					tw = maxf(0.75, tw * r3.randf_range(0.9, 1.0))
+					td = maxf(0.75, td * r3.randf_range(0.9, 1.0))
+				geo.tint = Color.WHITE
+		# A big pile of sacks on 2-3 pallets.
+		var np: int = r3.randi_range(2, 3)
+		var prr: float = sqrt(pow(np * 0.625, 2.0) + 0.25) + 0.05
+		for tr in range(40):
+			var pdx: float = (r3.randf_range(8.0 + prr, 25.0) if r3.randf() < 0.6 else r3.randf_range(38.5, 42.5)) * (1.0 if r3.randf() < 0.5 else -1.0)
+			var pdz: float = r3.randf_range(4.5, 12.5) * (1.0 if r3.randf() < 0.5 else -1.0)
+			if not can_put.call(f, pdx, pdz, prr, prr, 44.2, 13.9):
+				continue
+			p3[f].append(Rect2(pdx - prr, pdz - prr, 2.0 * prr, 2.0 * prr))
+			var pyaw: float = r3.randf_range(-PI, PI)
+			var pb := Basis(Vector3.UP, pyaw)
+			var pq := Vector3(c.x + pdx, fy3, c.z + pdz)
+			for i in range(np):
+				geo.box(pq + pb * Vector3((i - (np - 1) * 0.5) * 1.25, 0.07, 0), Vector3(1.2, 0.14, 1.0), "hb_wood", pyaw)
+			for j in range(np + 3):
+				var cnt: int = 2 * np - (j + 1) / 2
+				for i in range(cnt):
+					geo.box(pq + pb * Vector3((i - (cnt - 1) * 0.5) * 0.53, 0.14 + 0.15 + j * 0.3, 0), Vector3(0.52, 0.3, 0.8), "hb_sack", pyaw + r3.randf_range(-0.04, 0.04))
+			break
+	# The gnome's pallet (GNOMES[0]): on the second floor.
+	geo.box(Vector3(-386.0, floors[2] + 0.07, -186.0), Vector3(1.2, 0.14, 1.0), "hb_wood")
+	geo.box(Vector3(-386.0, floors[2] + 0.14 + 0.6, -186.0), Vector3(1.0, 1.2, 0.8), "hb_wood")
+	# The toilet: top floor, north-west corner, a partition in front.
+	var tx: float = c.x - L * 0.5 + t + 1.6
+	geo.box(Vector3(tx + 1.4, floors[3] + 1.2, c.z - B * 0.5 + t + 1.1), Vector3(0.08, 2.4, 2.2), "hb_wood")
+	ToiletCreator.build(geo, Transform3D(Basis(), Vector3(tx, floors[3], c.z - B * 0.5 + t)), r, {"floater": "random"})
+
+## The fish market by the basin: an open hall (cast-iron columns, a
+## glazed ridge roof), rows of stalls under it, crates stacked about.
+func _fish_market(fm: Vector3) -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = 77
+	geo.box(fm + Vector3(0, 0.1, 0), Vector3(40, 0.2, 80), "sandstone")
+	for x in [-19.0, 19.0]:
+		for z in range(-40, 41, 8):
+			geo.cylinder(fm + Vector3(x, 0.2, z), fm + Vector3(x, 9.0, z), 0.3, "crane", 8)
+	for z in range(-40, 41, 8):
+		geo.beam(fm + Vector3(-19, 9.0, z), fm + Vector3(0, 13.0, z), Vector2(0.3, 0.5), "crane")
+		geo.beam(fm + Vector3(0, 13.0, z), fm + Vector3(19, 9.0, z), Vector2(0.3, 0.5), "crane")
+	for s2 in [-1.0, 1.0]:
+		geo.beam(fm + Vector3(s2 * 19.0, 9.0, -40), fm + Vector3(s2 * 19.0, 9.0, 40), Vector2(0.4, 0.6), "crane")
+		geo.box_xf(Transform3D(Basis(Vector3.FORWARD, s2 * 0.21), fm + Vector3(s2 * 13.0, 11.2, 0)), Vector3(12.5, 0.3, 82), "crane_red")
+		geo.box_xf(Transform3D(Basis(Vector3.FORWARD, s2 * 0.21), fm + Vector3(s2 * 3.4, 13.2, 0)), Vector3(7.0, 0.1, 82), "shed_glass", false, false)
+	for row in [-9.0, 9.0]:
+		for z in range(-34, 35, 6):
+			var q: Vector3 = fm + Vector3(row, 0.2, z)
+			geo.box(q + Vector3(0, 0.45, 0), Vector3(2.0, 0.9, 4.6), "white")
+			geo.box(q + Vector3(0, 0.93, 0), Vector3(1.9, 0.06, 4.4), "steel", 0.0, false, false)
+			geo.box(q + Vector3(0, 2.3, 0), Vector3(2.4, 0.06, 5.0), ["c_red", "c_blue", "c_green", "c_white"][r.randi() % 4], 0.0, false, false)
+			for sz in [-2.2, 2.2]:
+				geo.box(q + Vector3(row * 0.1, 1.2, sz), Vector3(0.06, 2.1, 0.06), "steel", 0.0, true, false)
+	# Crate stacks (the gnome's on the one at the south-west).
+	for k in range(6):
+		var q: Vector3 = fm + Vector3(-12.0 + (k % 2) * 24.0, 0.2, -24.0 + (k / 2) * 24.0)
+		for j in range(3):
+			geo.box(q + Vector3(0, 0.2 + j * 0.4, 0), Vector3(1.1, 0.4, 0.8), "hb_wood")
+
+## An IndustryCreator hall lying along x at c (floor middle), docks on
+## its south (+z) side, the open roller door at the east end; `trucks`
+## "box" | "semi" | "" backs lorries up to some of the docks. Own dice
+## per hall (seeded from its place), so the map's rng runs as before.
+func _port_hall(c: Vector3, L: float, B: float, H: float, n_docks: int, opts: Dictionary, trucks: String) -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = int(c.x * 31.0 + c.z * 7.0)
+	# Local z (length) = world -x, local +x (the docks) = world +z.
+	var xf := Transform3D(Basis(Vector3.UP, -PI * 0.5), c)
+	var o: Dictionary = opts.duplicate()
+	o["docks"] = n_docks
+	IndustryCreator.hall(geo, xf, L, B, H, r, o)
+	if trucks == "":
+		return
+	for d: Vector3 in IndustryCreator.docks(xf, L, B, n_docks):
+		if r.randf() < 0.6:
+			if trucks == "semi":
+				Vehicles.semi(geo, d + Vector3(0, 0.02, 8.4), PI, Vehicles.random_paint(r), "veh_trailer")
+			else:
+				Vehicles.box_truck(geo, d + Vector3(0, 0.02, 4.6), PI, Vehicles.random_paint(r))

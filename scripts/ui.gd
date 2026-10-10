@@ -268,7 +268,7 @@ func _input(event: InputEvent) -> void:
 		_rehide_cursor()
 
 func _rehide_cursor() -> void:
-	if _panel_visible or get_tree().paused or Input.mouse_mode != Input.MOUSE_MODE_HIDDEN:
+	if not is_inside_tree() or _panel_visible or get_tree().paused or Input.mouse_mode != Input.MOUSE_MODE_HIDDEN:
 		return
 	_rehide_t = Time.get_ticks_msec()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

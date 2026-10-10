@@ -11,6 +11,25 @@ extends BuiltMap
 ##   (-45,-50) -> left: gate (-62,-20) south -> dive gate (-60,5) ->
 ##   left: hurdle (-40,28) east -> gate (-20,30) -> START.
 ## South of the course: safety net, pilot stand, pit tents, car park.
+## Rebuilt 2026-10-10 for the race mode rework (6 tracks per race map,
+## DEV_TODO "Race mode rework"): the mown field is bigger (170 x 143 m)
+## and carries fixed scenery the tracks can use (ANCHORS): a scaffold
+## tower in the north-west corner, an old cattle shed (fly through) in
+## the north-east, a straw-bale chicane along the north edge, a parked
+## tractor with a bale trailer on the west edge. Track 1 is the course
+## below, unchanged; the infield (ANCHORS "infield") stays clear for the
+## other tracks' gates.
+
+## Fixed points on the field for the coming tracks (and the race mode's
+## track data): where each piece of scenery is and its way through.
+const FIELD := Rect2(-95, -88, 170, 143)
+const ANCHORS: Dictionary = {
+	"scaffold": Vector3(-78, 0, -72), ## 6 x 6 m, 12 m tall, open bays at 3/6/9 m; dive through the middle
+	"shed": Vector3(60, 0, -72), ## 18 x 8 m, ridge along x; doors at both ends (x +-9), roof half fallen in
+	"bales": Rect2(-40, -82, 70, 4), ## the chicane: bale pairs with 6 m gaps along z -80
+	"tractor": Vector3(-88, 0, 18), ## tractor + trailer, facing north - a hurdle to skim
+	"infield": Rect2(-45, -40, 80, 60), ## kept clear: gates of the other tracks
+}
 
 var course: RaceCourse
 ## Hedgerow trees from the surrounding farm fields, planted with the tree ring.
@@ -28,7 +47,7 @@ func map_env() -> Dictionary:
 	return {"sun_rot": Vector3(-55, 25, 0), "shadow_ground_y": 0.0, "shadow_region": Rect2(-128, -128, 256, 256)}
 
 func border() -> Array:
-	return [110.0, 140.0, 250.0, 310.0]
+	return [150.0, 185.0, 250.0, 310.0]
 
 func preview_views() -> Array:
 	return [
@@ -41,6 +60,10 @@ func preview_views() -> Array:
 		["treeline_n", Vector3(-10, 5, -50), Vector3(-10, 6, -130)],
 		["treeline_e", Vector3(50, 3, 10), Vector3(130, 6, 40)],
 		["fields", Vector3(-20, 55, 60), Vector3(20, 0, -110)],
+		["scaffold", Vector3(-60, 6, -55), Vector3(-78, 5, -72)],
+		["shed", Vector3(80, 3, -72), Vector3(60, 2.5, -72)],
+		["bales", Vector3(-50, 3, -70), Vector3(20, 1, -80)],
+		["clubhouse", Vector3(78, 4, 86), Vector3(63, 2, 68)],
 	] + _field_views
 
 func build() -> void:
@@ -61,7 +84,7 @@ func build() -> void:
 	geo.add_material("glass", Geo.flat_mat(Color(0.1, 0.13, 0.16), 0.1, 0.5))
 
 	geo.slab(Rect2(-3000, -3000, 6000, 6000), 0.0, 0.4, "meadow")
-	geo.slab(Rect2(-80, -70, 140, 125), 0.05, 0.1, "field")
+	geo.slab(FIELD, 0.05, 0.1, "field")
 	geo.slab(Rect2(-40, 58, 90, 22), 0.05, 0.1, "gravel") # pits + car park
 
 	course = RaceCourse.new()
@@ -86,6 +109,7 @@ func build() -> void:
 	for p in [Vector3(56, 0.05, 40), Vector3(52, 0.05, -58), Vector3(-68, 0.05, -60), Vector3(-70, 0.05, 36)]:
 		course.flag(geo, p, "gate_b")
 
+	_anchors()
 	_safety_net(52.0, -60.0, 50.0)
 	_pilot_stand(Vector3(12, 0.05, 56))
 	for i in range(4):
@@ -133,7 +157,8 @@ func _country_road(rng: RandomNumberGenerator) -> void:
 		roads.traffic(Route.from_pts(r.slice(0.0, 700.0)), 7.0, 1, 6.0, 0.15)
 	var city := City.new(geo, rng, fleet)
 	# Clubhouse by the car park, a farm across the road.
-	city.building(Vector3(40, 0.05, 70), Vector2(14, 8), 0.0, 1, "cty_plaster_warm", "gable", false)
+	# (HouseCreator, one storey, open: fly in through the terrace door.)
+	HouseCreator.build(geo, Vector3(63, 0.05, 68), 0.0, 4711, {"storeys": 1, "garage": "none"})
 	city.house(Vector3(-60, 0, 125), 0.0, 14, 10, 2)
 	for k in range(3):
 		city.building(Vector3(-30 + k * 22, 0, 135), Vector2(18, 12), 0.0, 2, "cty_brick", "gable", false)
@@ -195,10 +220,66 @@ func _trees() -> void:
 		var sp: String = "maple" if f < 0.45 else ("birch" if f < 0.7 else "spruce")
 		# (the rng draws happen before the field test: the ring keeps its layout)
 		var entry: Array = [p, sp, rng.randi(), "random", rng.randf() < 0.6, rng.randf_range(1.3, 1.7) * (1.25 if sp == "spruce" else 1.0)]
-		var inside: bool = false
+		var inside: bool = FIELD.grow(8.0).has_point(Vector2(p.x, p.z))
 		for poly: PackedVector2Array in _field_polys:
 			inside = inside or Geometry2D.is_point_in_polygon(Vector2(p.x, p.z), poly)
 		if not inside:
 			trees.append(entry) # not in a crop
 	trees.append_array(_field_trees)
 	TreeCreator.plant(self, geo, trees)
+
+## The field's fixed scenery (ANCHORS): things every track can use.
+func _anchors() -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = 1210
+	if not geo.has_material("rf_straw"):
+		geo.add_material("rf_straw", Geo.flat_mat(Color(0.86, 0.72, 0.38), 0.9))
+		geo.add_material("rf_plank", Geo.tex_mat(MapTextures.get_tex("wood"), Color(0.8, 0.72, 0.6), 1.5))
+		geo.add_material("rf_stone", Geo.tex_mat(MapTextures.get_tex("dark_brick"), Color(1.05, 0.95, 0.88), 3.0))
+	# Scaffold tower: 2 x 2 bays of 3 m, four lifts; planked decks at 3 m
+	# (half) and 9 m (round the edge only) - the middle open from the top
+	# down to the 3 m deck: a dive.
+	var sc: Vector3 = ANCHORS.scaffold
+	for i in range(3):
+		for j in range(3):
+			var q: Vector3 = sc + Vector3(-3.0 + i * 3.0, 0, -3.0 + j * 3.0)
+			geo.cylinder(q + Vector3(0, 0.05, 0), q + Vector3(0, 12.0, 0), 0.05, "post", 6)
+			geo.box(q + Vector3(0, 0.1, 0), Vector3(0.3, 0.1, 0.3), "rf_plank")
+	for y in [3.0, 6.0, 9.0, 12.0]:
+		for k in range(3):
+			var o: float = -3.0 + k * 3.0
+			geo.beam(sc + Vector3(-3, y, o), sc + Vector3(3, y, o), Vector2(0.1, 0.1), "post")
+			geo.beam(sc + Vector3(o, y, -3), sc + Vector3(o, y, 3), Vector2(0.1, 0.1), "post")
+	geo.box(sc + Vector3(-1.5, 3.08, 0), Vector3(3.0, 0.06, 6.0), "rf_plank")
+	for e: Array in [[Vector3(0, 9.08, -2.4), Vector3(6, 0.06, 1.2)], [Vector3(0, 9.08, 2.4), Vector3(6, 0.06, 1.2)],
+			[Vector3(-2.4, 9.08, 0), Vector3(1.2, 0.06, 3.6)], [Vector3(2.4, 9.08, 0), Vector3(1.2, 0.06, 3.6)]]:
+		geo.box(sc + e[0], e[1], "rf_plank")
+	for d in [-1.0, 1.0]: # diagonal braces on two faces
+		geo.beam(sc + Vector3(-3, 0.1, d * 3.0), sc + Vector3(3, 6.0, d * 3.0), Vector2(0.08, 0.08), "post")
+	# Old cattle shed: stone walls, doors at both gable ends, windows down the
+	# sides, the roof's south slope fallen in.
+	var sh: Vector3 = ANCHORS.shed
+	var L: float = 18.0
+	var B: float = 8.0
+	var xf := Transform3D(Basis(), sh)
+	for s in [-1.0, 1.0]:
+		var side := Transform3D(Basis(), sh + Vector3(0, 0, s * B * 0.5))
+		BuildKit.wall(geo, side, -L * 0.5, L * 0.5, 0.0, 3.6, 0.5, [Rect2(-6.0, 1.2, 1.4, 1.2), Rect2(-1.0, 1.2, 1.4, 1.2), Rect2(4.0, 1.2, 1.4, 1.2)], "rf_stone", 0.0)
+		var end := Transform3D(Basis(Vector3.UP, PI * 0.5), sh + Vector3(s * (L * 0.5 - 0.25), 0, 0))
+		BuildKit.wall(geo, end, -B * 0.5 + 0.5, B * 0.5 - 0.5, 0.0, 3.6, 0.5, [Rect2(-1.6, 0.0, 3.2, 3.0)], "rf_stone", 0.0)
+		BuildKit.gable(geo, end, -B * 0.5, B * 0.5, 3.6, 2.6, 0.5, "rf_stone")
+	BuildKit.roof(geo, Transform3D(Basis(Vector3.UP, PI * 0.5), sh), B * 0.5, L + 0.8, 3.6, atan(2.6 / (B * 0.5)), 0.15, 0.4, "rf_plank", -1)
+	# Straw-bale chicane: pairs of round bales, a 6 m gap between pairs,
+	# every third pair topped with a third bale.
+	var bz: float = ANCHORS.bales.get_center().y
+	var x: float = ANCHORS.bales.position.x
+	var k: int = 0
+	while x < ANCHORS.bales.end.x:
+		for dx in [0.0, 1.6]:
+			geo.cylinder(Vector3(x + dx, 0.8, bz - 0.6), Vector3(x + dx, 0.8, bz + 0.6), 0.75, "rf_straw", 14)
+		if k % 3 == 0:
+			geo.cylinder(Vector3(x + 0.8, 2.1, bz - 0.6), Vector3(x + 0.8, 2.1, bz + 0.6), 0.75, "rf_straw", 14)
+		x += 7.6
+		k += 1
+	# Tractor with a bale trailer on the west edge.
+	FarmCreator.tractor(geo, ANCHORS.tractor + Vector3(0, 0.05, 0), 0.0, "fm_red", true, r)
