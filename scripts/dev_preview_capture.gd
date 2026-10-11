@@ -348,6 +348,12 @@ func _go() -> void:
 		await _lab_shots()
 		get_tree().quit()
 		return
+	if OS.get_cmdline_user_args().has("cine"):
+		var ca := OS.get_cmdline_user_args()
+		var shot: String = ca[ca.find("cine") + 1] if ca.find("cine") + 1 < ca.size() else ""
+		await preload("res://scripts/cine.gd").new().run(get_tree(), shot)
+		get_tree().quit()
+		return
 	if OS.get_cmdline_user_args().has("cpuprof"):
 		await _cpu_prof()
 		get_tree().quit()
@@ -358,6 +364,49 @@ func _go() -> void:
 		return
 	if OS.get_cmdline_user_args().has("perf"):
 		await _perf_run()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("tracks"):
+		await _tracks_shots()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("racelook"):
+		await _racelook_shots()
+	if OS.get_cmdline_user_args().has("linecolours"):
+		await _linecolour_shots()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("trackmenu"):
+		get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+		await get_tree().create_timer(2.5).timeout
+		var menu_node: Node = get_tree().current_scene
+		Settings.game_mode = Settings.MODE_RACE
+		for mm in MapCatalog.MAPS:
+			if mm.id == "race_field":
+				menu_node._open_tracks(mm)
+		await get_tree().create_timer(0.5).timeout
+		var cards: Array = menu_node._tracks_grid.get_children()
+		if cards.size() > 4:
+			(cards[4] as Button).grab_focus()
+		await get_tree().create_timer(0.3).timeout
+		_shot("raceui_tracks.png")
+		Settings.game_mode = Settings.MODE_FREESTYLE
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("raceui"):
+		await _raceui_shots()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("flags"):
+		await _flag_shots()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("linelength"):
+		await _linelength_shots()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("missed"):
+		await _missed_shot()
 		get_tree().quit()
 		return
 	if OS.get_cmdline_user_args().has("flight"):
@@ -529,6 +578,12 @@ func _menu_shots() -> void:
 	_find_button(menu_node._screens["mode"], "Race").pressed.emit()
 	await get_tree().create_timer(0.4).timeout
 	_shot("preview_map_choice_race.png")
+	Settings.game_mode = Settings.MODE_RACE
+	for mm in MapCatalog.MAPS:
+		if mm.id == "race_field":
+			menu_node._open_tracks(mm)
+	await get_tree().create_timer(0.5).timeout
+	_shot("preview_menu_tracks.png")
 	Settings.game_mode = Settings.MODE_FREESTYLE
 	menu_node._show("map")
 	await get_tree().create_timer(0.4).timeout
@@ -1266,6 +1321,445 @@ func _flight_shots() -> void:
 	st.settings_tabs.current_tab = SettingsScreens.TAB_NAMES.find("Flight")
 	await get_tree().create_timer(0.4).timeout
 	_shot("flight_settings.png")
+
+## `-- --dev-preview missed`: fly gate 0, skip gate 1, fly gate 2 -> HUD.
+func _missed_shot() -> void:
+	Settings.game_mode = Settings.MODE_RACE
+	Settings.race_track = 1
+	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
+	await get_tree().create_timer(2.0).timeout
+	var sc: Node = get_tree().current_scene
+	var course: RaceCourse = sc.course
+	var d: Drone = sc.get_node("Drone")
+	d.freeze = true
+	var g0: Dictionary = course._gates[0]
+	var g2: Dictionary = course._gates[2]
+	var way: Array = [g0.xf * Vector3(0, 0, 2.0), g0.xf * Vector3(0, 0, -2.0)]
+	var up_hi: Vector3 = Vector3(0, 40, 0)
+	way.append(way[1] + up_hi)
+	way.append(g2.xf * Vector3(0, 0, 2.0) + up_hi)
+	way.append(g2.xf * Vector3(0, 0, 2.0))
+	way.append(g2.xf * Vector3(0, 0, -2.0))
+	d.global_position = way[0]
+	for _i in range(4):
+		await get_tree().physics_frame
+	for k in range(1, way.size()):
+		var a: Vector3 = way[k - 1]
+		var b: Vector3 = way[k]
+		var n: int = int(ceil(a.distance_to(b) / 2.0))
+		for i in range(1, n + 1):
+			d.global_position = a.lerp(b, float(i) / n)
+			await get_tree().physics_frame
+	print("MISSED_GATE==1: ", course._missed_gate == 1, " (", course._missed_gate, ")")
+	d.global_transform.basis = d.global_transform.basis * Basis(Vector3.UP, deg_to_rad(90))
+	await get_tree().create_timer(0.5).timeout
+	await _drawn_frames(3)
+	_shot("preview_missed_gate.png")
+
+## `-- --dev-preview racelook`: race_field tracks 5/6 spawn view, split-S
+## ladder views, gate rings in the analog look, results card -> previews/racelook_*.png.
+func _racelook_shots() -> void:
+	Settings.game_mode = Settings.MODE_RACE
+	WorldBorder.disabled = true
+	var scene := "res://scenes/maps/RaceField.tscn"
+	var ladders := {5: Vector3(-5, 0.05, -50), 6: Vector3(78, 0.05, -42)}
+	for t in [5, 6]:
+		Settings.race_track = t
+		Settings.camera_look = 0
+		get_tree().change_scene_to_file(scene)
+		await get_tree().create_timer(2.5).timeout
+		var root: Node = get_tree().current_scene
+		var course: RaceCourse = root.course
+		await _drawn_frames(3)
+		_shot("racelook_t%d_spawn.png" % t)
+		var ui := root.find_child("UI", true, false) as CanvasLayer
+		if ui:
+			ui.visible = false
+		var drone := root.find_child("Drone", true, false) as RigidBody3D
+		if drone:
+			drone.freeze = true
+		var lg: Array = []
+		for g in course._gates:
+			var o: Vector3 = g.xf.origin
+			if Vector2(o.x - ladders[t].x, o.z - ladders[t].z).length() < 5.0:
+				lg.append(g)
+		lg.sort_custom(func(a, b): return a.xf.origin.y > b.xf.origin.y)
+		print("RACELOOK t", t, " gates ", course._gates.size(), " ladder openings ", lg.size())
+		if lg.is_empty():
+			continue
+		var top: Dictionary = lg[0]
+		var mid: Vector3 = Vector3(ladders[t].x, 3.5, ladders[t].z)
+		var cam := Camera3D.new()
+		cam.far = 3000.0
+		cam.fov = 70.0
+		root.add_child(cam)
+		cam.make_current()
+		var right: Vector3 = top.xf.basis.x
+		cam.global_position = mid + right * 10.0 + Vector3(0, 0.5, 0)
+		cam.look_at(mid, Vector3.UP)
+		await get_tree().create_timer(0.8).timeout
+		await _drawn_frames(3)
+		_shot("racelook_t%d_ladder_side.png" % t)
+		cam.global_position = top.xf * Vector3(0, 0.2, 5.0)
+		cam.look_at(top.xf.origin, Vector3.UP)
+		await get_tree().create_timer(0.8).timeout
+		await _drawn_frames(3)
+		_shot("racelook_t%d_ladder_top_entry.png" % t)
+		cam.global_position = top.xf * Vector3(0, 0.2, -5.0)
+		cam.look_at(top.xf.origin, Vector3.UP)
+		await get_tree().create_timer(0.8).timeout
+		await _drawn_frames(3)
+		_shot("racelook_t%d_ladder_top_exit.png" % t)
+		cam.queue_free()
+	Settings.race_track = 5
+	Settings.camera_look = 1
+	get_tree().change_scene_to_file(scene)
+	await get_tree().create_timer(2.5).timeout
+	var root2: Node = get_tree().current_scene
+	var course2: RaceCourse = root2.course
+	var d2 := root2.find_child("Drone", true, false) as RigidBody3D
+	d2.freeze = true
+	var g1: Dictionary = course2._gates[1]
+	for side in [["entry", 4.0], ["exit", -4.0]]:
+		var from: Vector3 = g1.xf * Vector3(0, 0, side[1])
+		var look: Basis = Basis.looking_at(g1.xf.origin - from, Vector3.UP)
+		d2.global_transform = Transform3D(look, from)
+		await get_tree().create_timer(0.8).timeout
+		await _drawn_frames(3)
+		_shot("racelook_gate_%s_analog.png" % side[0])
+	Settings.camera_look = 0
+	print("RACELOOK BOARD_PATH ", RaceCourse.BOARD_PATH)
+	if RaceCourse.BOARD_PATH.begins_with("user://selftest/"):
+		course2._race_laps.assign([31.2, 30.4])
+		course2._finish()
+		await get_tree().create_timer(0.8).timeout
+		await _drawn_frames(3)
+		_shot("racelook_results.png")
+	else:
+		print("RACELOOK: BOARD_PATH not redirected, results shot aborted")
+	Settings.race_track = 1
+
+## `-- --dev-preview linecolours`: Tower Line's racing line in two hues by
+## the ladder, a far view (no dashes), FPV shots of the line cut behind the
+## drone and the Settings -> Flight slider row -> previews/linecolour_*.png.
+func _linecolour_shots() -> void:
+	Settings.game_mode = Settings.MODE_RACE
+	WorldBorder.disabled = true
+	Settings.race_track = 5
+	Settings.camera_look = 0
+	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
+	await get_tree().create_timer(2.5).timeout
+	var root: Node = get_tree().current_scene
+	var course: RaceCourse = root.course
+	var ui := root.find_child("UI", true, false) as CanvasLayer
+	var drone := root.find_child("Drone", true, false) as RigidBody3D
+	drone.freeze = true
+	# Mid-lap: the drone on the stretch into the ladder's top opening,
+	# so the cut shows (the line behind it gone, the ladder's loops ahead).
+	var top: int = -1
+	for i in range(course._gates.size()):
+		var o: Vector3 = course._gates[i].xf.origin
+		if Vector2(o.x + 5.0, o.z + 50.0).length() < 5.0 and (top < 0 or o.y > course._gates[top].xf.origin.y):
+			top = i
+	var a: int = course._line_seg[top - 1]
+	var b: int = course._line_seg[top]
+	var p: Vector3 = course._line_pts[(a + b) / 2]
+	var look: Vector3 = (course._gates[top].xf.origin - p) * Vector3(1, 0, 1) + Vector3(0, 1.5, 0)
+	drone.global_transform = Transform3D(Basis.looking_at(look, Vector3.UP), p + Vector3(0, 0.3, 0))
+	course._prev_pos = drone.global_position # not a reset
+	course._next = top
+	course._lap_start = 0.0
+	course._lap = 1
+	var cam := Camera3D.new()
+	cam.far = 3000.0
+	cam.fov = 70.0
+	root.add_child(cam)
+	var mid := Vector3(-5, 3.5, -50)
+	cam.global_position = mid + Vector3(-16, 7, -10)
+	cam.look_at(mid + Vector3(0, 0, 8), Vector3.UP)
+	cam.make_current()
+	if ui:
+		ui.visible = false
+	for hue in [30, 200]:
+		course.set_line_colour(Color.from_hsv(hue / 360.0, 1.0, 1.0))
+		await get_tree().create_timer(0.6).timeout
+		await _drawn_frames(3)
+		_shot("linecolour_hue%d.png" % hue)
+	# Far: the whole track from the far side of the field - the line must
+	# read as one unbroken line, not dashes.
+	cam.global_position = Vector3(90, 14, 60)
+	cam.look_at(Vector3(-20, 2, -40), Vector3.UP)
+	await get_tree().create_timer(0.6).timeout
+	await _drawn_frames(3)
+	_shot("linecolour_far.png")
+	cam.queue_free()
+	if ui:
+		ui.visible = true
+	course.set_line_colour(Settings.race_line_colour())
+	await get_tree().create_timer(0.6).timeout
+	await _drawn_frames(3)
+	_shot("linecolour_fpv_cut.png")
+	# A reset: back in front of START, the whole lap ahead.
+	drone.reset_to_spawn()
+	drone.freeze = true
+	await get_tree().create_timer(0.8).timeout
+	await _drawn_frames(3)
+	_shot("linecolour_fpv_reset.png")
+	Settings.race_track = 1
+	# The settings row (Flight tab) at orange, then at Off.
+	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+	await get_tree().create_timer(2.5).timeout
+	var settings_btn: Button = _find_button(get_tree().current_scene, "Settings")
+	if settings_btn:
+		settings_btn.pressed.emit()
+	await get_tree().create_timer(1.0).timeout
+	var st: SettingsScreens = get_tree().current_scene.get("_settings")
+	st.settings_tabs.current_tab = SettingsScreens.TAB_NAMES.find("Flight")
+	await get_tree().create_timer(0.4).timeout
+	_shot("linecolour_settings.png")
+	var sl := st.find_child("RaceLineSlider", true, false) as HSlider
+	var hue0: int = Settings.race_line_hue
+	sl.value = 0
+	await get_tree().create_timer(0.3).timeout
+	_shot("linecolour_settings_off.png")
+	sl.value = 41 # 200 deg: blue
+	await get_tree().create_timer(0.3).timeout
+	_shot("linecolour_settings_blue.png")
+	Settings.race_line_hue = hue0
+
+## `-- --dev-preview linelength`: how far ahead the racing line reaches
+## (default length): Tower Line into the ladder (close gates: three show)
+## and on its longest stretch (just the next gate), Harvest Hell at the
+## hairpin where the full lap would cross itself - each from above and
+## FPV -> previews/linelength_*.png.
+func _linelength_shots() -> void:
+	Settings.game_mode = Settings.MODE_RACE
+	WorldBorder.disabled = true
+	Settings.camera_look = 0
+	for shot in [["ladder", 5], ["straight", 5], ["crossing", 6]]:
+		Settings.race_track = shot[1]
+		get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
+		await get_tree().create_timer(2.5).timeout
+		var root: Node = get_tree().current_scene
+		var course: RaceCourse = root.course
+		var ui := root.find_child("UI", true, false) as CanvasLayer
+		var drone := root.find_child("Drone", true, false) as RigidBody3D
+		drone.freeze = true
+		var n: int = course._gates.size()
+		var into: int = 1
+		var frac: float = 0.5
+		if shot[0] == "ladder": # the stretch into the ladder's first opening
+			for i in range(n):
+				var o: Vector3 = course._gates[i].xf.origin
+				if Vector2(o.x + 5.0, o.z + 50.0).length() < 5.0:
+					into = i
+					break
+		elif shot[0] == "straight": # the longest stretch, just past its gate
+			var best: float = 0.0
+			for i in range(n):
+				var l: float = course._line_arc[course._line_seg[i + 1]] - course._line_arc[course._line_seg[i]]
+				if l > best:
+					best = l
+					into = (i + 1) % n
+			frac = 0.15
+		else: # Harvest Hell: into the hairpin's return gate
+			into = 3
+		var a: int = course._line_seg[(into - 1 + n) % n]
+		var b: int = course._line_seg[into] if into > 0 else course._line_seg[n]
+		var p: Vector3 = course._line_pts[int(lerpf(a, b, frac))]
+		var ahead: Vector3 = course._line_pts[mini(int(lerpf(a, b, frac)) + 8, b)]
+		var look: Vector3 = (ahead - p) * Vector3(1, 0, 1) + Vector3(0, 0.3, 0)
+		drone.global_transform = Transform3D(Basis.looking_at(look, Vector3.UP), p + Vector3(0, 0.3, 0))
+		course._prev_pos = drone.global_position # not a reset
+		course._next = into
+		course._lap_start = 0.0
+		course._lap = 1
+		course._update_line()
+		print("LINELENGTH %s: into gate %d of %d, line to gate %d, %.1f m" % [shot[0], into, n, course._line_last,
+			(course._line.material_override as ShaderMaterial).get_shader_parameter("span")])
+		await get_tree().create_timer(0.8).timeout
+		await _drawn_frames(3)
+		_shot("linelength_%s_fpv.png" % shot[0])
+		# From above and behind, framing the drone and the line's end, so
+		# the hidden rest of the lap around it shows too.
+		var end: Vector3 = course._gates[course._line_last].xf.origin
+		var c: Vector3 = (drone.global_position + end) * 0.5
+		var d: float = maxf(drone.global_position.distance_to(end), 20.0)
+		var back: Vector3 = (drone.global_position - end) * Vector3(1, 0, 1)
+		back = back.normalized() if back.length() > 1.0 else Vector3.BACK
+		var cam := Camera3D.new()
+		cam.far = 3000.0
+		cam.fov = 70.0
+		root.add_child(cam)
+		cam.global_position = c + back * d * 0.9 + Vector3(0, d * 0.9, 0)
+		cam.look_at(c, Vector3.UP)
+		cam.make_current()
+		if ui:
+			ui.visible = false
+		await get_tree().create_timer(0.6).timeout
+		await _drawn_frames(3)
+		_shot("linelength_%s_above.png" % shot[0])
+	Settings.race_track = 1
+	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+	await get_tree().create_timer(2.5).timeout
+	var settings_btn: Button = _find_button(get_tree().current_scene, "Settings")
+	if settings_btn:
+		settings_btn.pressed.emit()
+	await get_tree().create_timer(1.0).timeout
+	var st: SettingsScreens = get_tree().current_scene.get("_settings")
+	st.settings_tabs.current_tab = SettingsScreens.TAB_NAMES.find("Flight")
+	await get_tree().create_timer(0.4).timeout
+	_shot("linelength_settings.png")
+
+## `-- --dev-preview flags`: turn flags - Harvest Hell's hairpin flag and
+## Club Loop's first corner flag, each FPV on the way in and from above
+## -> previews/flag_<track>_fpv.png / _above.png.
+func _flag_shots() -> void:
+	Settings.game_mode = Settings.MODE_RACE
+	WorldBorder.disabled = true
+	Settings.camera_look = 0
+	for shot in [["hairpin", 6], ["corner", 3]]:
+		Settings.race_track = shot[1]
+		get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
+		await get_tree().create_timer(2.5).timeout
+		var root: Node = get_tree().current_scene
+		var course: RaceCourse = root.course
+		var ui := root.find_child("UI", true, false) as CanvasLayer
+		var drone := root.find_child("Drone", true, false) as RigidBody3D
+		drone.freeze = true
+		var n: int = course._gates.size()
+		var fi: int = 0
+		for i in range(n):
+			if course._gates[i].has("flag"):
+				fi = i
+				break
+		var fg: Dictionary = course._gates[fi]
+		var a: int = course._line_seg[fi - 1]
+		var b: int = course._line_seg[fi]
+		var k: int = int(lerpf(a, b, 0.35))
+		var p: Vector3 = course._line_pts[k]
+		var look: Vector3 = (fg.xf.origin - p) * Vector3(1, 0, 1) + Vector3(0, -0.6, 0)
+		drone.global_transform = Transform3D(Basis.looking_at(look, Vector3.UP), p + Vector3(0, 0.2, 0))
+		course._prev_pos = drone.global_position
+		course._next = fi
+		course._lap_start = 0.0
+		course._lap = 1
+		course._place_marker()
+		await get_tree().create_timer(0.8).timeout
+		await _drawn_frames(3)
+		_shot("flag_%s_fpv.png" % shot[0])
+		var cam := Camera3D.new()
+		cam.far = 3000.0
+		cam.fov = 60.0
+		root.add_child(cam)
+		var back: Vector3 = (fg.xf.basis.z * Vector3(1, 0, 1)).normalized()
+		cam.global_position = fg.pole + back * 9.0 + Vector3(0, 13, 0)
+		cam.look_at(fg.pole - back * 2.0, Vector3.UP)
+		cam.make_current()
+		if ui:
+			ui.visible = false
+		await get_tree().create_timer(0.6).timeout
+		await _drawn_frames(3)
+		_shot("flag_%s_above.png" % shot[0])
+	Settings.race_track = 1
+
+## `-- --dev-preview raceui`: the finish card in both styles, plain and
+## with a new track record, and the race bar mid-lap -> previews/
+## raceui_*.png. The card data is made up here (nothing is saved).
+func _raceui_shots() -> void:
+	Settings.game_mode = Settings.MODE_RACE
+	WorldBorder.disabled = true
+	Settings.race_track = 3
+	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
+	await get_tree().create_timer(2.5).timeout
+	var root: Node = get_tree().current_scene
+	var course: RaceCourse = root.course
+	var ui := root.find_child("UI", true, false) as CanvasLayer
+	var drone := root.find_child("Drone", true, false) as RigidBody3D
+	drone.freeze = true
+	var g: Dictionary = course._gates[1]
+	drone.global_transform = Transform3D(Basis.looking_at(-g.xf.basis.z, Vector3.UP), g.xf * Vector3(0, 0, 9.0))
+	course._prev_pos = drone.global_position
+	var plain := {"track": "Club Loop", "level": "medium", "drone": "Static Three", "total": 84.37, "prev_best": 83.12,
+		"laps": [42.91, 41.46], "top": [[83.12, 41.02, "2026-10-09"], [84.37, 41.46, "2026-10-11"], [86.80, 42.75, "2026-10-08"]],
+		"you": 1, "record": false, "new_best": false}
+	var record := {"track": "Club Loop", "level": "medium", "drone": "Static Three", "total": 81.94, "prev_best": 83.12,
+		"laps": [41.38, 40.56], "top": [[81.94, 40.56, "2026-10-11"], [83.12, 41.02, "2026-10-09"], [84.37, 41.46, "2026-10-11"]],
+		"you": 0, "record": true, "new_best": false}
+	var best := plain.duplicate()
+	best.merge({"total": 82.70, "laps": [41.80, 40.90], "top": [[82.70, 40.90, "2026-10-11"], [83.12, 41.02, "2026-10-09"], [84.37, 41.46, "2026-10-11"]], "you": 0, "new_best": true}, true)
+	for style in ["slash", "podium"]:
+		ui.FINISH_STYLE = style
+		for shot in [["plain", plain], ["record", record], ["newbest", best]]:
+			ui.show_race_finish(shot[1].duplicate())
+			await get_tree().create_timer(0.5).timeout
+			await _drawn_frames(3)
+			_shot("raceui_finish_%s_%s.png" % [style, shot[0]])
+	ui.FINISH_STYLE = "slash"
+	ui.close_race_results()
+	# Mid-lap: a split against the best lap just in.
+	course._best = 41.02
+	course._time = 100.0
+	course._lap_start = course._time - 23.4
+	course._lap = 2
+	course._next = 7
+	course._delta_text = "-0.38"
+	course._delta_t = 30.0
+	course._prev_pos = drone.global_position
+	await get_tree().create_timer(0.5).timeout
+	await _drawn_frames(3)
+	_shot("raceui_hud.png")
+	course._missed_gate = 6
+	await get_tree().create_timer(0.3).timeout
+	await _drawn_frames(3)
+	_shot("raceui_hud_missed.png")
+	Settings.race_track = 1
+
+## `-- --dev-preview tracks [map id]`: every race track of a map, top-down
+## and from behind the start gate -> previews/preview_tracks_<map>_<t>_*.png.
+func _tracks_shots() -> void:
+	var args := OS.get_cmdline_user_args()
+	var map_id: String = args[args.find("tracks") + 1] if args.find("tracks") + 1 < args.size() else "race_field"
+	var scene := ""
+	for m in MapCatalog.MAPS:
+		if m.id == map_id:
+			scene = m.scene
+	if scene == "":
+		print("TRACKS: unknown map ", map_id)
+		return
+	Settings.game_mode = Settings.MODE_RACE
+	WorldBorder.disabled = true
+	for t in range(1, 7):
+		Settings.race_track = t
+		get_tree().change_scene_to_file(scene)
+		await get_tree().create_timer(2.5).timeout
+		var root: Node = get_tree().current_scene
+		var ui := root.find_child("UI", true, false) as CanvasLayer
+		if ui:
+			ui.visible = false
+		var drone := root.find_child("Drone", true, false) as RigidBody3D
+		if drone:
+			drone.freeze = true
+		var gates: Array = root.course._gates
+		print("TRACKS ", map_id, " track ", t, " gates ", gates.size())
+		var cam := Camera3D.new()
+		cam.far = 3000.0
+		cam.fov = 70.0
+		root.add_child(cam)
+		cam.make_current()
+		cam.global_position = Vector3(-10, 150, -10)
+		cam.look_at(Vector3(-10, 0, -16), Vector3.UP)
+		await get_tree().create_timer(0.8).timeout
+		await _drawn_frames(3)
+		_shot("preview_tracks_%s_%d_top.png" % [map_id, t])
+		var g: Dictionary = gates[0]
+		cam.global_position = g.xf * Vector3(0, 0.4, 6.0)
+		cam.look_at(g.xf * Vector3(0, 0, -20.0), Vector3.UP)
+		await get_tree().create_timer(0.5).timeout
+		await _drawn_frames(3)
+		_shot("preview_tracks_%s_%d_start.png" % [map_id, t])
+		cam.queue_free()
+	Settings.race_track = 1
 
 func _shot(filename: String) -> void:
 	var img := get_viewport().get_texture().get_image()

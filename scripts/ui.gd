@@ -242,6 +242,7 @@ func _process(delta: float) -> void:
 	_update_hud()
 	_update_los()
 	_update_osd(delta)
+	_poll_results_close()
 	if _tuning_panel:
 		_tuning_panel.visible = _panel_visible
 	_debug_label.visible = _panel_visible
@@ -300,58 +301,112 @@ func flash_message(text: String) -> void:
 	tw.tween_interval(1.6)
 	tw.tween_property(_flash, "modulate:a", 0.0, 0.9)
 
-var _race_label: Label
-## good/bad tint the line (split ahead of / behind the best lap, missed gate).
-func set_race_info(text: String, good: bool = false, bad: bool = false) -> void:
-	if _race_label == null:
-		_race_label = Label.new()
-		_race_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-		_race_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-		_race_label.position.y = 120
-		_race_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_race_label.add_theme_font_override("font", UIKit.oswald())
-		_race_label.add_theme_font_size_override("font_size", 30)
-		_race_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-		_race_label.add_theme_constant_override("outline_size", 6)
-		_root.add_child(_race_label)
-	_race_label.text = text
-	_race_label.visible = text != ""
-	_race_label.add_theme_color_override("font_color", Color(0.45, 1.0, 0.5) if good else (Color(1.0, 0.42, 0.35) if bad else Color.WHITE))
+const RaceUI = preload("res://scripts/race_ui.gd")
+## The race bar (RaceCourse._update_hud): one slim see-through bar at the
+## bottom - lap, the running time big, the live split against your best,
+## gate, your best lap once there is one - and a message line above it
+## (missed gate, new best lap). d: wait (bool, before START), time, lap,
+## laps, gate, gates, best ("" = none yet), delta, delta_good, msg,
+## msg_good.
+var _race_bar: PanelContainer
+var _race_parts: Dictionary = {}
+var _race_msg: Label
+func set_race_hud(d: Dictionary) -> void:
+	if _race_bar == null:
+		_race_bar = PanelContainer.new()
+		_race_bar.name = "RaceBar"
+		_race_bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		_race_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_race_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		_race_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_race_bar.add_theme_stylebox_override("panel", UIKit.box(Color(0.045, 0.06, 0.085, 0.62), Color(1, 1, 1, 0.08), 8, 1, Vector4(20, 2, 20, 2)))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 20)
+		_race_bar.add_child(row)
+		for k in ["wait", "lap", "time", "delta", "gate", "best"]:
+			var l: Label = RaceUI.label("", 34 if k == "time" else (22 if k == "delta" else 18), UIKit.TEXT if k in ["time", "wait"] else UIKit.MUTED_LIGHT)
+			l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			l.size_flags_vertical = Control.SIZE_FILL
+			if k == "time":
+				l.custom_minimum_size.x = 118 # steady while the digits run
+				l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			row.add_child(l)
+			_race_parts[k] = l
+		_root.add_child(_race_bar)
+		_race_msg = RaceUI.label("", 26)
+		_race_msg.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		_race_msg.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_race_msg.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		_race_msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_race_msg.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+		_race_msg.add_theme_constant_override("outline_size", 6)
+		_root.add_child(_race_msg)
+	# Bottom centre: over the stick overlay when it is on, clear of the OSD.
+	var lift: float = 160.0 if _sticks != null and _sticks.visible else 18.0
+	_race_bar.offset_bottom = -lift
+	_race_bar.offset_top = -lift
+	_race_msg.offset_bottom = -lift - 52.0
+	_race_msg.offset_top = -lift - 52.0
+	var wait: bool = d.get("wait", false)
+	var best: String = d.get("best", "")
+	var p: Dictionary = _race_parts
+	p.wait.visible = wait
+	p.wait.text = "FLY THROUGH START  ·  %d LAPS" % int(d.get("laps", 2))
+	p.lap.visible = not wait
+	p.lap.text = "LAP %d/%d" % [int(d.get("lap", 1)), int(d.get("laps", 2))]
+	p.time.visible = not wait
+	p.time.text = d.get("time", "")
+	var delta: String = d.get("delta", "")
+	p.delta.visible = not wait and delta != ""
+	p.delta.text = delta
+	p.delta.add_theme_color_override("font_color", RaceUI.GOOD if d.get("delta_good", false) else RaceUI.BAD)
+	p.gate.visible = not wait
+	p.gate.text = "GATE %d/%d" % [int(d.get("gate", 0)), int(d.get("gates", 0))]
+	p.best.visible = best != ""
+	p.best.text = "BEST " + best
+	_race_bar.visible = true
+	var msg: String = d.get("msg", "")
+	_race_msg.text = msg
+	_race_msg.visible = msg != ""
+	_race_msg.add_theme_color_override("font_color", RaceUI.GOOD if d.get("msg_good", false) else RaceUI.BAD)
 
-## The race's results card (RaceCourse._finish): title and lines, shown
-## for a few seconds over the flight view.
-var _results: PanelContainer
-func show_race_results(title: String, lines: Array[String]) -> void:
+## The finish card (RaceCourse._finish; the data: RaceUI.finish_card),
+## centred over the flight view until SPACE (or the radio's reset
+## control, which also puts the drone back in front of START) closes it.
+## FINISH_STYLE: "slash" (top 3 as rows) or "podium" (three tiles).
+static var FINISH_STYLE: String = "slash"
+var _results: Control
+var _close_was_on: bool = true
+func show_race_finish(d: Dictionary) -> void:
 	if _results:
 		_results.queue_free()
-	_results = PanelContainer.new()
-	_results.theme = UIKit.theme()
-	_results.theme_type_variation = "Card"
-	_results.set_anchors_preset(Control.PRESET_CENTER)
-	_results.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_results.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_results.custom_minimum_size = Vector2(460, 0)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 4)
-	_results.add_child(box)
-	var t := Label.new()
-	t.text = title
-	t.theme_type_variation = "Title"
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(t)
-	for l in lines:
-		var lb := Label.new()
-		lb.text = l
-		lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		if l.begins_with("TOTAL") or l.begins_with("NEW TRACK"):
-			lb.add_theme_color_override("font_color", UIKit.ACCENT)
-			lb.add_theme_font_size_override("font_size", 26)
-		box.add_child(lb)
+	_close_was_on = true # a key already held doesn't close the new card
+	# Plain words, never a raw control id ("switch on axis 7").
+	var radio: bool = InputManager.reset_control_name() != "not assigned"
+	d["close_hint"] = "SPACE  close     ·     %s  back to START" % ("R / radio reset" if radio else "R")
+	var card: Control = RaceUI.finish_card(d, FINISH_STYLE)
+	var holder := CenterContainer.new()
+	holder.set_anchors_preset(Control.PRESET_FULL_RECT)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(card)
+	_results = holder
 	_root.add_child(_results)
-	var tw := create_tween()
-	tw.tween_interval(9.0)
-	tw.tween_property(_results, "modulate:a", 0.0, 1.0)
-	tw.tween_callback(_results.queue_free)
+
+func results_open() -> bool:
+	return _results != null and is_instance_valid(_results) and not _results.is_queued_for_deletion()
+
+func close_race_results() -> void:
+	if results_open():
+		_results.queue_free()
+	_results = null
+
+func _poll_results_close() -> void:
+	if not results_open():
+		return
+	var on: bool = Input.is_key_pressed(KEY_SPACE) or InputManager.reset_key_pressed()
+	if on and not _close_was_on:
+		close_race_results()
+	_close_was_on = on
 
 func _draw_crosshair() -> void:
 	var center: Vector2 = _crosshair.size / 2.0

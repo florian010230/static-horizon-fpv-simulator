@@ -230,7 +230,7 @@ func tracks() -> Array:
 		# of the pink gate, climb through it, drop back down to START.
 		["hanging", Vector3(-42, 3.4, 20), -PI * 0.5, 18.2, "led_blue"],
 	]
-	var out: Array = [{"name": "League Night", "level": "easy", "calls": t1}]
+	var out: Array = [{"id": "league_night", "name": "League Night", "level": "easy", "calls": t1}]
 	for k in range(2, 7):
-		out.append({"name": "Track %d" % k, "level": ["easy", "medium", "medium", "hard", "hard"][k - 2], "calls": t1})
+		out.append({"id": "track_%d" % k, "name": "Track %d" % k, "level": ["easy", "medium", "medium", "hard", "hard"][k - 2], "calls": t1})
 	return out

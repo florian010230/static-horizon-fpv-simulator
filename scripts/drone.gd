@@ -1072,6 +1072,12 @@ var _reset_was_on: bool = false
 ## the world border) - a race run listens to void the lap.
 signal was_reset
 
+## Moves the spawn (a race track puts it in front of its START gate) and
+## the drone there.
+func set_spawn(xf: Transform3D) -> void:
+	_spawn_transform = xf
+	reset_to_spawn()
+
 func reset_to_spawn() -> void:
 	battery.reset()
 	prop_health = [1.0, 1.0, 1.0, 1.0]

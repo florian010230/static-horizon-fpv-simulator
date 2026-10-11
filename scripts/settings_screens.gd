@@ -216,6 +216,10 @@ func _build_settings() -> Control:
 	UIKit.section(f2, "Race mode")
 	UIKit.toggle(f2, "Ghost of your best lap", Settings.race_ghost, func(v: bool): Settings.race_ghost = v)
 	UIKit.gap(f2, 6)
+	_race_line_row(f2)
+	_segmented(f2, "Line length", ["Short", "Medium", "Long"], clampi(Settings.race_line_length, 0, 2), func(i: int): Settings.race_line_length = i)
+	_hint(f2, "Always to the next gate; close gates show up to three. Fades out after the last.")
+	UIKit.gap(f2, 6)
 	UIKit.section(f2, "Physics")
 	UIKit.toggle(f2, "Performance mode (240 Hz physics)", Settings.performance_mode, func(v: bool): Settings.performance_mode = v)
 	_hint(f2, "A slightly crisper flight controller. Costs CPU - for strong PCs.")
@@ -291,6 +295,56 @@ func _res_hint_text() -> String:
 
 func _res_restart_pending() -> bool:
 	return Settings.full_resolution() == Settings.reduced_resolution_active()
+
+## The racing line: one slider, far left Off, then the colour wheel in
+## 5 degree steps; beside the label a live sample - a piece of the line
+## (same colour and see-through alpha as RaceCourse._line_mat) over sky
+## and grass.
+const LINE_HUE_STEP: int = 5
+const LINE_HUE_NAMES: Array = [[15, "Red"], [45, "Orange"], [70, "Yellow"], [150, "Green"], [190, "Cyan"], [250, "Blue"], [290, "Purple"], [335, "Pink"], [360, "Red"]]
+func _race_line_row(parent: Control) -> void:
+	var initial: float = 0.0 if not Settings.race_line_on() else float(Settings.race_line_hue / LINE_HUE_STEP + 1)
+	var lbl: Label = UIKit.slider(parent, "Racing line", 0.0, 360.0 / LINE_HUE_STEP, 1.0, initial, func(_v: float): pass)
+	var slider := parent.get_child(parent.get_child_count() - 1) as HSlider
+	slider.name = "RaceLineSlider"
+	var sample := Control.new()
+	sample.name = "RaceLineSample"
+	sample.custom_minimum_size = Vector2(0, 62)
+	sample.draw.connect(func():
+		var w: float = sample.size.x
+		var h: float = sample.size.y
+		# A colour-wheel strip lined up with the slider's steps (grey = Off).
+		var n: int = 360 / LINE_HUE_STEP + 1
+		for k in range(n):
+			var col: Color = Color(0.35, 0.35, 0.38) if k == 0 else Color.from_hsv((k - 1) * LINE_HUE_STEP / 360.0, 1.0, 1.0)
+			sample.draw_rect(Rect2(w * k / n, 0, w / n + 1.0, 5), col)
+		sample.draw_rect(Rect2(0, 8, w, (h - 8) * 0.55), Color(0.55, 0.72, 0.92))
+		sample.draw_rect(Rect2(0, 8 + (h - 8) * 0.55, w, (h - 8) * 0.45), Color(0.24, 0.42, 0.16))
+		if Settings.race_line_on():
+			var pts := PackedVector2Array()
+			for i in range(41):
+				var x: float = i / 40.0
+				pts.append(Vector2(8 + x * (w - 16), 8 + (h - 8) * (0.85 - 0.6 * sin(x * PI) + 0.08 * x)))
+			var c: Color = Settings.race_line_colour()
+			c.a = 0.55
+			sample.draw_polyline(pts, c, 5.0, true)
+		else:
+			sample.draw_string(UIKit.oswald(), Vector2(10, h * 0.5 + 7), "No racing line", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1, 1, 1, 0.85)))
+	parent.add_child(sample)
+	var show := func(v: float):
+		var k: int = int(v)
+		Settings.race_line_hue = -1 if k == 0 else (k - 1) * LINE_HUE_STEP
+		var name: String = "Off"
+		if k > 0:
+			for hn in LINE_HUE_NAMES:
+				if Settings.race_line_hue < hn[0]:
+					name = hn[1]
+					break
+		lbl.text = name
+		sample.queue_redraw()
+	slider.value_changed.connect(show)
+	show.call(initial)
+	_hint(parent, "A see-through line to the next gates; the part behind you disappears. Far left: off.")
 
 func _hint(parent: Control, text: String) -> void:
 	var l := _hint_label()

@@ -264,27 +264,112 @@ func _anchors() -> void:
 	FarmCreator.tractor(geo, ANCHORS.tractor + Vector3(0, 0.05, 0), 0.0, "fm_red", true, r)
 
 ## The map's tracks (RaceCourse.make builds the one Settings.race_track
-## picks, at load time on top of the cached map). Tracks 2-6 are
-## placeholders (track 1's course) until they are designed.
+## picks, at load time on top of the cached map), easiest first: 2 easy,
+## 2 medium, 2 hard. Records follow a track's "id", not its place in the
+## list. Club Loop is the old club course (rev 2: turn flags, fresh records); the
+## rest use the field's ANCHORS.
+## Yaw: -PI/2 flies east (+x), PI/2 west, 0 north (-z), PI south.
 func tracks() -> Array:
-	var t1: Array = [
-		["start", Vector3(0, 0.05, 30), -PI * 0.5],
-		["gate", Vector3(25, 0.05, 30), -PI * 0.5],
-		["gate", Vector3(45, 0.05, 8), 0.0, 1, 0.0, 0, "gate_b"],
-		["gate", Vector3(45, 0.05, -20), 0.0, 3, 0.0, 2], # ladder, top opening
-		["dive", Vector3(35, 0.05, -45), 0.0, 5.0],
-		["hurdle", Vector3(10, 0.05, -55), PI * 0.5, "gate_a"],
-		["gate", Vector3(-15, 0.05, -52), PI * 0.5, 2, 0.0, 1, "gate_b"], # double gate, upper
-		["gate", Vector3(-45, 0.05, -50), PI * 0.5, 1, 1.52], # tower gate
-		["gate", Vector3(-62, 0.05, -20), PI, 1, 0.0, 0, "gate_b"],
-		["dive", Vector3(-60, 0.05, 5), 0.0, 4.0, "gate_a"],
-		["hurdle", Vector3(-40, 0.05, 28), -PI * 0.5],
-		["gate", Vector3(-20, 0.05, 30), -PI * 0.5, 1, 0.0, 0, "gate_b"],
-		# Turn flags at the corners.
-		["flag", Vector3(56, 0.05, 40), "gate_b"], ["flag", Vector3(52, 0.05, -58), "gate_b"],
-		["flag", Vector3(-68, 0.05, -60), "gate_b"], ["flag", Vector3(-70, 0.05, 36), "gate_b"],
+	var E: float = -PI * 0.5
+	var W: float = PI * 0.5
+	var N: float = 0.0
+	var S: float = PI
+	var sc: Vector3 = ANCHORS.scaffold
+	# The bale chicane's gaps (4.5 m between bale pairs), for slalom gates.
+	var gap: Callable = func(k: int) -> Vector3: return Vector3(ANCHORS.bales.position.x + 4.6 + k * 7.6, 0.05, ANCHORS.bales.get_center().y)
+	return [
+		# Easy: a wide clockwise oval in the infield, standard gates only.
+		{"id": "meadow_sprint", "name": "Meadow Sprint", "level": "easy", "calls": [
+			["start", Vector3(-20, 0.05, 10), E],
+			["gate", Vector3(10, 0.05, 10), E, 1, 0.0, 0, "gate_b"],
+			["gate", Vector3(30, 0.05, -12), N],
+			["gate", Vector3(12, 0.05, -34), W, 1, 0.0, 0, "gate_b"],
+			["gate", Vector3(-18, 0.05, -34), W],
+			["gate", Vector3(-40, 0.05, -12), S, 1, 0.0, 0, "gate_b"],
+		]},
+		# Easy: up the west side, east along the straw-bale chicane (gates at
+		# both ends - weave the bales between them), down the east side.
+		{"id": "bale_run", "name": "Bale Run", "level": "easy", "calls": [
+			["start", Vector3(-60, 0.05, 0), N],
+			["gate", Vector3(-62, 0.05, -45), N, 1, 0.0, 0, "gate_b"],
+			["gate", Vector3(-46, 0.05, -80), E],
+			["gate", Vector3(38, 0.05, -80), E, 1, 0.0, 0, "gate_b"],
+			["gate", Vector3(58, 0.05, -35), S],
+			["gate", Vector3(20, 0.05, 15), W, 1, 0.0, 0, "gate_b"],
+		]},
+		# Medium: the old club course.
+		{"id": "club_loop", "rev": 2, "name": "Club Loop", "level": "medium", "calls": [
+			["start", Vector3(0, 0.05, 30), E],
+			["gate", Vector3(25, 0.05, 30), E],
+			["turn", Vector3(40.3, 0.05, 19.4), -0.54, "right"], # round the corner flag, not inside it
+			["gate", Vector3(45, 0.05, 8), N, 1, 0.0, 0, "gate_b"],
+			["gate", Vector3(45, 0.05, -20), N, 3, 0.0, 2], # stacked three high, top opening
+			["dive", Vector3(35, 0.05, -45), 0.0, 5.0],
+			["hurdle", Vector3(10, 0.05, -55), W, "gate_a"],
+			["gate", Vector3(-15, 0.05, -52), W, 2, 0.0, 1, "gate_b"], # double gate, upper
+			["gate", Vector3(-45, 0.05, -50), W, 1, 1.52], # tower gate
+			["gate", Vector3(-62, 0.05, -20), S, 1, 0.0, 0, "gate_b"],
+			["dive", Vector3(-60, 0.05, 5), 0.0, 4.0, "gate_a"],
+			["turn", Vector3(-45.3, 0.05, 24.7), -2.15, "right"],
+			["hurdle", Vector3(-40, 0.05, 28), E],
+			["gate", Vector3(-20, 0.05, 30), E, 1, 0.0, 0, "gate_b"],
+		]},
+		# Medium: north up the east side, a hook round into the old cattle
+		# shed (east door in, west door out), climb for a dive, the upper of
+		# a double gate, a tower gate, home down the west side.
+		{"id": "shed_run", "rev": 2, "name": "Shed Run", "level": "medium", "calls": [
+			["start", Vector3(-10, 0.05, 30), E],
+			["gate", Vector3(25, 0.05, 30), E, 1, 0.0, 0, "gate_b"],
+			["turn", Vector3(46.9, 0.05, 18.4), -0.48, "right"],
+			["gate", Vector3(50, 0.05, 12), N],
+			["hurdle", Vector3(72, 0.05, -25), N, "gate_b"],
+			["sized", Vector3(69.6, 0.05, -72), W, 2.6, 2.4, 0.1, 0.0, "gate_b"], # the shed's east door
+			["sized", Vector3(50.4, 0.05, -72), W, 2.6, 2.4, 0.1, 0.0], # and out at the west door
+			["dive", Vector3(30, 0.05, -60), 0.0, 4.0, "gate_b"],
+			["gate", Vector3(-5, 0.05, -62), W, 2, 0.0, 1], # double gate, upper
+			["gate", Vector3(-55, 0.05, -45), S, 1, 1.52, 0, "gate_b"], # tower gate
+			["gate", Vector3(-50, 0.05, 0), S],
+			["turn", Vector3(-38.8, 0.05, 26.5), -2.14, "right"],
+			["hurdle", Vector3(-32, 0.05, 30), E, "gate_b"],
+		]},
+		# Hard: low under a hurdle, up through a 3 m tower gate, climb into
+		# the scaffold tower (its 6-9 m bay, northward), drop and hook east
+		# behind the bales, a three-gate slalom through the bale gaps
+		# (hairpins), the split-S ladder, a dive, a tower gate, home.
+		{"id": "tower_line", "rev": 2, "name": "Tower Line", "level": "hard", "calls": [
+			["start", Vector3(-20, 0.05, 25), W],
+			["hurdle", Vector3(-40, 0.05, 25), W, "gate_b"],
+			["turn", Vector3(-57.3, 0.05, 13.5), 0.40, "left"],
+			["gate", Vector3(-60, 0.05, 8), N, 1, 3.0], # tower gate, 3 m up
+			["sized", sc + Vector3(1.5, 0.05, 3.4), N, 2.6, 2.4, 0.06, 6.19, "gate_a"], # scaffold bay, 7.5 m up
+			["gate", Vector3(-60, 0.05, -84), E, 1, 0.0, 0, "gate_b"],
+			["gate", gap.call(0), S], # bale slalom: south, north, south
+			["gate", gap.call(2), N, 1, 0.0, 0, "gate_b"],
+			["gate", gap.call(4), S],
+			["ladder", Vector3(-5, 0.05, -50), S],
+			["dive", Vector3(25, 0.05, -20), 0.0, 5.0],
+			["turn", Vector3(51.0, 0.05, -6.1), -2.44, "left"],
+			["gate", Vector3(55, 0.05, 0), S, 1, 1.52, 0, "gate_b"], # tower gate
+			["hurdle", Vector3(45, 0.05, 28), W],
+			["gate", Vector3(12, 0.05, 25), W, 2, 0.0, 0, "gate_b"], # double gate, lower
+		]},
+		# Hard: a hurdle, a hairpin (out west, back east through the gate
+		# beside it), up through a 3 m tower gate, a 6 m dive, east through
+		# the shed (both doors), up the split-S ladder, a snap right and a
+		# snap left home.
+		{"id": "harvest_hell", "rev": 2, "name": "Harvest Hell", "level": "hard", "calls": [
+			["start", Vector3(40, 0.05, 30), W],
+			["hurdle", Vector3(15, 0.05, 30), W, "gate_b"],
+			["gate", Vector3(-12, 0.05, 30), W], # hairpin: out ...
+			["turn", Vector3(-17.0, 0.05, 25.5), 0.0, "left"], # ... round the flag ...
+			["gate", Vector3(-12, 0.05, 21), E, 1, 0.0, 0, "gate_b"], # ... and back
+			["gate", Vector3(20, 0.05, 5), N, 1, 3.0], # tower gate, 3 m up
+			["dive", Vector3(20, 0.05, -25), 0.0, 6.0, "gate_b"],
+			["sized", Vector3(50.4, 0.05, -72), E, 2.6, 2.4, 0.1, 0.0], # the shed's west door
+			["sized", Vector3(69.6, 0.05, -72), E, 2.6, 2.4, 0.1, 0.0, "gate_b"], # out at the east door
+			["ladder", Vector3(78, 0.05, -42), S],
+			["gate", Vector3(66, 0.05, -18), W, 1, 0.0, 0, "gate_b"],
+			["turn", Vector3(61.7, 0.05, -15.5), 2.02, "right"],
+			["hurdle", Vector3(52, 0.05, 2), S],
+		]},
 	]
-	var out: Array = [{"name": "Club Loop", "level": "easy", "calls": t1}]
-	for k in range(2, 7):
-		out.append({"name": "Track %d" % k, "level": ["easy", "medium", "medium", "hard", "hard"][k - 2], "calls": t1})
-	return out

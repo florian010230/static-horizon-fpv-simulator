@@ -29,12 +29,35 @@ func _ready() -> void:
 		return
 	call_deferred("_run")
 
+## The pilot's real race saves must never change in a test run: the
+## race tests write to user://selftest/ (RaceCourse.save_path), and this
+## guard compares the real files' checksums before and after.
+const REAL_RACE_SAVES: Array[String] = ["user://race_records.cfg", "user://race_ghosts.cfg", "user://race_board.cfg", "user://race_stats.cfg"]
+var _real_saves: Dictionary = {}
+
+func _race_saves_sums() -> Dictionary:
+	var out := {}
+	for base: String in REAL_RACE_SAVES:
+		for p: String in [base, base + ".bak"]:
+			out[p] = FileAccess.get_md5(p) if FileAccess.file_exists(p) else ""
+	return out
+
+func _check_race_saves() -> void:
+	var now: Dictionary = _race_saves_sums()
+	var changed: Array = _real_saves.keys().filter(func(k: String) -> bool: return now[k] != _real_saves[k])
+	_check(changed.is_empty() and RaceCourse.RECORDS_PATH.begins_with("user://selftest/"), "saves: the pilot's real race files are untouched (tests use user://selftest/)", str(changed))
+
 func _run() -> void:
+	_real_saves = _race_saves_sums()
+	for f in DirAccess.get_files_at("user://selftest"):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path("user://selftest/" + f))
 	# A fresh install starts with the realism extras off: no wind, no
 	# battery sag, no prop damage (the defaults in settings.gd).
 	var fresh: Node = (load("res://scripts/settings.gd") as GDScript).new()
 	_check(fresh.wind_level == 0 and not fresh.battery_enabled and not fresh.prop_damage, "settings: wind, battery sag and prop damage are off by default",
 		"wind %d battery %s prop damage %s" % [fresh.wind_level, fresh.battery_enabled, fresh.prop_damage])
+	_check(fresh.race_line_hue == 30, "settings: the racing line is on, orange, by default", str(fresh.race_line_hue))
+	_check(fresh.race_line_length == 1, "settings: the racing line is Medium length by default", str(fresh.race_line_length))
 	fresh.free()
 	Settings.units = 1
 	var imp: bool = Settings.speed_text(10.0) == "22mph" and Settings.height_text(10.0) == "33ft" and Settings.spec_tag("150 km/h") == "93 mph"
@@ -74,6 +97,7 @@ func _run() -> void:
 			await _test_collectibles()
 		if only.has("cache"):
 			await _test_map_cache()
+		_check_race_saves()
 		print("SELFTEST DONE: %d checks, %d failed" % [_checks, _failures])
 		get_tree().quit(1 if _failures > 0 else 0)
 		return
@@ -123,6 +147,7 @@ func _run() -> void:
 		if not SceneLoader.is_loading() and get_tree().current_scene and get_tree().current_scene.scene_file_path.ends_with("MainMenu.tscn"):
 			break
 	_check(get_tree().current_scene.scene_file_path == "res://scenes/MainMenu.tscn" and not get_tree().paused, "pause: Main menu button returns to the menu, unpaused")
+	_check_race_saves()
 	print("SELFTEST DONE: %d checks, %d failed" % [_checks, _failures])
 	get_tree().quit(1 if _failures > 0 else 0)
 
@@ -132,6 +157,26 @@ func _test_creators() -> void:
 	var r: Dictionary = CreatorCheck.run()
 	_check(r.floating.is_empty(), "creators: nothing floats (town houses, industry, farm, fields; level and hills)", "%d floating: %s" % [r.floating.size(), str(r.floating.slice(0, 3))])
 	_check(r.houses >= 50 and r.halls == 6 and r.crops == 2 * FieldCreator.CROPS.size(), "creators: every kind built", "%d houses, %d halls, %d fields in %d ms" % [r.houses, r.halls, r.crops, r.ms])
+
+## The racing line's length rule (RaceCourse._update_line) checked
+## from the outside: "" when it holds, else what broke.
+func _line_rule(course: RaceCourse, lm: ShaderMaterial) -> String:
+	var n: int = course._gates.size()
+	var lap: float = lm.get_shader_parameter("lap")
+	var cut: float = lm.get_shader_parameter("cut")
+	var span: float = lm.get_shader_parameter("span")
+	var to_gate := func(g: int) -> float:
+		return fposmod(course._line_arc[course._line_seg[g]] - cut, lap)
+	var shown: int = (course._line_last - course._next + n) % n + 1
+	if not is_equal_approx(span, to_gate.call(course._line_last)):
+		return " [span %.1f != gate %d at %.1f]" % [span, course._line_last, to_gate.call(course._line_last)]
+	if shown > mini(RaceCourse.LINE_GATES, n):
+		return " [%d gates]" % shown
+	if shown < mini(RaceCourse.LINE_GATES, n) and span < Settings.race_line_target():
+		return " [stopped short: %.1f m, %d gates]" % [span, shown]
+	if shown > 1 and to_gate.call((course._line_last - 1 + n) % n) >= Settings.race_line_target():
+		return " [one gate too many]"
+	return ""
 
 func _check(ok: bool, what: String, detail: String = "") -> void:
 	_checks += 1
@@ -205,6 +250,29 @@ func _test_menu_flow() -> void:
 	await _wait(0.2)
 	var settings: Control = menu.get("_settings")
 	_check(settings.visible and not menu._screens["main"].visible, "menu: Settings opens from home")
+	# Racing line: one slider, far left Off, then hues; orange by default.
+	var line_sl := settings.find_child("RaceLineSlider", true, false) as HSlider
+	var hue0: int = Settings.race_line_hue
+	var line_ok: bool = line_sl != null and line_sl.value == hue0 / SettingsScreens.LINE_HUE_STEP + 1
+	if line_sl:
+		line_sl.value = 0
+		line_ok = line_ok and not Settings.race_line_on()
+		line_sl.value = 41
+		line_ok = line_ok and Settings.race_line_hue == 200 and Settings.race_line_on()
+		line_sl.value = hue0 / SettingsScreens.LINE_HUE_STEP + 1
+	_check(line_ok and Settings.race_line_hue == hue0,
+		"menu: racing line slider (Off, then the colour wheel)", "hue %d" % Settings.race_line_hue)
+	var len0: int = Settings.race_line_length
+	var long_btn: Button = _find_button(settings, "Long")
+	var short_btn: Button = _find_button(settings, "Short")
+	var len_ok: bool = long_btn != null and short_btn != null
+	if len_ok:
+		long_btn.pressed.emit()
+		len_ok = Settings.race_line_length == 2
+		short_btn.pressed.emit()
+		len_ok = len_ok and Settings.race_line_length == 0
+		Settings.race_line_length = len0
+	_check(len_ok, "menu: racing line length Short / Medium / Long", str(Settings.race_line_length))
 	await _tap(KEY_ESCAPE)
 	await _wait(0.2)
 	_check(not settings.visible and menu._screens["main"].visible, "menu: Esc in Settings goes back to the home screen")
@@ -220,6 +288,14 @@ func _test_menu_flow() -> void:
 		if c.visible:
 			race_cards += 1
 	_check(race_cards == 3, "menu: Race mode lists the race tracks only", "%d cards" % race_cards)
+	# A race map opens its track list: six tracks, Esc back to the maps.
+	_find_button(menu._screens["map"], "Race Field").pressed.emit()
+	await _wait(0.2)
+	var n_tracks: int = menu._tracks_grid.get_child_count()
+	_check(menu._screens["tracks"].visible and n_tracks == 6, "menu: a race map opens its 6 tracks", "%d cards" % n_tracks)
+	await _tap(KEY_ESCAPE)
+	await _wait(0.2)
+	_check(menu._screens["map"].visible, "menu: Esc in the track list goes back to the maps")
 	await _tap(KEY_ESCAPE)
 	await _wait(0.2)
 	_find_button(menu._screens["mode"], "Freestyle").pressed.emit()
@@ -358,7 +434,9 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		# against it and W can't move it.)
 		# The Static Whoop has ~7:1 thrust-to-weight too (since 2026-10-02):
 		# indoors it'd go straight into the ceiling (school gym 8.5 m).
-		var hold: float = 0.75 if Settings.selected_drone in ["five", "race"] else (0.95 if map.ends_with("Office.tscn") else 1.4)
+		# (The Race Arena's roof is 22 m up: 1.4 s took the Static Three to
+		# 21.8 m, pinned under the roof - the old "W flies forward" flake.)
+		var hold: float = 0.75 if Settings.selected_drone in ["five", "race"] else (0.95 if map.ends_with("Office.tscn") or map.ends_with("RaceArena.tscn") else 1.4)
 		if Settings.selected_drone == "whoop" and (map.ends_with("Office.tscn") or map.ends_with("Main3.tscn")):
 			hold = 0.7 if map.ends_with("Office.tscn") else 0.6
 		await _wait(hold)
@@ -805,6 +883,24 @@ func _test_race() -> void:
 	await get_tree().physics_frame
 	var b5: Dictionary = RaceCourse.boards("race_field")
 	_check(b5.has("five") and not b5.five.is_empty() and course._lap == 0, "race: %d laps finish the race and enter the top 5" % RaceCourse.LAPS, str(b5.get("five", [])))
+	# The results card stays until SPACE; it says so. The race line sits
+	# at the bottom of the screen.
+	var rui: Node = get_tree().current_scene.get_node("UI")
+	var says_space: bool = false
+	if rui.results_open():
+		for l in rui._results.find_children("*", "Label", true, false):
+			says_space = says_space or (l as Label).text.contains("SPACE  close")
+	_check(rui.results_open() and says_space, "race: the finish card stays up and says SPACE closes it")
+	var fcard: Control = rui._results.find_child("FinishCard", true, false) if rui.results_open() else null
+	var ftime: Label = fcard.find_child("Time", true, false) if fcard else null
+	_check(fcard != null and ftime != null and ftime.text.contains(":") and fcard.size.x < rui.get_viewport().get_visible_rect().size.x * 0.45,
+		"race: the finish card shows the race time and leaves the world visible", "%s, %.0f px" % [ftime.text if ftime else "-", fcard.size.x if fcard else -1.0])
+	_key(KEY_SPACE, true)
+	await _wait(0.1)
+	_key(KEY_SPACE, false)
+	await get_tree().process_frame
+	_check(not rui.results_open(), "race: SPACE closes the results card")
+	_check(rui._race_bar != null and rui._race_bar.anchor_top == 1.0, "race: the race bar sits at the bottom of the screen")
 	# Skipping a gate must not count: through START (a new race starts),
 	# gate 1, then straight back to START.
 	for p in [course._gates[0].xf * Vector3(0, 0, 2.0), course._gates[0].xf * Vector3(0, 0, -2.0)]:
@@ -1157,6 +1253,119 @@ func _test_tracks() -> void:
 			_check(course != null and course.track == t and course._gates.size() == want and n_courses == 1 and (t == 1 or sc.from_cache),
 				"tracks: %s track %d builds its %d gates (cached map: %s)" % [m.id, t, want, sc.from_cache],
 				"gates %d, courses %d" % [course._gates.size() if course else -1, n_courses])
+			if course == null:
+				continue
+			# Every opening is clear (a ray through it hits nothing within 3 m
+			# either side), and walking the gates in order times a lap.
+			var space: PhysicsDirectSpaceState3D = sc.get_world_3d().direct_space_state
+			var dr: Drone = _drone()
+			dr.freeze = true
+			var blocked: Array[int] = []
+			for i in range(course._gates.size()):
+				var g: Dictionary = course._gates[i]
+				var q := PhysicsRayQueryParameters3D.create(g.xf * Vector3(0, 0, 3.0), g.xf * Vector3(0, 0, -3.0))
+				q.exclude = [dr.get_rid()]
+				if not space.intersect_ray(q).is_empty():
+					blocked.append(i + 1)
+			_check(blocked.is_empty(), "tracks: %s track %d - every gate opening is clear" % [m.id, t], "blocked: %s" % str(blocked))
+			var pos: Vector3 = dr.global_position
+			for g: Dictionary in course._gates + [course._gates[0]]:
+				for p: Vector3 in [g.xf * Vector3(0, 0, 2.0), g.xf * Vector3(0, 0, -2.0)]:
+					while pos.distance_to(p) > 0.01:
+						pos = pos.move_toward(p, 2.5)
+						dr.global_position = pos
+						await get_tree().physics_frame
+			await get_tree().physics_frame
+			_check(course._last_lap > 0.0, "tracks: %s track %d - a lap through all gates in order is timed" % [m.id, t], "lap %.2f" % course._last_lap)
+			# The racing line shows only what's ahead: just past START the
+			# cut sits near the start of the lap and moves on with the drone;
+			# it reaches the next gate and, while shorter than the target
+			# length, up to 3 gates; after a reset the same from START.
+			if course._line:
+				var lm := course._line.material_override as ShaderMaterial
+				course._update_line()
+				var cut0: float = lm.get_shader_parameter("cut")
+				var mid: Vector3 = course._line_pts[(course._line_seg[0] + course._line_seg[1]) / 2]
+				dr.global_position = mid
+				course._prev_pos = mid
+				course._update_line()
+				var cut1: float = lm.get_shader_parameter("cut")
+				var cut_ok: bool = course._next == 1 and cut0 < 4.0 and cut1 > cut0 + 1.0
+				var why: String = _line_rule(course, lm)
+				var len0: int = Settings.race_line_length
+				Settings.race_line_length = 0
+				course._update_line()
+				var short_gates: int = (course._line_last - course._next + course._gates.size()) % course._gates.size()
+				Settings.race_line_length = 2
+				course._update_line()
+				var long_gates: int = (course._line_last - course._next + course._gates.size()) % course._gates.size()
+				Settings.race_line_length = len0
+				cut_ok = cut_ok and long_gates >= short_gates
+				dr.global_position = mid + Vector3(0, 20, 0) # a jump: the run resets
+				await get_tree().physics_frame
+				await get_tree().physics_frame
+				course._update_line()
+				cut_ok = cut_ok and course._next == 0
+				why += _line_rule(course, lm)
+				_check(cut_ok and why == "", "tracks: %s track %d - racing line: hidden behind, next gate always, more while short (max 3), same after a reset" % [m.id, t],
+					"cut %.1f -> %.1f, gates short %d long %d %s" % [cut0, cut1, short_gates + 1, long_gates + 1, why])
+			# A turn flag counts like a gate: past it on the wrong side is a
+			# missed gate (it stays next), round it on the right side counts.
+			var fi: int = -1
+			for i in range(course._gates.size()):
+				if course._gates[i].has("flag"):
+					fi = i
+					break
+			if fi >= 0:
+				var fg: Dictionary = course._gates[fi]
+				var zx: Transform3D = fg.zone.xf
+				var wx: float = -float(fg.flag) * (fg.zone.w * 0.5 + 2.0)
+				var low: float = -fg.zone.h * 0.5 + 2.0
+				course._lap_start = course._time # racing again after the reset above
+				course._lap = 1
+				course._next = fi
+				course._missed_gate = -1
+				var steps: Array = [[zx * Vector3(wx, low, 1.0), zx * Vector3(wx, low, -1.0)], [fg.xf * Vector3(0, 0, 1.0), fg.xf * Vector3(0, 0, -1.0)]]
+				var res: Array = []
+				for st: Array in steps:
+					dr.global_position = st[0]
+					course._prev_pos = st[0]
+					await get_tree().physics_frame
+					dr.global_position = st[1]
+					await get_tree().physics_frame
+					res.append([course._next, course._missed_gate])
+				_check(res[0] == [fi, fi] and res[1] == [(fi + 1) % course._gates.size(), -1],
+					"tracks: %s track %d - turn flag %d: wrong side = missed, right side counts" % [m.id, t, fi], str(res))
+			# The drone spawns on the ground a few metres before START,
+			# facing through it.
+			var g0: Dictionary = course._gates[0]
+			var sp: Transform3D = dr._spawn_transform
+			var to_gate: Vector3 = (g0.xf.origin - sp.origin) * Vector3(1, 0, 1)
+			_check(to_gate.length() < 6.0 and (-sp.basis.z).dot(-g0.xf.basis.z) > 0.99 and to_gate.normalized().dot(-g0.xf.basis.z) > 0.99,
+				"tracks: %s track %d - spawn in front of START, facing through it" % [m.id, t], "%.1f m" % to_gate.length())
+			var ball := SphereShape3D.new()
+			ball.radius = 0.3
+			var sq := PhysicsShapeQueryParameters3D.new()
+			sq.shape = ball
+			sq.transform = Transform3D(Basis(), sp.origin + Vector3(0, 0.4, 0))
+			sq.exclude = [dr.get_rid()]
+			var los := PhysicsRayQueryParameters3D.create(sp.origin + Vector3(0, 0.4, 0), g0.xf * Vector3(0, 0, 0.5))
+			los.exclude = [dr.get_rid()]
+			_check(space.intersect_shape(sq).is_empty() and space.intersect_ray(los).is_empty(), "tracks: %s track %d - the spawn is free, START in clear view" % [m.id, t])
+			# Split-S ladders: three openings straight above each other, flown
+			# top, middle, bottom, the middle the other way round; each takes
+			# only its own direction.
+			for i in range(course._gates.size() - 2):
+				var a: Dictionary = course._gates[i]
+				var b: Dictionary = course._gates[i + 1]
+				var c: Dictionary = course._gates[i + 2]
+				if (a.xf.origin - c.xf.origin).length() < 1.0 or ((a.xf.origin - b.xf.origin) * Vector3(1, 0, 1)).length() > 0.1 or ((b.xf.origin - c.xf.origin) * Vector3(1, 0, 1)).length() > 0.1:
+					continue
+				var ok: bool = a.xf.origin.y > b.xf.origin.y and b.xf.origin.y > c.xf.origin.y and b.xf.origin.y - c.xf.origin.y >= 3.0
+				for g: Dictionary in [a, b, c]:
+					ok = ok and course._crossed(g, g.xf * Vector3(0, 0, 1), g.xf * Vector3(0, 0, -1)) and not course._crossed(g, g.xf * Vector3(0, 0, -1), g.xf * Vector3(0, 0, 1))
+				ok = ok and a.xf.basis.z.dot(b.xf.basis.z) < -0.99 and a.xf.basis.z.dot(c.xf.basis.z) > 0.99
+				_check(ok, "tracks: %s track %d - split-S ladder (gates %d-%d): top, middle, bottom, alternating, one way each" % [m.id, t, i + 1, i + 3])
 	Settings.race_track = 1
 	Settings.game_mode = Settings.MODE_FREESTYLE
 	MapCache.force = false
@@ -1166,9 +1375,9 @@ func _test_tracks() -> void:
 ## ("race_field") and the 3-lap boards are dropped, a .bak is kept, the
 ## files say version 2. Runs on fixture files; the real ones are restored.
 func _test_race_migration() -> void:
-	var paths: Array[String] = [RaceCourse.RECORDS_PATH, RaceCourse.GHOST_PATH, RaceCourse.BOARD_PATH]
+	var paths: Array[String] = [RaceCourse.RECORDS_PATH, RaceCourse.GHOST_PATH, RaceCourse.BOARD_PATH, RaceCourse.STATS_PATH]
 	var keep: Dictionary = {}
-	for p: String in paths + paths.map(func(x: String) -> String: return x + ".bak"):
+	for p: String in paths + paths.map(func(x: String) -> String: return x + ".bak") + paths.map(func(x: String) -> String: return x + ".v2.bak"):
 		keep[p] = FileAccess.get_file_as_string(p) if FileAccess.file_exists(p) else null
 	var rec := ConfigFile.new()
 	rec.set_value("race_field@2", "five", 30.5)
@@ -1183,17 +1392,59 @@ func _test_race_migration() -> void:
 	bd.save(RaceCourse.BOARD_PATH)
 	RaceCourse._migrated = false
 	RaceCourse.migrate_saves()
-	var r: Dictionary = RaceCourse.records("race_field", 1)
+	var club: int = 1 + RaceCourse.track_list("race_field").map(func(x: Dictionary) -> String: return x.id).find("club_loop")
+	# (Club Loop has since been redesigned, rev 2 with turn flags: the old
+	# layout's records stay under its rev-1 key and rev 2 starts fresh.)
 	var rc := ConfigFile.new()
 	rc.load(RaceCourse.RECORDS_PATH)
+	var r: float = float(rc.get_value("race_field#club_loop", "five", 0.0))
 	var gc := ConfigFile.new()
 	gc.load(RaceCourse.GHOST_PATH)
-	_check(r.has("five") and is_equal_approx(float(r.five[0]), 30.5) and not rc.has_section("race_field") and not rc.has_section("race_field@2"),
-		"race saves: the best lap moves to track 1, stale layouts go", str(r))
-	_check(gc.has_section_key("race_field#1", "five_pos"), "race saves: the lap ghost moves to track 1")
-	_check(RaceCourse.boards("race_field", 1).is_empty(), "race saves: old 3-lap race totals start fresh")
+	_check(is_equal_approx(r, 30.5) and not rc.has_section("race_field") and not rc.has_section("race_field@2") and RaceCourse.records("race_field", club).is_empty(),
+		"race saves: the best lap moves to the old course (Club Loop), stale layouts go, its redesign starts fresh", str(rc.get_sections()))
+	_check(gc.has_section_key("race_field#club_loop", "five_pos"), "race saves: the lap ghost moves to the old course")
+	_check(RaceCourse.boards("race_field", club).is_empty(), "race saves: old 3-lap race totals start fresh")
 	_check(FileAccess.file_exists(RaceCourse.RECORDS_PATH + ".bak") and int(rc.get_value("meta", "version", 1)) == RaceCourse.SAVE_VERSION,
 		"race saves: a .bak is kept and the file says version %d" % RaceCourse.SAVE_VERSION)
+	# Version 2 (records per track number, before the reorder): each moves
+	# to its track's id, redesigned tracks start fresh, the stats file (no
+	# version mark) too, a .v2.bak is kept and the version-1 .bak stays.
+	var bak1: String = FileAccess.get_file_as_string(RaceCourse.RECORDS_PATH + ".bak")
+	var v2 := ConfigFile.new()
+	v2.set_value("meta", "version", 2)
+	v2.set_value("race_field#1", "five", 31.0)
+	v2.set_value("race_field#2", "five", 12.0)
+	v2.set_value("race_field#4", "five", 20.0)
+	v2.set_value("race_arena#1", "five", 25.0)
+	v2.save(RaceCourse.RECORDS_PATH)
+	var st2 := ConfigFile.new()
+	st2.set_value("race_field#1", "five", [3, 2])
+	st2.save(RaceCourse.STATS_PATH)
+	RaceCourse._migrated = false
+	RaceCourse.migrate_saves()
+	var ids: Array = RaceCourse.track_list("race_field").map(func(x: Dictionary) -> String: return x.id)
+	var meadow: int = 1 + ids.find("meadow_sprint")
+	var shed: int = 1 + ids.find("shed_run")
+	rc = ConfigFile.new()
+	rc.load(RaceCourse.RECORDS_PATH)
+	_check(is_equal_approx(float(rc.get_value("race_field#club_loop", "five", 0.0)), 31.0) and is_equal_approx(float(RaceCourse.records("race_field", meadow).get("five", [0.0])[0]), 12.0)
+		and RaceCourse.records("race_field", shed).is_empty() and RaceCourse.records("race_arena", 1).has("five") and not rc.has_section("race_field#1"),
+		"race saves: version 2 records follow their track (by id), redesigned tracks start fresh", str(rc.get_sections()))
+	var sc2 := ConfigFile.new()
+	sc2.load(RaceCourse.STATS_PATH)
+	_check(sc2.get_value("race_field#club_loop", "five", []) == [3, 2], "race saves: race counts follow their track too", str(sc2.get_value("race_field#club_loop", "five", [])))
+	_check(FileAccess.file_exists(RaceCourse.RECORDS_PATH + ".v2.bak") and FileAccess.get_file_as_string(RaceCourse.RECORDS_PATH + ".bak") == bak1,
+		"race saves: a .v2.bak is kept, the version-1 .bak untouched")
+	# A file saved without a version mark after the migration is not
+	# migrated again (it would lose its tracks).
+	var fresh := ConfigFile.new()
+	fresh.set_value("race_field#club_loop", "five", 29.0)
+	fresh.save(RaceCourse.RECORDS_PATH)
+	RaceCourse._migrated = false
+	RaceCourse.migrate_saves()
+	rc = ConfigFile.new()
+	rc.load(RaceCourse.RECORDS_PATH)
+	_check(is_equal_approx(float(rc.get_value("race_field#club_loop", "five", 0.0)), 29.0), "race saves: an unmarked current file is left alone")
 	for p: String in keep:
 		if keep[p] == null:
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))

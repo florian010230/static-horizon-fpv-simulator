@@ -255,7 +255,7 @@ func tracks() -> Array:
 		["sized", Vector3(-6, 0.76, 8.5), PI * 0.5, 0.6, 0.6, 0.05, 0.0, "gate_b"],
 		["sized", Vector3(-13, 0.02, 2), 0.0, 0.6, 0.6, 0.05, 0.3, "gate_a"],
 	]
-	var out: Array = [{"name": "After Hours", "level": "easy", "calls": t1}]
+	var out: Array = [{"id": "after_hours", "name": "After Hours", "level": "easy", "calls": t1}]
 	for k in range(2, 7):
-		out.append({"name": "Track %d" % k, "level": ["easy", "medium", "medium", "hard", "hard"][k - 2], "calls": t1})
+		out.append({"id": "track_%d" % k, "name": "Track %d" % k, "level": ["easy", "medium", "medium", "hard", "hard"][k - 2], "calls": t1})
 	return out

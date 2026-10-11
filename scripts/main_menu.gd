@@ -24,7 +24,7 @@ const MENU_FPS: int = 30
 ## The maps themselves live in MapCatalog (scripts/map_catalog.gd).
 
 ## Where Back / Esc goes from each screen.
-const BACK_TARGET := {"mode": "main", "map": "mode", "about": "main", "licences": "about", "updates": "main", "achievements": "main"}
+const BACK_TARGET := {"mode": "main", "map": "mode", "tracks": "map", "about": "main", "licences": "about", "updates": "main", "achievements": "main"}
 const WEBSITE := "https://statichorizonfpv.com/"
 
 var _settings: SettingsScreens
@@ -73,6 +73,7 @@ func _ready() -> void:
 	_screens["main"] = _build_main_screen(root)
 	_screens["mode"] = _build_mode_screen(root)
 	_screens["map"] = _build_map_screen(root)
+	_screens["tracks"] = _build_tracks_screen(root)
 	_screens["about"] = _build_about_screen(root)
 	_screens["licences"] = _build_licences_screen(root)
 	_updater = Updater.new()
@@ -701,7 +702,14 @@ func _build_map_screen(root: Control) -> Control:
 		grid.add_child(card)
 		var scene: String = m.scene
 		var map_name: String = m.name
-		card.pressed.connect(func(): SceneLoader.goto(scene, map_name))
+		card.pressed.connect(func():
+			# Race mode: a race map opens its track list first; freestyle
+			# flies track 1's gates (as obstacles).
+			if Settings.game_mode == Settings.MODE_RACE and MapCatalog.is_race(m):
+				_open_tracks(m)
+				return
+			Settings.race_track = 1
+			SceneLoader.goto(scene, map_name))
 	return parts[0]
 
 ## Shows the maps of the current mode (Race: race tracks only, with the
@@ -723,18 +731,181 @@ func _refresh_maps() -> void:
 		if race:
 			rec.text = _records_text(m.id)
 
+## The map card's race line: how many of its tracks have a personal best.
 func _records_text(map_id: String) -> String:
-	var r: Dictionary = RaceCourse.records(map_id)
-	var bd: Dictionary = RaceCourse.boards(map_id)
-	if r.is_empty() and bd.is_empty():
-		return "No lap yet - set your first personal best"
-	var lines: Array[String] = ["Personal best  (lap / 3-lap race)"]
-	for id in Drone.PROFILE_ORDER:
-		if r.has(id) or bd.has(id):
-			var lap: String = RaceCourse._fmt(r[id][0]) if r.has(id) else "--"
-			var race: String = RaceCourse._fmt(bd[id][0][0]) if bd.has(id) and not bd[id].is_empty() else "--"
-			lines.append("%s   %s  /  %s" % [Drone.PROFILES[id].display.name, lap, race])
-	return "\n".join(lines)
+	var tl: Array = RaceCourse.track_list(map_id)
+	var done: int = 0
+	for t in range(1, tl.size() + 1):
+		if not RaceCourse.records(map_id, t).is_empty():
+			done += 1
+	if done == 0:
+		return "%d tracks - no lap yet" % tl.size()
+	return "%d tracks - personal best on %d" % [tl.size(), done]
+
+# --- the track list (Race mode) -----------------------------------------------
+
+var _tracks_grid: GridContainer
+var _tracks_title: Label
+
+func _build_tracks_screen(root: Control) -> Control:
+	var parts: Array = UIKit.screen_card(root, "Choose a Track", "", 860, func(): _show("map"), 1480)
+	_tracks_title = _find_label(parts[0], "Choose a Track")
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 16)
+	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	parts[1].add_child(grid)
+	_tracks_grid = grid
+	return parts[0]
+
+## A race map's tracks: one card each - name, difficulty badge, a
+## top-down sketch, gates / lap length / laps, and your best with the
+## selected drone. Pressing one flies that track.
+func _open_tracks(m: Dictionary) -> void:
+	_tracks_title.text = "%s - Choose a Track" % m.name
+	for c in _tracks_grid.get_children():
+		c.queue_free()
+	var tl: Array = RaceCourse.track_list(m.id)
+	for i in range(tl.size()):
+		var card := _track_card(m, i + 1, tl[i])
+		_tracks_grid.add_child(card)
+		if i == 0:
+			card.set_meta("default_focus", true)
+	_show("tracks")
+
+func _track_card(m: Dictionary, t: int, tr: Dictionary) -> Button:
+	var b := Button.new()
+	b.theme_type_variation = "CardButton"
+	b.custom_minimum_size = Vector2(440, 250)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.set_meta("find_text", "track %d" % t)
+	# The selected card: a bright edge, clear at a glance.
+	var sel := UIKit.card_box(UIKit.LINK, UIKit.BOX_HOVER, 3)
+	b.add_theme_stylebox_override("focus", sel)
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]:
+		pad.add_theme_constant_override("margin_" + side, 18)
+	b.add_child(pad)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	pad.add_child(box)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	box.add_child(head)
+	var n := Label.new()
+	n.text = tr.name
+	n.theme_type_variation = "Title"
+	n.add_theme_font_size_override("font_size", 26)
+	n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(n)
+	head.add_child(UIKit.level_badge(tr.get("level", "easy"), 15))
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 16)
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(body)
+	var shape: Dictionary = RaceCourse.track_shape(m.id, t)
+	body.add_child(_track_sketch(shape))
+	var info := VBoxContainer.new()
+	info.add_theme_constant_override("separation", 2)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(info)
+	var facts := Label.new()
+	facts.theme_type_variation = "Small"
+	facts.add_theme_color_override("font_color", UIKit.MUTED)
+	facts.text = "%d gates\n≈ %d m a lap\n%d laps" % [RaceCourse.gate_count(tr.calls), int(roundf(float(shape.get("length", 0.0)) / 10.0) * 10), RaceCourse.LAPS]
+	info.add_child(facts)
+	var gap := Control.new()
+	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	info.add_child(gap)
+	var me: String = Settings.selected_drone
+	var bd: Dictionary = RaceCourse.boards(m.id, t)
+	var r: Dictionary = RaceCourse.records(m.id, t)
+	var st: Array = RaceCourse.stats(m.id, t).get(me, [0, 0])
+	var who := Label.new()
+	who.text = "YOUR BEST  ·  %s" % Drone.PROFILES[me].display.name.to_upper()
+	who.add_theme_font_size_override("font_size", 12)
+	who.add_theme_color_override("font_color", UIKit.MUTED_LIGHT)
+	info.add_child(who)
+	var best := Label.new()
+	best.add_theme_font_override("font", UIKit.oswald())
+	var race_best: bool = bd.has(me) and not bd[me].is_empty()
+	if race_best:
+		best.text = RaceCourse._fmt(bd[me][0][0])
+		best.add_theme_font_size_override("font_size", 30)
+		best.add_theme_color_override("font_color", UIKit.TEXT)
+	else:
+		best.text = "Not flown yet"
+		best.add_theme_font_size_override("font_size", 22)
+		best.add_theme_color_override("font_color", UIKit.MUTED_LIGHT)
+	info.add_child(best)
+	var more: Array[String] = []
+	if r.has(me):
+		more.append("Best lap %s" % RaceCourse._fmt(r[me][0]))
+	if int(st[1]) > 0:
+		more.append("%d %s" % [int(st[1]), "finish" if int(st[1]) == 1 else "finishes"])
+	if not more.is_empty():
+		var ml := Label.new()
+		ml.theme_type_variation = "Small"
+		ml.add_theme_color_override("font_color", UIKit.MUTED)
+		ml.text = "  ·  ".join(more)
+		info.add_child(ml)
+	for c in [pad, box, head, n, body, info, facts, gap, who, best]:
+		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var fit := func() -> void:
+		b.custom_minimum_size.y = maxf(250.0, pad.get_combined_minimum_size().y + 4.0)
+	pad.minimum_size_changed.connect(fit)
+	var scene: String = m.scene
+	var label: String = "%s - %s" % [m.name, tr.name]
+	b.pressed.connect(func():
+		Settings.race_track = t
+		SceneLoader.goto(scene, label))
+	return b
+
+## A track from above: the racing line, a tick across it at every gate,
+## START as a chequered square with an arrow the way the lap goes.
+func _track_sketch(shape: Dictionary) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(190, 140)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.draw.connect(func():
+		c.draw_rect(Rect2(Vector2.ZERO, c.size), Color(1, 1, 1, 0.04))
+		if shape.is_empty():
+			return
+		var pts: PackedVector2Array = shape.pts
+		var lo := Vector2(INF, INF)
+		var hi := Vector2(-INF, -INF)
+		for p in pts:
+			lo = lo.min(p)
+			hi = hi.max(p)
+		var pad: float = 14.0
+		var sc: float = minf((c.size.x - 2 * pad) / maxf(hi.x - lo.x, 1.0), (c.size.y - 2 * pad) / maxf(hi.y - lo.y, 1.0))
+		var off: Vector2 = (c.size - (hi - lo) * sc) * 0.5
+		var to := func(p: Vector2) -> Vector2: return off + (p - lo) * sc
+		var line := PackedVector2Array()
+		for p in pts:
+			line.append(to.call(p))
+		c.draw_polyline(line, Color(UIKit.ACCENT, 0.9), 2.0, true)
+		var gs: Array = shape.gates
+		for i in range(gs.size()):
+			var at: Vector2 = to.call(gs[i][0])
+			var d: Vector2 = gs[i][1]
+			if d.length() < 0.3: # a dive gate: a dot
+				c.draw_circle(at, 2.5, UIKit.TEXT)
+				continue
+			var n: Vector2 = d.normalized().orthogonal() * 5.0
+			c.draw_line(at - n, at + n, UIKit.TEXT, 2.0, true)
+		# START: chequered, and an arrow along the way through it.
+		var s: Vector2 = to.call(gs[0][0])
+		var f: Vector2 = (gs[0][1] as Vector2).normalized()
+		for k in range(4):
+			var q: Vector2 = Vector2(k % 2, k / 2) * 4.0 - Vector2(4, 4)
+			c.draw_rect(Rect2(s + q, Vector2(4, 4)), Color.WHITE if (k == 0 or k == 3) else Color(0.1, 0.1, 0.1))
+		var tip: Vector2 = s + f * 16.0
+		c.draw_line(s + f * 6.0, tip, UIKit.GOLD, 2.0, true)
+		c.draw_colored_polygon(PackedVector2Array([tip + f * 5.0, tip + f.orthogonal() * 4.0, tip - f.orthogonal() * 4.0]), UIKit.GOLD))
+	return c
 
 func _find_label(n: Node, text: String) -> Label:
 	if n is Label and (n as Label).text == text:

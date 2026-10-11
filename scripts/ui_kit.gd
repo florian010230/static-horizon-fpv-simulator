@@ -19,6 +19,12 @@ const LINK := Color("#3ea6ff")
 const LOGO_SKY := Color("#1f6fe0")
 const LOGO_GROUND := Color("#e8551a")
 const LOGO_INK := Color("#ffffff")
+## Race difficulty, the same everywhere (track cards, finish card).
+const LEVEL_COLOURS := {"easy": Color("#3fbf63"), "medium": Color("#e8ad2a"), "hard": Color("#e5483f")}
+## Places 1-2-3 (finish card, track records).
+const GOLD := Color("#f5c542")
+const SILVER := Color("#c9d1da")
+const BRONZE := Color("#cf8a4f")
 
 const CARD_WIDTH: float = 1180.0
 
@@ -325,3 +331,23 @@ static func screen_card(root: Control, title: String, subtitle: String, height: 
 	content.add_theme_constant_override("separation", 14)
 	scroll.add_child(content)
 	return [center, content]
+
+## A small rounded tag: tinted fill, coloured edge and text (solid: a
+## filled tag with dark text, for the loud ones).
+static func pill(text: String, color: Color, font_size: int = 14, solid: bool = false) -> PanelContainer:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", box(color if solid else Color(color, 0.16), color, 999, 1, Vector4(10, 1, 10, 1)))
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_override("font", oswald())
+	l.add_theme_font_size_override("font_size", font_size)
+	l.add_theme_color_override("font_color", Color(0.07, 0.07, 0.08) if solid else color)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(l)
+	return p
+
+## The difficulty tag: EASY / MEDIUM / HARD in its colour.
+static func level_badge(level: String, font_size: int = 14) -> PanelContainer:
+	return pill(level.to_upper(), LEVEL_COLOURS.get(level, MUTED_LIGHT), font_size, true)

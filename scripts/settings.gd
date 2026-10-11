@@ -120,6 +120,23 @@ const WIND_SPEEDS: Array[float] = [0.0, 3.0, 6.0, 10.0]
 var prop_damage: bool = false
 ## Race mode: a translucent ghost flies your best lap (RaceCourse).
 var race_ghost: bool = true
+## The racing line through a race track's gates (RaceCourse._build_line):
+## its hue in degrees (full saturation), -1 = off. One slider in
+## Settings -> Flight: far left Off, then the colour wheel. Orange default.
+var race_line_hue: int = 30
+## (Saved files from before the slider had "race_line" on/off: _load.)
+func race_line_on() -> bool:
+	return race_line_hue >= 0
+func race_line_colour() -> Color:
+	return Color.from_hsv(clampi(race_line_hue, 0, 359) / 360.0, 1.0, 1.0)
+## How far ahead the racing line reaches (RaceCourse._update_line):
+## always the next gate, then more gates (up to 3) while the line is
+## shorter than this target - close gates show several, a long straight
+## one. 0 Short / 1 Medium / 2 Long.
+const RACE_LINE_LENGTHS: Array[float] = [25.0, 45.0, 70.0]
+var race_line_length: int = 1
+func race_line_target() -> float:
+	return RACE_LINE_LENGTHS[clampi(race_line_length, 0, 2)]
 
 ## Pilot aids from the sim research (Liftoff / Velocidrone have them):
 ## live stick overlay in the OSD (optional, off by default), Betaflight's
@@ -166,7 +183,7 @@ const SAVED_FIELDS: Array[String] = ["crosshair_enabled", "shadows_enabled", "gr
 	"max_fps", "vsync", "camera_angle_deg", "camera_fov_deg", "view_distance", "rates_type", "rates_roll", "rates_pitch", "rates_yaw",
 	"selected_drone", "game_mode", "osd_enabled", "battery_enabled", "video_effect", "wind_level", "units",
 	"stick_overlay", "prop_wash", "throttle_mid", "throttle_expo", "lens_fisheye",
-	"prop_damage", "race_ghost", "check_updates", "camera_look"]
+	"prop_damage", "race_ghost", "race_line_hue", "race_line_length", "check_updates", "camera_look"]
 var _persist: bool = true
 var _last_saved: String = ""
 var _save_timer: float = 0.0
@@ -215,6 +232,9 @@ func _load() -> void:
 			var v = cfg.get_value("settings", f)
 			if typeof(v) == typeof(get(f)) or (typeof(get(f)) == TYPE_FLOAT and typeof(v) == TYPE_INT):
 				set(f, v)
+	# Before the colour slider (2026-10-11): a plain on/off racing line.
+	if not cfg.has_section_key("settings", "race_line_hue") and cfg.get_value("settings", "race_line", true) == false:
+		race_line_hue = -1
 	# Before per-axis rates (2026-10): one Actual Rates curve for all axes.
 	if not cfg.has_section_key("settings", "rates_roll") and cfg.has_section_key("settings", "rate_max_deg"):
 		var old: Array = [float(cfg.get_value("settings", "rate_center_sensitivity_deg", 70.0)), float(cfg.get_value("settings", "rate_max_deg", 670.0)), float(cfg.get_value("settings", "rate_expo", 0.54))]
