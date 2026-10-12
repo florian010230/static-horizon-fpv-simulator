@@ -127,6 +127,7 @@ static func add_materials(geo: Geo) -> void:
 	geo.add_material("gate_pole", Geo.flat_mat(Color(0.85, 0.85, 0.85), 0.4, 0.3))
 	geo.add_material("gate_trim", Geo.flat_mat(Color(0.96, 0.96, 0.94), 0.6))
 	geo.add_material("gate_base", Geo.flat_mat(Color(0.16, 0.16, 0.17), 0.7))
+	geo.add_material("gate_closed", Geo.flat_mat(Color(0.86, 0.13, 0.1), 0.7))
 	# LED gates (Drone Racing League style): self-lit, bloom on High.
 	for led in [["led_blue", Color(0.2, 0.55, 1.0)], ["led_orange", Color(1.0, 0.45, 0.1)], ["led_green", Color(0.2, 1.0, 0.4)], ["led_pink", Color(1.0, 0.25, 0.7)]]:
 		geo.add_material(led[0], Geo.glow_mat(led[1], 2.5))
@@ -204,6 +205,10 @@ func gate(geo: Geo, pos: Vector3, yaw: float, stack: int = 1, lift: float = 0.0,
 		if i == through:
 			_register(xf, GATE, GATE)
 			_direction(geo, xf, GATE, GATE, 0.0625, 0.07)
+		else:
+			# Not this one: a red tape cross over the opening ("closed").
+			for r in [PI * 0.25, -PI * 0.25]:
+				geo.box_xf(xf * Transform3D(Basis(Vector3(0, 0, 1), r), Vector3.ZERO), Vector3(GATE * 1.38, 0.07, 0.02), "gate_closed", false)
 	if lift > 0.0:
 		for sx in [-1.0, 1.0]:
 			var leg: Vector3 = pos + basis * Vector3(sx * (GATE * 0.5 + PANEL * 0.5), 0, 0)
@@ -218,8 +223,20 @@ func gate(geo: Geo, pos: Vector3, yaw: float, stack: int = 1, lift: float = 0.0,
 ## costs the drones 1.4-1.7 m of height plus ~0.3 m to stop the sink
 ## (measured with the flight model at 8-14 m/s, 2026-10-10) - room for a
 ## pilot's split-S at a sane speed, not a free fall.
-func ladder(geo: Geo, pos: Vector3, yaw: float, gap: float = 3.5, mat: String = "gate_b") -> void:
+## `size` < 1 m: a whoop ladder (thin frames like gate_sized, bottom
+## opening 0.3 m up; ~0.9 m gaps fit under an office's 3 m ceiling).
+func ladder(geo: Geo, pos: Vector3, yaw: float, gap: float = 3.5, mat: String = "gate_b", size: float = GATE) -> void:
 	var basis := Basis(Vector3.UP, yaw)
+	if size < 1.0:
+		var bar: float = 0.05
+		for i in [2, 1, 0]:
+			gate_sized(geo, pos, yaw if i != 1 else yaw + PI, size, size, bar, 0.3 + i * gap, mat, false)
+		var top_w: float = 0.3 + 2 * gap + size + 2 * bar
+		for sx in [-1.0, 1.0]:
+			var leg_w: Vector3 = pos + basis * Vector3(sx * (size * 0.5 + bar * 1.5), 0, 0)
+			geo.box(leg_w + Vector3(0, top_w * 0.5, 0), Vector3(bar, top_w, bar), "gate_pole", yaw)
+		_feet(geo, pos, basis, size * 0.5 + bar * 1.5)
+		return
 	var c0: float = FOOT + PANEL + GATE * 0.5
 	var alt: String = {"gate_a": "gate_b", "gate_b": "gate_a"}.get(mat, mat)
 	for i in [2, 1, 0]: # top first: the lap order
@@ -241,7 +258,7 @@ func _feet(geo: Geo, pos: Vector3, basis: Basis, half: float) -> void:
 
 ## Any-size single gate (whoop gates: ~0.4-0.6 m openings), with a thin
 ## frame of `bar` width, standing on the ground or at `lift` on a pole.
-func gate_sized(geo: Geo, pos: Vector3, yaw: float, w: float, h: float, bar: float, lift: float = 0.0, mat: String = "gate_a") -> void:
+func gate_sized(geo: Geo, pos: Vector3, yaw: float, w: float, h: float, bar: float, lift: float = 0.0, mat: String = "gate_a", pole: bool = true) -> void:
 	var basis := Basis(Vector3.UP, yaw)
 	var xf := Transform3D(basis, pos + Vector3(0, lift + bar + h * 0.5, 0))
 	var d: float = bar * 0.5
@@ -257,7 +274,7 @@ func gate_sized(geo: Geo, pos: Vector3, yaw: float, w: float, h: float, bar: flo
 	for sx in [-1.0, 1.0]:
 		geo.box_xf(xf * Transform3D(Basis(), Vector3(sx * (w * 0.5 + t * 0.5), 0, 0)), Vector3(t, h, d * 1.3), pipe, false, false)
 	_direction(geo, xf, w, h, d * 0.65 + 0.006, maxf(bar * 0.7, 0.03))
-	if lift > 0.0:
+	if lift > 0.0 and pole:
 		geo.box(pos + Vector3(0, lift * 0.5, 0), Vector3(bar, lift, bar), "gate_pole", yaw)
 		geo.box(pos + Vector3(0, 0.015, 0), Vector3(w * 0.6, 0.03, w * 0.4), "gate_base", yaw)
 	_register(xf, w, h)
@@ -352,18 +369,20 @@ const FLAG_W: float = 8.0
 const FLAG_H: float = 10.0
 const FLAG_AIM: float = 3.0
 const FLAG_COLOURS: Dictionary = {"gate_a": Color(0.12, 0.42, 0.9), "gate_b": Color(0.93, 0.36, 0.1)}
-var _flags: Array[Dictionary] = [] # {pos, basis, s, colour, gate}
+var _flags: Array[Dictionary] = [] # {pos, basis, s, colour, gate, k}
 var _flag_decal: MeshInstance3D
-func turn_flag(geo: Geo, pos: Vector3, yaw: float, side: String, mat: String = "gate_b") -> void:
+## `k` scales the whole flag: 1 for 5" tracks, ~0.3 for whoops indoors
+## (zone 2.4 x 3 m, pole 1.1 m).
+func turn_flag(geo: Geo, pos: Vector3, yaw: float, side: String, mat: String = "gate_b", k: float = 1.0) -> void:
 	var basis := Basis(Vector3.UP, yaw)
 	var s: float = 1.0 if side == "right" else -1.0
-	geo.cylinder(pos, pos + Vector3(0, 3.7, 0), 0.03, "gate_pole", 6)
-	geo.cylinder(pos, pos + Vector3(0, 0.06, 0), 0.25, "gate_base", 10)
-	var aim := Transform3D(basis, pos + basis * Vector3(s * (FLAG_AIM * 0.5 + 0.1), 0, 0) + Vector3(0, FLAG_AIM * 0.5 + 0.1, 0))
-	var zone := Transform3D(basis, pos + basis * Vector3(s * FLAG_W * 0.5, 0, 0) + Vector3(0, FLAG_H * 0.5, 0))
-	_register(aim, FLAG_AIM, FLAG_AIM)
-	_gates[_gates.size() - 1].merge({"zone": {"xf": zone, "w": FLAG_W, "h": FLAG_H}, "flag": s, "pole": pos})
-	_flags.append({"pos": pos, "basis": basis, "s": s, "colour": FLAG_COLOURS.get(mat, Color(0.93, 0.36, 0.1)), "gate": _gates.size() - 1})
+	geo.cylinder(pos, pos + Vector3(0, 3.7 * k, 0), 0.03 * maxf(k, 0.5), "gate_pole", 6)
+	geo.cylinder(pos, pos + Vector3(0, 0.06 * k, 0), 0.25 * k, "gate_base", 10)
+	var aim := Transform3D(basis, pos + basis * Vector3(s * (FLAG_AIM * 0.5 + 0.1) * k, 0, 0) + Vector3(0, (FLAG_AIM * 0.5 + 0.1) * k, 0))
+	var zone := Transform3D(basis, pos + basis * Vector3(s * FLAG_W * 0.5 * k, 0, 0) + Vector3(0, FLAG_H * 0.5 * k, 0))
+	_register(aim, FLAG_AIM * k, FLAG_AIM * k)
+	_gates[_gates.size() - 1].merge({"zone": {"xf": zone, "w": FLAG_W * k, "h": FLAG_H * k}, "flag": s, "pole": pos, "k": k})
+	_flags.append({"pos": pos, "basis": basis, "s": s, "colour": FLAG_COLOURS.get(mat, Color(0.93, 0.36, 0.1)), "gate": _gates.size() - 1, "k": k})
 
 ## The turn flags' banners (one mesh) and ground marks (one mesh, its
 ## shader lights up and animates the next flag's chevrons).
@@ -383,11 +402,11 @@ func _build_flags() -> void:
 		var base: int = bv.size()
 		for r in range(ROWS + 1):
 			var t: float = float(r) / ROWS
-			var w: float = 0.72 * sin(PI * pow(t, 0.62)) + 0.04
-			var y: float = 3.62 - t * 2.75
+			var w: float = (0.72 * sin(PI * pow(t, 0.62)) + 0.04) * f.k
+			var y: float = (3.62 - t * 2.75) * f.k
 			for u in us:
 				var x: float = u * w
-				var p: Vector3 = f.pos + Vector3(0, y, 0) + out * (x + 0.03) + back * (0.16 * u * u)
+				var p: Vector3 = f.pos + Vector3(0, y, 0) + out * (x + 0.03) + back * (0.16 * u * u * f.k)
 				bv.append(to_local(p))
 				var white: bool = u > 0.71 and u < 0.85
 				var c: Color = Color(0.96, 0.96, 0.94) if white else f.colour
@@ -423,7 +442,7 @@ func _build_flags() -> void:
 	for f in _flags:
 		var base: int = gv.size()
 		for c in [Vector2(-3.0, -3.0), Vector2(6.5, -3.0), Vector2(6.5, 3.0), Vector2(-3.0, 3.0)]:
-			gv.append(to_local(f.pos + Vector3(0, 0.06, 0) + f.basis * Vector3(f.s * c.x, 0, -c.y)))
+			gv.append(to_local(f.pos + Vector3(0, 0.06 * f.k, 0) + f.basis * Vector3(f.s * c.x, 0, -c.y) * f.k))
 			gu.append(c)
 			g2.append(Vector2(f.gate, 0))
 		gi.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
@@ -466,6 +485,7 @@ void fragment() {
 	_flag_decal.material_override = gm
 	_flag_decal.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_flag_decal.set_meta("keep_material", true)
+	_flag_decal.set_meta("dynamic", true) # see-through ground marks: no shadow
 	add_child(_flag_decal)
 
 # --- tracks ------------------------------------------------------------------
@@ -474,10 +494,11 @@ void fragment() {
 ## `tracks` is the map's list of {"name", "level", "calls"} (Settings
 ## .race_track picks one), `calls` the gate builders as data (see
 ## build_track). The gates get their own small Geo, committed under the
-## course node - so one map cache serves every track. They are marked
-## "dynamic" (left out of the static shadow map, which is cached with the
-## map and would otherwise keep the shadows of whichever track was built
-## first). opts: "ao_height", "ao_min" for the gates' baked AO.
+## course node - so one map cache serves every track. The gates cast
+## shadows: the static shadow map is cached per track
+## (Settings.apply_shadow_setting); only moving parts (marker, line,
+## ghost, flag ground marks) are "dynamic". opts: "ao_height", "ao_min"
+## for the gates' baked AO.
 static func make(map: BuiltMap, tracks: Array, opts: Dictionary = {}) -> RaceCourse:
 	var t: int = clampi(Settings.race_track, 1, tracks.size())
 	var g := Geo.new()
@@ -493,7 +514,6 @@ static func make(map: BuiltMap, tracks: Array, opts: Dictionary = {}) -> RaceCou
 	map.add_child(rc)
 	rc.build_track(g, tracks[t - 1].calls)
 	g.commit(rc)
-	rc.set_meta("dynamic", true)
 	return rc
 
 ## Builds a track from data: each call is [kind, args...] with kind one of
@@ -533,8 +553,12 @@ static func gate_count(calls: Array) -> int:
 # gate shows the split against the best lap (green ahead, red behind).
 # Gates count strictly in order: flying through a later gate instead of
 # the next one says "MISSED GATE n - go back" (with the way to it) until
-# the missed gate is flown - the clock keeps running. At the finish: lap
-# times, total, and the track's top-5 races (per drone).
+# the missed gate is flown - the clock keeps running. With the competition
+# rule on (Settings.race_strict, MultiGP style, off by default) a missed
+# gate (or a flag passed on the wrong side) instead voids the lap: the
+# course carries on from the gate flown, and at START the race starts
+# over. At the finish: lap times, total, and the track's top-5 races (per
+# drone).
 
 const LAPS: int = 2
 static var BOARD_PATH: String = save_path("race_board.cfg")
@@ -544,6 +568,8 @@ var _best_splits: Array = []        # the best lap's
 var _delta_text: String = ""
 var _delta_t: float = 0.0
 var _missed_gate: int = -1
+var _void_gate: int = -1 ## competition rule: the gate missed this lap (-1: the lap counts)
+var _void_msg: float = 0.0
 var _beep: AudioStreamPlayer
 
 func _physics_process(delta: float) -> void:
@@ -557,14 +583,23 @@ func _physics_process(delta: float) -> void:
 	elif _crossed(_gates[_next], _prev_pos, pos):
 		_passed()
 	elif _lap_start >= 0.0 and _gates[_next].has("flag") and _wrong_side(_gates[_next], _prev_pos, pos):
-		if _missed_gate != _next:
-			_play("miss")
-		_missed_gate = _next # past the flag on the wrong side: go back round it
+		if Settings.race_strict:
+			_void(_next)
+			_passed() # the flag is behind you: on to the next gate, the lap is void
+		else:
+			if _missed_gate != _next:
+				_play("miss")
+			_missed_gate = _next # past the flag on the wrong side: go back round it
 	elif _lap_start >= 0.0:
 		for i in range(_gates.size()):
 			# A flag's wide invisible opening only counts as the next gate:
 			# flying through one elsewhere on the lap isn't skipping ahead.
 			if i != _next and i != (_next - 1 + _gates.size()) % _gates.size() and not _gates[i].has("flag") and _crossed(_gates[i], _prev_pos, pos):
+				if Settings.race_strict:
+					_void(_next)
+					_next = i # carry on from the gate flown
+					_passed()
+					break
 				if _missed_gate != _next:
 					_play("miss")
 				_missed_gate = _next # until it is flown (_passed)
@@ -605,8 +640,21 @@ static func _plane_hit(xf: Transform3D, a: Vector3, b: Vector3) -> Variant:
 		return null
 	return la.lerp(lb, la.z / (la.z - lb.z))
 
+## Competition rule: the lap is void (first missed gate is the one shown).
+func _void(gate: int) -> void:
+	if _void_gate < 0:
+		_void_gate = gate
+		_play("miss")
+
 func _passed() -> void:
 	_missed_gate = -1
+	if _next == 0 and _lap_start >= 0.0 and _void_gate >= 0:
+		# A void lap doesn't count: the race starts over from this pass.
+		_void_gate = -1
+		_void_msg = 2.5
+		_race_laps.clear()
+		_lap = 0
+		_lap_start = -1.0
 	if _next == 0:
 		if _lap_start >= 0.0:
 			_last_lap = _time - _lap_start
@@ -721,6 +769,7 @@ func _reset_run() -> void:
 	_lap = 0
 	_lap_start = -1.0
 	_missed_gate = -1
+	_void_gate = -1
 	_place_marker()
 
 func current_lap_time() -> float:
@@ -747,6 +796,13 @@ func _update_hud() -> void:
 		d.delta_good = _delta_text.begins_with("-")
 	if _missed_gate >= 0:
 		d.msg = "MISSED GATE %d - go back   %s" % [_missed_gate + 1, _way_to(_gates[_missed_gate])]
+		d.msg_good = false
+	elif _void_gate >= 0:
+		d.msg = "MISSED GATE %d - this lap won't count" % (_void_gate + 1)
+		d.msg_good = false
+	if _void_msg > 0.0:
+		_void_msg -= get_physics_process_delta_time()
+		d.msg = "LAP NOT COUNTED - the race starts over"
 		d.msg_good = false
 	ui.set_race_hud(d)
 
@@ -824,7 +880,7 @@ func _build_numbers() -> void:
 		lb.no_depth_test = false
 		var up: Vector3 = g.xf.basis.y
 		if g.has("pole"): # a turn flag: on top of the pole
-			lb.position = to_local(g.pole + Vector3(0, 4.2, 0))
+			lb.position = to_local(g.pole + Vector3(0, 4.2 * float(g.get("k", 1.0)), 0))
 			add_child(lb)
 			continue
 		var top: Vector3 = g.xf.origin + (up * (g.h * 0.5 + PANEL + 0.45 * sc) if absf(up.y) > 0.5 else Vector3(0, 0.9 * sc, 0) + g.xf.basis.y * (g.h * 0.5 + PANEL))
@@ -838,6 +894,7 @@ func _build_numbers() -> void:
 func _build_marker() -> void:
 	_marker = Node3D.new()
 	_marker.name = "NextGateMarker"
+	_marker.set_meta("dynamic", true) # it moves: no shadow
 	add_child(_marker)
 	var mat := Geo.glow_mat(Color(0.2, 1.0, 0.45), 3.0)
 	var red := Geo.glow_mat(Color(1.0, 0.12, 0.08), 3.0)

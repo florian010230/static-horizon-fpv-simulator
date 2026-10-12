@@ -13,6 +13,8 @@ var _latest: Label
 var _status: Label
 var _download: Button
 var _check: Button
+var _install: Button
+var _poll: Timer
 var _notes: VBoxContainer
 
 func build(root: Control, updater: Updater, on_back: Callable) -> Control:
@@ -51,6 +53,22 @@ func build(root: Control, updater: Updater, on_back: Callable) -> Control:
 	_download.custom_minimum_size.x = 170
 	_download.pressed.connect(func(): OS.shell_open(Updater.latest.get("url", Updater.RELEASES_PAGE) if not Updater.latest.is_empty() else Updater.RELEASES_PAGE))
 	row.add_child(_download)
+	_install = UIKit.button("Install update", "PrimaryButton", 48)
+	_install.custom_minimum_size.x = 190
+	_install.pressed.connect(func():
+		if Updater.install_state == "ready":
+			Settings.restart_game()
+		else:
+			_updater.install_latest()
+			refresh())
+	row.add_child(_install)
+	_poll = Timer.new()
+	_poll.wait_time = 0.5
+	_poll.timeout.connect(func():
+		if Updater.install_state == "downloading" and screen.is_visible_in_tree():
+			_install_status())
+	screen.add_child(_poll)
+	_poll.start()
 
 	UIKit.toggle(c, "Check for updates when the game starts", Settings.check_updates, func(v: bool): Settings.check_updates = v)
 	var hint := Label.new()
@@ -76,7 +94,7 @@ func refresh() -> void:
 	if screen == null:
 		return
 	var cur: String = Updater.current_version()
-	_installed.text = cur
+	_installed.text = cur if UpdatePack.loaded.is_empty() else "%s   (update over %s)" % [cur, UpdatePack.base_version]
 	var newer: bool = Updater.newer_available()
 	if Updater.latest.is_empty():
 		_latest.text = "unknown"
@@ -90,9 +108,10 @@ func refresh() -> void:
 			_status.text = "Could not reach GitHub - no problem, just keep flying. Try again later."
 		_:
 			_status.text = ""
+	_install_status()
 	_check.disabled = Updater.status == "checking"
 	_download.text = "Download %s" % Updater.latest.version if newer else "Releases page"
-	_download.theme_type_variation = "PrimaryButton" if newer else ""
+	_download.theme_type_variation = "PrimaryButton" if newer and not Updater.can_install() else ""
 	for ch in _notes.get_children():
 		ch.queue_free()
 	if newer and Updater.latest.body != "":
@@ -117,3 +136,16 @@ func refresh() -> void:
 	else:
 		Updater.add_notes(_notes, local)
 	Updater.mark_seen()
+
+## The install line and button (also polled while the pack downloads).
+func _install_status() -> void:
+	match Updater.install_state:
+		"downloading":
+			_status.text = "Downloading the update... %d%%" % roundi(_updater.progress() * 100.0)
+		"ready":
+			_status.text = "Update installed - it starts with the next launch."
+		"failed":
+			_status.text = "The update could not be installed (%s). Nothing changed - use Download instead." % Updater.install_error
+	_install.visible = Updater.can_install() and Updater.install_state != "failed"
+	_install.disabled = Updater.install_state == "downloading"
+	_install.text = "Restart now" if Updater.install_state == "ready" else "Install update"

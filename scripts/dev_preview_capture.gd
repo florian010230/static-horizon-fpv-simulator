@@ -1737,7 +1737,16 @@ func _raceui_shots() -> void:
 
 ## `-- --dev-preview tracks [map id]`: every race track of a map, top-down
 ## and from behind the start gate -> previews/preview_tracks_<map>_<t>_*.png.
+## SH_TRACKS=5,6 only those tracks; SH_TRACKS_FPV=5:7,6:6 also a still from
+## behind gate 7 of track 5 (1 = start); SH_TRACKS_TAG=x adds "_x" to the
+## file names (new files instead of overwriting the last set);
+## SH_TRACKS_CAM="5@x,y,z@x,y,z;6@..." stills from a camera at the first
+## point looking at the second.
 func _tracks_shots() -> void:
+	var only: PackedStringArray = OS.get_environment("SH_TRACKS").split(",", false)
+	var fpv: PackedStringArray = OS.get_environment("SH_TRACKS_FPV").split(",", false)
+	var tag: String = OS.get_environment("SH_TRACKS_TAG")
+	tag = "_" + tag if tag != "" else ""
 	var args := OS.get_cmdline_user_args()
 	var map_id: String = args[args.find("tracks") + 1] if args.find("tracks") + 1 < args.size() else "race_field"
 	var scene := ""
@@ -1750,6 +1759,8 @@ func _tracks_shots() -> void:
 	Settings.game_mode = Settings.MODE_RACE
 	WorldBorder.disabled = true
 	for t in range(1, 7):
+		if not only.is_empty() and not only.has(str(t)):
+			continue
 		Settings.race_track = t
 		get_tree().change_scene_to_file(scene)
 		await get_tree().create_timer(2.5).timeout
@@ -1771,13 +1782,31 @@ func _tracks_shots() -> void:
 		cam.look_at(Vector3(-10, 0, -16), Vector3.UP)
 		await get_tree().create_timer(0.8).timeout
 		await _drawn_frames(3)
-		_shot("preview_tracks_%s_%d_top.png" % [map_id, t])
-		var g: Dictionary = gates[0]
-		cam.global_position = g.xf * Vector3(0, 0.4, 6.0)
-		cam.look_at(g.xf * Vector3(0, 0, -20.0), Vector3.UP)
-		await get_tree().create_timer(0.5).timeout
-		await _drawn_frames(3)
-		_shot("preview_tracks_%s_%d_start.png" % [map_id, t])
+		_shot("preview_tracks_%s_%d_top%s.png" % [map_id, t, tag])
+		var views: Array = [[0, "start"]]
+		for f in fpv:
+			if f.get_slice(":", 0) == str(t):
+				var gi: int = int(f.get_slice(":", 1)) - 1
+				views.append([gi, "gate%d" % (gi + 1)])
+		var k: int = 0
+		for c in OS.get_environment("SH_TRACKS_CAM").split(";", false):
+			if c.get_slice("@", 0) == str(t):
+				var a := c.get_slice("@", 1).split_floats(",")
+				var b := c.get_slice("@", 2).split_floats(",")
+				k += 1
+				views.append([Vector3(a[0], a[1], a[2]), Vector3(b[0], b[1], b[2]), "cam%d" % k])
+		for v: Array in views:
+			if v.size() == 3:
+				cam.global_position = v[0]
+				cam.look_at(v[1], Vector3.UP)
+				v = [0, v[2]]
+			else:
+				var g: Dictionary = gates[v[0]]
+				cam.global_position = g.xf * Vector3(0, 0.4, 6.0)
+				cam.look_at(g.xf * Vector3(0, 0, -20.0), Vector3.UP)
+			await get_tree().create_timer(0.5).timeout
+			await _drawn_frames(3)
+			_shot("preview_tracks_%s_%d_%s%s.png" % [map_id, t, v[1], tag])
 		cam.queue_free()
 	Settings.race_track = 1
 

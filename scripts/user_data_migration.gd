@@ -8,12 +8,15 @@ extends Node
 ## first (before InputManager and Settings read anything) and, once,
 ## copies the old folder's files across. The map and texture caches are
 ## left behind - they rebuild themselves.
+## Being first, it also loads an installed update pack (UpdatePack) before
+## any other script of the game is read.
 
 const OLD_NAME: String = "Static Horizon FPV Sim"
 const SKIP: Array[String] = ["mapcache", "texcache", "shader_cache", "vulkan", "logs", "objectdb_snapshots"]
 const DONE_MARK: String = "user://.migrated_from_fpv_sim"
 
 func _init() -> void:
+	UpdatePack.load_at_startup()
 	var new_dir: String = OS.get_user_data_dir()
 	var old_dir: String = new_dir.get_base_dir().path_join(OLD_NAME)
 	if old_dir == new_dir or FileAccess.file_exists(DONE_MARK) or not DirAccess.dir_exists_absolute(old_dir):

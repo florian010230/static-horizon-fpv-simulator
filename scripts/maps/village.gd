@@ -67,12 +67,48 @@ func restore_state(state: Dictionary) -> void:
 	_gnomes = state.gnomes
 
 func after_build() -> void:
+	for id in VillageCourse.COURSES:
+		var vc := VillageCourse.create(self, id, courses()[id])
+		if drone:
+			vc.start(drone, ui)
 	if OS.has_environment("SH_GLITCH"):
 		var sg: Array = surface_glitches()
 		print("GLITCH %s: %d %s" % [name, sg.size(), str(sg.slice(0, 12))])
 	for i in range(_gnomes.size()):
 		var g: Array = _gnomes[i]
 		Collectibles.gnome(self, "village", i, Transform3D(Basis(Vector3.UP, g[1]), g[0]))
+
+## The two timed courses on the club field (VillageCourse): the gates
+## already drawn by _club (registered only) plus ["new", ...] pieces built
+## with the course. Fly through a START to begin.
+func courses() -> Dictionary:
+	var y: float = 0.0
+	return {
+		# Anticlockwise from the pad: west through START, north through the
+		# ladder's bottom, east under the tower gate, the dive gate, south
+		# under the hurdle and through the double gate's upper opening, back
+		# west through the hoop.
+		"club": [
+			["start", PAD + Vector3(-16, 0, -3), PI * 0.5],
+			["gate", PAD + Vector3(-42, 0, -22), 0.0, 3],
+			["gate", PAD + Vector3(-20, 0, -48), -PI * 0.5, 1, RaceCourse.GATE, 0, "gate_b"],
+			["dive", PAD + Vector3(12, 0, -50), 0.0, 3.5],
+			["hurdle", PAD + Vector3(38, 0, -32), PI],
+			["gate", PAD + Vector3(40, 0, -12), PI, 2, 0.0, 1],
+			["opening", PAD + Vector3(24, 3.2, 4), PI * 0.5, 2.3, 2.3], # the hoop
+		],
+		# East along a slalom of eight flags (alternate sides), up through the
+		# lifted gate, south to the 6 m dive, west through the upper of the
+		# double gate, north up the four-stack (top), home.
+		"slalom": [
+			["new", ["start", Vector3(272, y, -61), -PI * 0.5]],
+		] + range(8).map(func(k: int) -> Array: return ["new", ["turn", Vector3(282 + k * 9.0, y, -63 + (k % 2) * 5.0), -PI * 0.5, "left" if k % 2 == 0 else "right", "gate_a" if k % 2 == 0 else "gate_b"]]) + [
+			["gate", Vector3(366, y, -60), -PI * 0.5, 1, 3.0],
+			["dive", Vector3(362, y, 30), 0.0, 6.0, "gate_a"],
+			["gate", Vector3(262, y, 30), PI * 0.5, 2, 1.52, 1, "gate_b"],
+			["gate", Vector3(248, y, -50), 0.0, 4, 0.0, 3],
+		],
+	}
 
 ## Per-piece overrides (Pieces): fly with SH_IDS=1 to see the ids.
 ## Glitch check for the self-test: terrain coming up through a road or
@@ -528,14 +564,12 @@ func _club(trees: Array) -> Array:
 	rc.dive_gate(geo, PAD + Vector3(12, 0, -50), 0.0, 3.5)
 	rc.hurdle(geo, PAD + Vector3(38, 0, -32), PI)
 	rc.gate(geo, PAD + Vector3(40, 0, -12), PI, 2, 0.0, 1)
-	for fq in [PAD + Vector3(-50, 0, -6), PAD + Vector3(-40, 0, -50), PAD + Vector3(46, 0, -48)]:
-		rc.flag(geo, fq, "gate_b")
-	# The practice field round the course (visual only, no timing):
-	# a tall stack of four gates, a slalom of flags, a lifted gate at the
-	# slalom's end, a dive gate on a 6 m stand beside the clubhouse.
+	# The practice field round the course: a tall stack of four gates, a
+	# lifted gate at the end of the flag slalom (its flags and START are
+	# built with the course, see courses()), a dive gate on a 6 m stand
+	# beside the clubhouse. (The old decoration-only flags are gone: a flag
+	# on a course is a turn flag now.)
 	rc.gate(geo, Vector3(248, y, -50), 0.0, 4, 0.0, 3)
-	for k in range(8):
-		rc.flag(geo, Vector3(282 + k * 9.0, y, -63 + (k % 2) * 5.0), "gate_a" if k % 2 == 0 else "gate_b")
 	rc.gate(geo, Vector3(366, y, -60), -PI * 0.5, 1, 3.0)
 	rc.dive_gate(geo, Vector3(362, y, 30), 0.0, 6.0, "gate_a")
 	rc.gate(geo, Vector3(262, y, 30), PI * 0.5, 2, 1.52, 1, "gate_b")
@@ -615,6 +649,7 @@ func _club(trees: Array) -> Array:
 	trees.append([Vector3(236, y, -76), "birch", 613, "none"])
 	views.append(["club", PAD + Vector3(30, 14, 30), PAD + Vector3(-25, 0, -30)])
 	views.append(["clubhouse", ch + Vector3(-6, 3.0, 14), ch])
+	views.append(["slalom", Vector3(266, 3.0, -56), Vector3(330, 1.0, -61)])
 	views.append(["lost_drone", Vector3(386, 8, -44), Vector3(398, 7, -50)])
 	return views
 

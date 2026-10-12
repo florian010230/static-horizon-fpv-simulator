@@ -215,6 +215,8 @@ func _build_settings() -> Control:
 	_hint(f1, "Shaking and lost lift when you dive into your own downwash. Off: a clean catch every time.")
 	UIKit.section(f2, "Race mode")
 	UIKit.toggle(f2, "Ghost of your best lap", Settings.race_ghost, func(v: bool): Settings.race_ghost = v)
+	UIKit.toggle(f2, "Competition rule", Settings.race_strict, func(v: bool): Settings.race_strict = v)
+	_hint(f2, "On: a missed gate voids the lap (race rules). Off: go back and fly it.")
 	UIKit.gap(f2, 6)
 	_race_line_row(f2)
 	_segmented(f2, "Line length", ["Short", "Medium", "Long"], clampi(Settings.race_line_length, 0, 2), func(i: int): Settings.race_line_length = i)

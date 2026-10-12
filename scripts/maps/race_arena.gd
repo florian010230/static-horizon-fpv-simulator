@@ -213,24 +213,101 @@ func _booth() -> void:
 	geo.box(b + Vector3(0, 3.25, 2.05), Vector3(4.0, 0.4, 0.08), "banner", 0.0, false, false)
 
 ## The map's tracks (RaceCourse.make builds the one Settings.race_track
-## picks, at load time on top of the cached map). Tracks 2-6 are
-## placeholders (track 1's course) until they are designed.
+## picks, at load time on top of the cached map), easiest first: 2 easy,
+## 2 medium, 2 hard (League Night, the old course, moved to medium: stacked
+## top opening, a 6 m dive, the 8 m scaffold gate). Records follow "id".
+## Yaw: -PI/2 flies east (+x), PI/2 west, 0 north (-z), PI south.
+## Roof trusses run north-south at x -50, -33.3, -16.6, 0.2, 16.9, 33.6,
+## 50.2: a gate hung from the roof flies east/west, halfway between two.
 func tracks() -> Array:
+	var E: float = -PI * 0.5
+	var W: float = PI * 0.5
+	var N: float = 0.0
+	var S: float = PI
 	var t1: Array = [
-		["start", Vector3(-30, 0.02, 20), -PI * 0.5],
-		["gate", Vector3(0, 0.02, 20), -PI * 0.5, 1, 0.0, 0, "led_blue"],
-		["sized", Vector3(12.2, 0.02, 20), -PI * 0.5, 2.6, 2.6, 0.15, 0.0, "led_green"], # tunnel mouth
-		["gate", Vector3(48, 0.02, 5), 0.0, 3, 0.0, 2, "led_orange"],
+		["start", Vector3(-30, 0.02, 20), E],
+		["gate", Vector3(0, 0.02, 20), E, 1, 0.0, 0, "led_blue"],
+		["sized", Vector3(12.2, 0.02, 20), E, 2.6, 2.6, 0.15, 0.0, "led_green"], # tunnel mouth
+		["gate", Vector3(48, 0.02, 5), N, 3, 0.0, 2, "led_orange"],
 		["dive", Vector3(40, 0.02, -20), 0.0, 6.0, "led_pink"],
-		["gate", Vector3(15, 8.02, -22), PI * 0.5, 1, 0.0, 0, "led_blue"], # on the scaffold
-		["gate", Vector3(-12, 0.02, -22), PI * 0.5, 2, 0.0, 0, "led_orange"],
-		["hurdle", Vector3(-38, 0.02, -12), PI, "led_green"],
-		["gate", Vector3(-50, 0.02, 6), PI, 1, 0.0, 0, "led_pink"],
+		["gate", Vector3(15, 8.02, -22), W, 1, 0.0, 0, "led_blue"], # on the scaffold
+		["gate", Vector3(-12, 0.02, -22), W, 2, 0.0, 0, "led_orange"],
+		["hurdle", Vector3(-38, 0.02, -12), S, "led_green"],
+		["gate", Vector3(-50, 0.02, 6), S, 1, 0.0, 0, "led_pink"],
 		# Last: a gate hung from the roof between two trusses - left turn out
 		# of the pink gate, climb through it, drop back down to START.
-		["hanging", Vector3(-42, 3.4, 20), -PI * 0.5, 18.2, "led_blue"],
+		["hanging", Vector3(-42, 3.4, 20), E, 18.2, "led_blue"],
 	]
-	var out: Array = [{"id": "league_night", "name": "League Night", "level": "easy", "calls": t1}]
-	for k in range(2, 7):
-		out.append({"id": "track_%d" % k, "name": "Track %d" % k, "level": ["easy", "medium", "medium", "hard", "hard"][k - 2], "calls": t1})
-	return out
+	return [
+		# Easy: a wide anticlockwise oval round the infield, ground gates only.
+		{"id": "warm_up", "name": "Warm-Up Lap", "level": "easy", "calls": [
+			["start", Vector3(-25, 0.02, 0), E],
+			["gate", Vector3(5, 0.02, 0), E, 1, 0.0, 0, "led_blue"],
+			["gate", Vector3(42, 0.02, -8), N, 1, 0.0, 0, "led_orange"],
+			["gate", Vector3(25, 0.02, -16), W, 1, 0.0, 0, "led_green"],
+			["gate", Vector3(-15, 0.02, -16), W, 1, 0.0, 0, "led_blue"],
+			["gate", Vector3(-45, 0.02, -6), S, 1, 0.0, 0, "led_orange"],
+			["gate", Vector3(-42, 0.02, 12), E, 1, 0.0, 0, "led_pink"],
+		]},
+		# Easy: east past the pits under the gallery, through the tunnel, home
+		# along the stand.
+		{"id": "pit_lane", "name": "Pit Lane", "level": "easy", "calls": [
+			["start", Vector3(-40, 0.02, 12), E],
+			["gate", Vector3(-15, 0.02, 22), E, 1, 0.0, 0, "led_blue"], # beside the gallery
+			["sized", Vector3(12.2, 0.02, 20), E, 2.6, 2.6, 0.15, 0.0, "led_green"], # tunnel mouth
+			["gate", Vector3(48, 0.02, 10), N, 1, 0.0, 0, "led_orange"],
+			["gate", Vector3(40, 0.02, -15), W, 1, 0.0, 0, "led_pink"],
+			["gate", Vector3(0, 0.02, -18), W, 1, 0.0, 0, "led_blue"],
+			["gate", Vector3(-45, 0.02, -8), S, 1, 0.0, 0, "led_orange"],
+		]},
+		{"id": "league_night", "name": "League Night", "level": "medium", "calls": t1},
+		# Medium: climb into the lighting rig (a gate hung under its middle,
+		# 10.5 m up), a dive, round a flag onto the scaffold deck gate, round
+		# a flag along the stand, the upper of a double gate, home.
+		{"id": "spotlight", "name": "Spotlight", "level": "medium", "calls": [
+			["start", Vector3(-32, 0.02, 0), E],
+			["gate", Vector3(-18, 0.02, 0), E, 1, 0.0, 0, "led_blue"],
+			["hanging", Vector3(0, 10.5, -2), E, 12.05, "led_orange", 20.1], # under the rig
+			["dive", Vector3(22, 0.02, -5), 0.0, 5.0, "led_pink"],
+			["turn", Vector3(42, 0.02, -12), N, "right"],
+			["gate", Vector3(15, 8.02, -22), W, 1, 0.0, 0, "led_green"], # on the scaffold
+			["turn", Vector3(-30, 0.02, -18), PI * 0.75, "right"],
+			["gate", Vector3(-48, 0.02, -8), S, 2, 0.0, 1, "led_orange"], # double gate, upper
+		]},
+		# Hard: south, left under the gallery deck between its columns (a 3 m
+		# gate over the pits), out and up over the deck rail (a gate hung
+		# above the deck), the split-S ladder at the east end, round a flag,
+		# a 6 m dive along the stand, a snake of three gates 8 m apart (two
+		# hairpins, the gates yawed into the turns), home.
+		{"id": "gallery_run", "name": "Gallery Run", "level": "hard", "calls": [
+			["start", Vector3(-50, 0.02, 14), S],
+			["turn", Vector3(-44.8, 0.02, 22.8), -PI * 0.75, "right"],
+			["sized", Vector3(-28, 0.02, 28), E, 3.0, 3.0, 0.15, 1.5, "led_green"], # under the deck, over the pits
+			["hanging", Vector3(8.5, 8.5, 27.5), E, 18.2, "led_blue"], # above the deck
+			["ladder", Vector3(50, 0.02, -8), N, 3.5, "led_pink"],
+			["turn", Vector3(46, 0.02, -16), PI * 0.25, "right"],
+			["dive", Vector3(25, 0.02, -18), 0.0, 6.0, "led_orange"],
+			["gate", Vector3(-36, 0.02, -14), W + 0.35, 1, 0.0, 0, "led_blue"], # snake: west, east, west
+			["gate", Vector3(-36, 0.02, -6), E - 0.35, 1, 0.0, 0, "led_orange"],
+			["gate", Vector3(-36, 0.02, 2), W + 0.35, 1, 0.0, 0, "led_green"],
+		]},
+		# Hard, a figure of eight: a hurdle, climb into the rig (the high
+		# crossing), a gate on a 6 m pole in front of the video wall, round
+		# a flag by the booth, the scaffold deck gate, a 6 m dive, back under
+		# the rig low (the low crossing) into a snake of three gates (two
+		# hairpins), the top of a triple stack, a flag in the U-turn home.
+		{"id": "night_shift", "name": "Night Shift", "level": "hard", "calls": [
+			["start", Vector3(-42, 0.02, -6), E],
+			["hurdle", Vector3(-26, 0.02, -6), E, "led_orange"],
+			["hanging", Vector3(0, 10.5, -2), E, 12.05, "led_green", 20.1], # under the rig: high crossing
+			["gate", Vector3(54, 0.02, 0), N, 1, 6.0, 0, "led_blue"], # in front of the video wall
+			["turn", Vector3(50, 0.02, -18), PI * 0.25, "right"],
+			["gate", Vector3(15, 8.02, -22), W, 1, 0.0, 0, "led_pink"], # on the scaffold
+			["dive", Vector3(-5, 0.02, -16), 0.0, 6.0, "led_orange"],
+			["gate", Vector3(-6, 0.02, 4), S + 0.35, 1, 0.0, 0, "led_blue"], # low crossing; snake: south, north, south
+			["gate", Vector3(-14, 0.02, 4), N - 0.35, 1, 0.0, 0, "led_orange"],
+			["gate", Vector3(-22, 0.02, 4), S + 0.35, 1, 0.0, 0, "led_green"],
+			["gate", Vector3(-34, 0.02, 13), W, 3, 0.0, 2, "led_pink"], # triple stack, top
+			["turn", Vector3(-52, 0.02, 3.5), N, "left"],
+		]},
+	]

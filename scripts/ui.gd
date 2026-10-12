@@ -281,7 +281,8 @@ func set_border_warning(active: bool) -> void:
 ## Race maps: lap/timer readout, top centre (see RaceCourse). "" hides it.
 ## A short message in the middle of the screen (fades after 2.5 s).
 var _flash: Label
-func flash_message(text: String) -> void:
+var _flash_tw: Tween
+func flash_message(text: String, hold: float = 1.6) -> void:
 	if _flash == null:
 		_flash = Label.new()
 		_flash.set_anchors_preset(Control.PRESET_CENTER)
@@ -297,8 +298,11 @@ func flash_message(text: String) -> void:
 	_flash.text = text
 	_flash.modulate.a = 1.0
 	_flash.visible = true
+	if _flash_tw:
+		_flash_tw.kill() # a new message gets its full time
 	var tw := create_tween()
-	tw.tween_interval(1.6)
+	_flash_tw = tw
+	tw.tween_interval(hold)
 	tw.tween_property(_flash, "modulate:a", 0.0, 0.9)
 
 const RaceUI = preload("res://scripts/race_ui.gd")

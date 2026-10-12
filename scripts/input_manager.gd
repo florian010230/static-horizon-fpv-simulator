@@ -355,6 +355,7 @@ func pressed_button() -> int:
 ## pilot's own specific hardware.
 func save_calibration() -> void:
 	var cfg := ConfigFile.new()
+	cfg.load(CALIBRATION_PATH) # keep keys a newer version wrote
 	cfg.set_value("radio", "axis_roll", axis_roll)
 	cfg.set_value("radio", "axis_pitch", axis_pitch)
 	cfg.set_value("radio", "axis_throttle", axis_throttle)

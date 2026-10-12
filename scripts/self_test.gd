@@ -58,6 +58,7 @@ func _run() -> void:
 		"wind %d battery %s prop damage %s" % [fresh.wind_level, fresh.battery_enabled, fresh.prop_damage])
 	_check(fresh.race_line_hue == 30, "settings: the racing line is on, orange, by default", str(fresh.race_line_hue))
 	_check(fresh.race_line_length == 1, "settings: the racing line is Medium length by default", str(fresh.race_line_length))
+	_check(not fresh.race_strict, "settings: the competition rule (missed gate voids the lap) is off by default")
 	fresh.free()
 	Settings.units = 1
 	var imp: bool = Settings.speed_text(10.0) == "22mph" and Settings.height_text(10.0) == "33ft" and Settings.spec_tag("150 km/h") == "93 mph"
@@ -95,6 +96,12 @@ func _run() -> void:
 			await _test_video_link()
 		if only.has("gnomes"):
 			await _test_collectibles()
+		if only.has("village"):
+			await _test_village_course()
+		if only.has("update"):
+			_test_updater()
+			_test_update_pack()
+			_test_save_keeps_unknown_keys()
 		if only.has("cache"):
 			await _test_map_cache()
 		_check_race_saves()
@@ -103,6 +110,9 @@ func _run() -> void:
 		return
 	await _test_menu_flow()
 	_test_updater()
+	_test_update_pack()
+	_test_save_keeps_unknown_keys()
+	await _test_village_course()
 	await _test_collectibles()
 	await _test_calibration_and_arm_switch()
 	_test_creators()
@@ -336,6 +346,170 @@ func _test_updater() -> void:
 	Updater.add_notes(box, "# Title\n- a **bold** [link](http://x)\ntext")
 	_check(box.get_child_count() == 3 and (box.get_child(1) as Label).text == "·  a bold link", "updater: markdown notes become labels")
 	box.free()
+	ok = Updater.apply_response(200, '{"tag_name": "v9.9.9", "assets": [{"name": "update-manifest.json", "browser_download_url": "https://example.org/m"}, {"name": "x"}]}')
+	_check(ok and Updater.latest.assets.get("update-manifest.json", "") == "https://example.org/m" and Updater.latest.assets.size() == 1 and not Updater.can_install(),
+		"updater: keeps the release's file links, never installs in a test run")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Updater.cache_path()))
+	Updater.latest = saved
+
+## Signed update packs (UpdatePack) with throwaway keys made here, in
+## user://selftest/update: a good pack installs and loads, a pack changed on
+## disk is skipped for the older good one, and an unsigned, wrongly signed,
+## changed, wrong-engine, too-old or full-download-only one never installs.
+func _test_update_pack() -> void:
+	var root: String = "user://selftest/update"
+	_rm_tree(root)
+	DirAccess.make_dir_recursive_absolute(root)
+	var crypto := Crypto.new()
+	var key: CryptoKey = crypto.generate_rsa(2048)
+	var other: CryptoKey = crypto.generate_rsa(2048)
+	var pub := CryptoKey.new()
+	pub.load_from_string(key.save_to_string(true), true)
+	var eng: String = UpdatePack.engine_version()
+	var base: String = "1.0.0"
+	# A pack with one file in it, and its manifest (fields in `extra` win).
+	var make: Callable = func(v: String, extra: Dictionary = {}) -> Array:
+		var src: String = root.path_join("marker_%s.txt" % v)
+		var f := FileAccess.open(src, FileAccess.WRITE)
+		f.store_string(v)
+		f = null
+		var tmp: String = root.path_join("dl_%s.part" % v)
+		var pk := PCKPacker.new()
+		pk.pck_start(tmp)
+		pk.add_file("res://sh_selftest/pack_marker.txt", src)
+		pk.flush()
+		var pf := FileAccess.open(tmp, FileAccess.READ)
+		var m: Dictionary = {"version": v, "engine": eng, "min_base": "0.0.0", "packs": {UpdatePack.platform(): {"file": "p.pck", "size": pf.get_length(), "sha256": UpdatePack.file_sha256(tmp)}}}
+		m.merge(extra, true)
+		return [JSON.stringify(m).to_utf8_buffer(), tmp]
+	var sign: Callable = func(b: PackedByteArray, k: CryptoKey) -> PackedByteArray: return crypto.sign(HashingContext.HASH_SHA256, UpdatePack.sha256(b), k)
+	var a: Array = make.call("1.1.0")
+	var err1: String = UpdatePack.install(root, a[0], sign.call(a[0], key), a[1], pub, base, eng)
+	var b: Array = make.call("1.2.0")
+	var err2: String = UpdatePack.install(root, b[0], sign.call(b[0], key), b[1], pub, base, eng)
+	var found: Dictionary = UpdatePack.find_loadable(root, pub, base, eng)
+	_check(err1 == "" and err2 == "" and found.get("version", "") == "1.2.0" and not FileAccess.file_exists(b[1]), "update pack: signed packs install, the newest is used", "%s / %s / %s" % [err1, err2, found])
+	# Change one byte of the installed 1.2.0 pack: skipped, 1.1.0 is used.
+	var pck: String = root.path_join("1.2.0/game.pck")
+	var bytes: PackedByteArray = FileAccess.get_file_as_bytes(pck)
+	bytes[bytes.size() / 2] ^= 0xff
+	var w := FileAccess.open(pck, FileAccess.WRITE)
+	w.store_buffer(bytes)
+	w = null
+	found = UpdatePack.find_loadable(root, pub, base, eng)
+	_check(found.get("version", "") == "1.1.0", "update pack: a tampered installed pack is ignored, the older good one kept", str(found))
+	# Packs that must never install.
+	var bad: Array = []
+	var c: Array = make.call("1.3.0")
+	bad.append(["unsigned", UpdatePack.install(root, c[0], PackedByteArray(), c[1], pub, base, eng)])
+	c = make.call("1.3.0")
+	bad.append(["bad signature", UpdatePack.install(root, c[0], sign.call(c[0], other), c[1], pub, base, eng)])
+	c = make.call("1.3.0")
+	var sig: PackedByteArray = sign.call(c[0], key)
+	var changed: PackedByteArray = c[0].duplicate()
+	changed[10] ^= 1
+	bad.append(["bad signature", UpdatePack.install(root, changed, sig, c[1], pub, base, eng)])
+	c = make.call("1.3.0", {"packs": {UpdatePack.platform(): {"file": "p.pck", "size": 1, "sha256": "00"}}})
+	bad.append(["wrong size", UpdatePack.install(root, c[0], sign.call(c[0], key), c[1], pub, base, eng)])
+	c = make.call("1.3.0", {"engine": "0.0.1"})
+	bad.append(["other engine", UpdatePack.install(root, c[0], sign.call(c[0], key), c[1], pub, base, eng)])
+	c = make.call("1.3.0", {"min_base": "1.3.0"})
+	bad.append(["needs full download", UpdatePack.install(root, c[0], sign.call(c[0], key), c[1], pub, base, eng)])
+	c = make.call("0.9.0")
+	bad.append(["not newer", UpdatePack.install(root, c[0], sign.call(c[0], key), c[1], pub, base, eng)])
+	c = make.call("1.3.0")
+	bad.append(["no key", UpdatePack.install(root, c[0], sign.call(c[0], key), c[1], null, base, eng)])
+	var wrong: Array = bad.filter(func(x: Array) -> bool: return x[0] != x[1])
+	_check(wrong.is_empty() and UpdatePack.installed(root) == ["1.2.0", "1.1.0"] and not FileAccess.file_exists(c[1]),
+		"update pack: unsigned, wrong key, changed manifest/pack, other engine, full-download-only, older and keyless packs are refused", str(wrong))
+	# The good one really loads (into this test run only: one file under
+	# res://sh_selftest/), and the startup loader stays off in tests.
+	var loaded: bool = ProjectSettings.load_resource_pack(found.get("path", ""), true)
+	_check(loaded and FileAccess.get_file_as_string("res://sh_selftest/pack_marker.txt") == "1.1.0" and UpdatePack.loaded.is_empty(),
+		"update pack: a good pack loads; nothing is loaded at startup in a test run")
+	# Installing a third version keeps only the newest two.
+	c = make.call("1.4.0")
+	var err4: String = UpdatePack.install(root, c[0], sign.call(c[0], key), c[1], pub, base, eng)
+	_check(err4 == "" and UpdatePack.installed(root) == ["1.4.0", "1.2.0"], "update pack: keeps the newest two installed", str(UpdatePack.installed(root)))
+	_rm_tree(root)
+
+## A Village course (VillageCourse): idle until START is flown, then one
+## lap with the marker, the best time saved (tests: user://selftest/), and
+## a run that stalls ends by itself after the timeout.
+func _test_village_course() -> void:
+	var root := Node3D.new()
+	get_tree().root.add_child(root)
+	var d: Drone = (load("res://scenes/Drone.tscn") as PackedScene).instantiate()
+	root.add_child(d)
+	d.freeze = true
+	d.global_position = Vector3(0, 1, 10)
+	await get_tree().physics_frame
+	DirAccess.remove_absolute(VillageCourse.BEST_PATH)
+	var vc := VillageCourse.create(root, "club", [
+		["start", Vector3(0, 0, 0), 0.0],
+		["gate", Vector3(0, 0, -20), 0.0],
+		["new", ["turn", Vector3(3, 0, -35), 0.0, "left"]],
+		["opening", Vector3(0, 1.2, -50), PI, 2.0, 2.0],
+	])
+	d.global_position = Vector3(0, 1, -10)
+	vc.start(d, null)
+	await _fly_to(d, Vector3(0, 1.0, 5)) # back round: through START the right way
+	var idle_ok: bool = vc.running # START was flown backwards first: not started
+	await _fly_to(d, Vector3(0, 1.0, -5))
+	var started: bool = vc.running and vc._next == 1 and vc._marker.visible
+	await _fly_to(d, Vector3(0, 1.0, -25))
+	await _fly_to(d, Vector3(0, 1.0, -40))
+	await _fly_to(d, Vector3(-4, 1.2, -48))
+	await _fly_to(d, Vector3(0, 1.2, -55))
+	await _fly_to(d, Vector3(0, 1.2, -45)) # through the opening (it faces back)
+	await _fly_to(d, Vector3(0, 1.2, 5))
+	await _fly_to(d, Vector3(0, 1.0, -5)) # START again: the finish
+	var best: float = VillageCourse.best_time("club")
+	_check(not idle_ok and started and not vc.running and best > 0.0 and not vc._marker.visible,
+		"village course: starts at START, one lap, best time saved, marker gone after", "%s %s %s %.2f" % [idle_ok, started, vc.running, best])
+	await _fly_to(d, Vector3(0, 1.0, 5))
+	await _fly_to(d, Vector3(0, 1.0, -5))
+	var again: bool = vc.running
+	vc._last_gate_t -= VillageCourse.TIMEOUT + 1.0
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check(again and not vc.running, "village course: a stalled run ends by itself (timeout)")
+	root.queue_free()
+	DirAccess.remove_absolute(VillageCourse.BEST_PATH)
+
+func _fly_to(d: Node3D, to: Vector3) -> void:
+	var pos: Vector3 = d.global_position
+	while pos.distance_to(to) > 0.01:
+		pos = pos.move_toward(to, 2.0)
+		d.global_position = pos
+		await get_tree().physics_frame
+
+## Saves keep keys this version doesn't know: 0.10.1 dropped a newer
+## version's race_line_hue from settings.cfg (DEV_TODO 0.11.0 (c)). Races
+## records and ghosts are written by load-modify-save already.
+func _test_save_keeps_unknown_keys() -> void:
+	var path: String = "user://selftest/settings_keep.cfg"
+	DirAccess.make_dir_recursive_absolute("user://selftest")
+	var cfg := ConfigFile.new()
+	cfg.set_value("settings", "from_the_future", 42)
+	cfg.set_value("later_section", "x", "y")
+	cfg.save(path)
+	Settings._save(path)
+	cfg = ConfigFile.new()
+	cfg.load(path)
+	_check(cfg.get_value("settings", "from_the_future", 0) == 42 and cfg.get_value("later_section", "x", "") == "y" and cfg.has_section_key("settings", "race_line_hue"),
+		"saves: settings keep keys written by a newer version")
+	DirAccess.remove_absolute(path)
+
+func _rm_tree(dir: String) -> void:
+	var d := DirAccess.open(dir)
+	if d == null:
+		return
+	for f in d.get_files():
+		d.remove(f)
+	for sub in d.get_directories():
+		_rm_tree(dir.path_join(sub))
+	DirAccess.remove_absolute(dir)
 
 ## A gnome is picked up by flying the drone into it, remembered, and
 ## counted on the Achievements screen.
@@ -923,6 +1097,22 @@ func _test_race() -> void:
 			d.global_position = pos
 			await get_tree().physics_frame
 	_check(course._missed_gate == -1 and course._next == 3, "race: flying the missed gate clears it, the race goes on", "missed %d next %d" % [course._missed_gate, course._next])
+	# Competition rule: skipping gate 3 voids the lap, the course carries on,
+	# and at START the race starts over (no lap counted).
+	Settings.race_strict = true
+	var laps_before: int = course._race_laps.size()
+	for gi in [4, 5, 0]:
+		for p in [course._gates[gi].xf * Vector3(0, 0, 2.0), course._gates[gi].xf * Vector3(0, 0, -2.0)]:
+			while pos.distance_to(p) > 0.01:
+				pos = pos.move_toward(p, 2.5)
+				d.global_position = pos
+				await get_tree().physics_frame
+		if gi == 4:
+			_check(course._void_gate == 3 and course._missed_gate == -1 and course._next == 5, "race: competition rule - a missed gate voids the lap, no go back",
+				"void %d missed %d next %d" % [course._void_gate, course._missed_gate, course._next])
+	_check(course._race_laps.size() == 0 and laps_before >= 0 and course._lap == 1 and course._void_gate == -1 and course._lap_start >= 0.0,
+		"race: competition rule - a void lap isn't counted, the race starts over at START", "laps %d lap %d" % [course._race_laps.size(), course._lap])
+	Settings.race_strict = false
 	_check(not RaceCourse.stats("race_field", 1).get("five", [0, 0]).is_empty() and int(RaceCourse.stats("race_field", 1).five[0]) >= 2 and int(RaceCourse.stats("race_field", 1).five[1]) >= 1,
 		"race: races started / finished are counted", str(RaceCourse.stats("race_field", 1)))
 	_check(RaceCourse.records("race_field").has("five"), "race: the personal best is saved for the menu")
@@ -1256,14 +1446,15 @@ func _test_tracks() -> void:
 			if course == null:
 				continue
 			# Every opening is clear (a ray through it hits nothing within 3 m
-			# either side), and walking the gates in order times a lap.
+			# either side - 1.5 m for whoop gates indoors), and walking the gates in order times a lap.
 			var space: PhysicsDirectSpaceState3D = sc.get_world_3d().direct_space_state
 			var dr: Drone = _drone()
 			dr.freeze = true
 			var blocked: Array[int] = []
 			for i in range(course._gates.size()):
 				var g: Dictionary = course._gates[i]
-				var q := PhysicsRayQueryParameters3D.create(g.xf * Vector3(0, 0, 3.0), g.xf * Vector3(0, 0, -3.0))
+				var rd: float = 3.0 if g.w >= 1.0 else 1.5
+				var q := PhysicsRayQueryParameters3D.create(g.xf * Vector3(0, 0, rd), g.xf * Vector3(0, 0, -rd))
 				q.exclude = [dr.get_rid()]
 				if not space.intersect_ray(q).is_empty():
 					blocked.append(i + 1)
@@ -1290,7 +1481,7 @@ func _test_tracks() -> void:
 				course._prev_pos = mid
 				course._update_line()
 				var cut1: float = lm.get_shader_parameter("cut")
-				var cut_ok: bool = course._next == 1 and cut0 < 4.0 and cut1 > cut0 + 1.0
+				var cut_ok: bool = course._next == 1 and cut0 < 4.0 and cut1 > cut0 + 0.25 # (a whoop track's first stretch can be 4 m)
 				var why: String = _line_rule(course, lm)
 				var len0: int = Settings.race_line_length
 				Settings.race_line_length = 0
@@ -1361,7 +1552,7 @@ func _test_tracks() -> void:
 				var c: Dictionary = course._gates[i + 2]
 				if (a.xf.origin - c.xf.origin).length() < 1.0 or ((a.xf.origin - b.xf.origin) * Vector3(1, 0, 1)).length() > 0.1 or ((b.xf.origin - c.xf.origin) * Vector3(1, 0, 1)).length() > 0.1:
 					continue
-				var ok: bool = a.xf.origin.y > b.xf.origin.y and b.xf.origin.y > c.xf.origin.y and b.xf.origin.y - c.xf.origin.y >= 3.0
+				var ok: bool = a.xf.origin.y > b.xf.origin.y and b.xf.origin.y > c.xf.origin.y and b.xf.origin.y - c.xf.origin.y >= (3.0 if a.w >= 1.0 else 0.8) # (whoop ladder: 0.9 m)
 				for g: Dictionary in [a, b, c]:
 					ok = ok and course._crossed(g, g.xf * Vector3(0, 0, 1), g.xf * Vector3(0, 0, -1)) and not course._crossed(g, g.xf * Vector3(0, 0, -1), g.xf * Vector3(0, 0, 1))
 				ok = ok and a.xf.basis.z.dot(b.xf.basis.z) < -0.99 and a.xf.basis.z.dot(c.xf.basis.z) > 0.99
@@ -1425,10 +1616,11 @@ func _test_race_migration() -> void:
 	var ids: Array = RaceCourse.track_list("race_field").map(func(x: Dictionary) -> String: return x.id)
 	var meadow: int = 1 + ids.find("meadow_sprint")
 	var shed: int = 1 + ids.find("shed_run")
+	var league: int = 1 + RaceCourse.track_list("race_arena").map(func(x: Dictionary) -> String: return x.id).find("league_night")
 	rc = ConfigFile.new()
 	rc.load(RaceCourse.RECORDS_PATH)
 	_check(is_equal_approx(float(rc.get_value("race_field#club_loop", "five", 0.0)), 31.0) and is_equal_approx(float(RaceCourse.records("race_field", meadow).get("five", [0.0])[0]), 12.0)
-		and RaceCourse.records("race_field", shed).is_empty() and RaceCourse.records("race_arena", 1).has("five") and not rc.has_section("race_field#1"),
+		and RaceCourse.records("race_field", shed).is_empty() and RaceCourse.records("race_arena", league).has("five") and not rc.has_section("race_field#1"),
 		"race saves: version 2 records follow their track (by id), redesigned tracks start fresh", str(rc.get_sections()))
 	var sc2 := ConfigFile.new()
 	sc2.load(RaceCourse.STATS_PATH)

@@ -43,6 +43,16 @@ func refresh() -> void:
 		l.text = "No gnomes in this build yet."
 		l.theme_type_variation = "Muted"
 		_body.add_child(l)
+	# The Village's timed courses (VillageCourse): best time over all drones.
+	UIKit.gap(_body, 12)
+	UIKit.section(_body, "Village courses")
+	var vh := Label.new()
+	vh.text = "Fly through a course's start gate on the club field in the Village."
+	vh.theme_type_variation = "Small"
+	_body.add_child(vh)
+	for id in VillageCourse.COURSES:
+		var b: float = VillageCourse.best_time(id)
+		_row(VillageCourse.COURSES[id], "", RaceCourse._fmt(b) if b > 0.0 else "--", b > 0.0)
 
 func _row(title: String, text: String, progress: String, done: bool) -> void:
 	var row := HBoxContainer.new()

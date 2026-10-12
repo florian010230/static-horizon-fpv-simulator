@@ -334,37 +334,44 @@ func tracks() -> Array:
 		]},
 		# Hard: low under a hurdle, up through a 3 m tower gate, climb into
 		# the scaffold tower (its 6-9 m bay, northward), drop and hook east
-		# behind the bales, a three-gate slalom through the bale gaps
-		# (hairpins), the split-S ladder, a dive, a tower gate, home.
-		{"id": "tower_line", "rev": 2, "name": "Tower Line", "level": "hard", "calls": [
+		# behind the bales, a tight zig-zag through three neighbouring bale
+		# gaps (two hairpins round the bale pairs), the split-S ladder, a
+		# dive, a tower gate, a snake of three gates 8 m apart (two more
+		# hairpins), home. Rev 3 (2026-10-12): the hairpins.
+		{"id": "tower_line", "rev": 3, "name": "Tower Line", "level": "hard", "calls": [
 			["start", Vector3(-20, 0.05, 25), W],
 			["hurdle", Vector3(-40, 0.05, 25), W, "gate_b"],
 			["turn", Vector3(-57.3, 0.05, 13.5), 0.40, "left"],
 			["gate", Vector3(-60, 0.05, 8), N, 1, 3.0], # tower gate, 3 m up
 			["sized", sc + Vector3(1.5, 0.05, 3.4), N, 2.6, 2.4, 0.06, 6.19, "gate_a"], # scaffold bay, 7.5 m up
 			["gate", Vector3(-60, 0.05, -84), E, 1, 0.0, 0, "gate_b"],
-			["gate", gap.call(0), S], # bale slalom: south, north, south
-			["gate", gap.call(2), N, 1, 0.0, 0, "gate_b"],
-			["gate", gap.call(4), S],
+			["gate", gap.call(0), S], # bale zig-zag: south, north, south (square: the user wants the bale gates straight)
+			["gate", gap.call(1), N, 1, 0.0, 0, "gate_b"],
+			["gate", gap.call(2), S],
 			["ladder", Vector3(-5, 0.05, -50), S],
 			["dive", Vector3(25, 0.05, -20), 0.0, 5.0],
 			["turn", Vector3(51.0, 0.05, -6.1), -2.44, "left"],
 			["gate", Vector3(55, 0.05, 0), S, 1, 1.52, 0, "gate_b"], # tower gate
-			["hurdle", Vector3(45, 0.05, 28), W],
-			["gate", Vector3(12, 0.05, 25), W, 2, 0.0, 0, "gate_b"], # double gate, lower
+			["gate", Vector3(30, 0.05, 33), W - 0.35], # snake: west, east, west, yawed into the turns
+			["gate", Vector3(30, 0.05, 25), E + 0.35, 1, 0.0, 0, "gate_b"],
+			["gate", Vector3(30, 0.05, 17), W + 0.35],
+			["gate", Vector3(8, 0.05, 23), W, 2, 0.0, 0, "gate_b"], # double gate, lower
 		]},
 		# Hard: a hurdle, a hairpin (out west, back east through the gate
-		# beside it), up through a 3 m tower gate, a 6 m dive, east through
-		# the shed (both doors), up the split-S ladder, a snap right and a
-		# snap left home.
-		{"id": "harvest_hell", "rev": 2, "name": "Harvest Hell", "level": "hard", "calls": [
+		# beside it), a snake of three gates 8 m apart (north, south, north -
+		# the last a 3 m tower gate), a 6 m dive, east through the shed (both
+		# doors), up the split-S ladder, a snap right and a snap left home.
+		# Rev 3 (2026-10-12): the snake.
+		{"id": "harvest_hell", "rev": 3, "name": "Harvest Hell", "level": "hard", "calls": [
 			["start", Vector3(40, 0.05, 30), W],
 			["hurdle", Vector3(15, 0.05, 30), W, "gate_b"],
 			["gate", Vector3(-12, 0.05, 30), W], # hairpin: out ...
 			["turn", Vector3(-17.0, 0.05, 25.5), 0.0, "left"], # ... round the flag ...
 			["gate", Vector3(-12, 0.05, 21), E, 1, 0.0, 0, "gate_b"], # ... and back
-			["gate", Vector3(20, 0.05, 5), N, 1, 3.0], # tower gate, 3 m up
-			["dive", Vector3(20, 0.05, -25), 0.0, 6.0, "gate_b"],
+			["gate", Vector3(12, 0.05, 8), N - 0.35], # snake: north, south, north (the first two yawed into the turns)
+			["gate", Vector3(20, 0.05, 8), S + 0.35, 1, 0.0, 0, "gate_b"],
+			["gate", Vector3(28, 0.05, 8), N, 1, 3.0], # tower gate, 3 m up
+			["dive", Vector3(28, 0.05, -25), 0.0, 6.0, "gate_b"],
 			["sized", Vector3(50.4, 0.05, -72), E, 2.6, 2.4, 0.1, 0.0], # the shed's west door
 			["sized", Vector3(69.6, 0.05, -72), E, 2.6, 2.4, 0.1, 0.0, "gate_b"], # out at the east door
 			["ladder", Vector3(78, 0.05, -42), S],

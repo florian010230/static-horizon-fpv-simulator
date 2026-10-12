@@ -120,6 +120,9 @@ const WIND_SPEEDS: Array[float] = [0.0, 3.0, 6.0, 10.0]
 var prop_damage: bool = false
 ## Race mode: a translucent ghost flies your best lap (RaceCourse).
 var race_ghost: bool = true
+## Competition rule (MultiGP style): a missed gate voids the lap instead of
+## "go back". Off by default (decided 2026-10-11).
+var race_strict: bool = false
 ## The racing line through a race track's gates (RaceCourse._build_line):
 ## its hue in degrees (full saturation), -1 = off. One slider in
 ## Settings -> Flight: far left Off, then the colour wheel. Orange default.
@@ -183,7 +186,7 @@ const SAVED_FIELDS: Array[String] = ["crosshair_enabled", "shadows_enabled", "gr
 	"max_fps", "vsync", "camera_angle_deg", "camera_fov_deg", "view_distance", "rates_type", "rates_roll", "rates_pitch", "rates_yaw",
 	"selected_drone", "game_mode", "osd_enabled", "battery_enabled", "video_effect", "wind_level", "units",
 	"stick_overlay", "prop_wash", "throttle_mid", "throttle_expo", "lens_fisheye",
-	"prop_damage", "race_ghost", "race_line_hue", "race_line_length", "check_updates", "camera_look"]
+	"prop_damage", "race_ghost", "race_strict", "race_line_hue", "race_line_length", "check_updates", "camera_look"]
 var _persist: bool = true
 var _last_saved: String = ""
 var _save_timer: float = 0.0
@@ -216,12 +219,15 @@ func _snapshot() -> String:
 		parts.append(str(get(f)))
 	return "|".join(parts)
 
-func _save() -> void:
+## Starts from the file on disk, so keys this version doesn't know (written
+## by a newer version the pilot also runs) survive a save.
+func _save(path: String = SETTINGS_PATH) -> void:
 	var cfg := ConfigFile.new()
+	cfg.load(path)
 	for f in SAVED_FIELDS:
 		cfg.set_value("settings", f, get(f))
 	cfg.set_value("settings", "fullscreen", is_fullscreen())
-	cfg.save(SETTINGS_PATH)
+	cfg.save(path)
 
 func _load() -> void:
 	var cfg := ConfigFile.new()
@@ -346,6 +352,12 @@ func set_full_resolution(on: bool) -> void:
 		if f:
 			f.store_string("[display]\n\nwindow/dpi/allow_hidpi=false\n")
 
+## A race map's shadow map holds its track's gates: one cached file per
+## track (and the track's rev).
+func _shadow_suffix(scene: Node) -> String:
+	var rc: RaceCourse = scene.get_node_or_null("RaceCourse") as RaceCourse
+	return "-shadow.bin" if rc == null else "-shadow-t%d-r%d.bin" % [rc.track, rc.rev]
+
 ## Closes the game and starts it again (settings saved first) - the
 ## window's resolution mode can only change at startup.
 func restart_game() -> void:
@@ -458,7 +470,7 @@ func apply_shadow_setting() -> void:
 			scene.set_meta("shadow_map_done", true)
 			WorldShading.clear_shadow_map()
 			WorldShading.capture(scene, -sun.global_transform.basis.z, region, WorldShading.RES[clampi(graphics_quality, 0, 2)],
-				MapCache.path(scene, "-shadow.bin") if scene is BuiltMap and MapCache.enabled(scene) else "")
+				MapCache.path(scene, _shadow_suffix(scene)) if scene is BuiltMap and MapCache.enabled(scene) else "")
 	if not region.has_area():
 		WorldShading.clear_shadow_map()
 	WorldShading.set_shadows(shadows_enabled and region.has_area())

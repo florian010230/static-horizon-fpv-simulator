@@ -240,9 +240,17 @@ func _booths() -> void:
 		geo.box(q + Vector3(0, 0.22, 0.1), Vector3(0.08, 0.42, 0.08), "metal")
 
 ## The map's tracks (RaceCourse.make builds the one Settings.race_track
-## picks, at load time on top of the cached map). Tracks 2-6 are
-## placeholders (track 1's course) until they are designed.
+## picks, at load time on top of the cached map): 2 easy, 2 medium, 2
+## hard. Whoop scale: 60 cm gates, flags at k 0.3, a whoop ladder (0.9 m
+## gaps). Aisles: north z -3.5, middle z 1.5, south z 8.5; desk clusters
+## x -9.6..3.8 in rows z -6, -1, 4.
+## Yaw: -PI/2 flies east (+x), PI/2 west, 0 north (-z), PI south.
 func tracks() -> Array:
+	var E: float = -PI * 0.5
+	var W: float = PI * 0.5
+	var N: float = 0.0
+	var S: float = PI
+	const K: float = 0.3
 	var t1: Array = [
 		["sized", Vector3(-11, 0.02, -3.5), -PI * 0.5, 0.6, 0.6, 0.05, 0.3, "gate_dark"],
 		["sized", Vector3(0, 0.02, -3.5), -PI * 0.5, 0.6, 0.6, 0.05, 1.0, "gate_a"],
@@ -255,7 +263,74 @@ func tracks() -> Array:
 		["sized", Vector3(-6, 0.76, 8.5), PI * 0.5, 0.6, 0.6, 0.05, 0.0, "gate_b"],
 		["sized", Vector3(-13, 0.02, 2), 0.0, 0.6, 0.6, 0.05, 0.3, "gate_a"],
 	]
-	var out: Array = [{"id": "after_hours", "name": "After Hours", "level": "easy", "calls": t1}]
-	for k in range(2, 7):
-		out.append({"id": "track_%d" % k, "name": "Track %d" % k, "level": ["easy", "medium", "medium", "hard", "hard"][k - 2], "calls": t1})
-	return out
+	return [
+		{"id": "after_hours", "name": "After Hours", "level": "easy", "calls": t1},
+		# Easy: east along the middle aisle, south round the open area, west
+		# along the south aisle past the kitchen, north home.
+		{"id": "coffee_run", "name": "Coffee Run", "level": "easy", "calls": [
+			["sized", Vector3(-11, 0.02, 1.5), E, 0.6, 0.6, 0.05, 0.3, "gate_dark"],
+			["sized", Vector3(3, 0.02, 1.5), E, 0.6, 0.6, 0.05, 0.5, "gate_a"],
+			["sized", Vector3(7, 0.02, 6), S, 0.6, 0.6, 0.05, 0.3, "gate_b"],
+			["sized", Vector3(-2, 0.02, 8.5), W, 0.6, 0.6, 0.05, 0.8, "gate_a"],
+			["sized", Vector3(-12, 0.02, 8.5), W, 0.6, 0.6, 0.05, 0.3, "gate_b"],
+			["sized", Vector3(-15, 0.02, 5), N, 0.6, 0.6, 0.05, 0.4, "gate_a"],
+		]},
+		# Medium: east along the north aisle, in at the meeting room's west
+		# door, round the far side of the table, out the south door, round a
+		# flag at the ping-pong table, west over the desks (a gate on a desk
+		# cluster), a flag in the U-turn home.
+		{"id": "meeting", "name": "Meeting", "level": "medium", "calls": [
+			["sized", Vector3(-7.5, 0.02, -3.5), E, 0.6, 0.6, 0.05, 0.3, "gate_dark"],
+			["sized", Vector3(7.8, 0.02, -4.5), E, 0.6, 0.6, 0.05, 0.5, "gate_a"], # west door
+			["sized", Vector3(13, 0.02, -9.7), E, 0.6, 0.6, 0.05, 0.5, "gate_b"], # behind the table
+			["sized", Vector3(16.1, 0.02, -2.9), S, 0.6, 0.6, 0.05, 0.4, "gate_a"], # south door
+			["turn", Vector3(14.6, 0.02, 1.3), W, "left", "gate_b", K], # round the ping-pong table
+			["sized", Vector3(-4.6, 0.76, -1), W, 0.6, 0.6, 0.05, 0.45, "gate_b"], # on the desks, over the monitors
+			["turn", Vector3(-12.8, 0.02, -2.25), N, "left", "gate_a", K],
+		]},
+		# Medium: a three-flag slalom along the south aisle, a low gate in the
+		# open area and a gate hung from the ceiling just past it (climb!),
+		# west along the north aisle through a low gate, home past the kitchen.
+		{"id": "open_plan", "name": "Open Plan", "level": "medium", "calls": [
+			["sized", Vector3(-10, 0.02, 9.3), E, 0.6, 0.6, 0.05, 0.3, "gate_dark"],
+			["turn", Vector3(-6, 0.02, 8.5), E, "left", "gate_a", K],
+			["turn", Vector3(-1, 0.02, 8.5), E, "right", "gate_b", K],
+			["turn", Vector3(3.5, 0.02, 8.5), E, "left", "gate_a", K],
+			["sized", Vector3(7, 0.02, 6), N, 0.6, 0.6, 0.05, 0.1, "gate_b"], # low ...
+			["hanging", Vector3(7, 2.3, 1.5), N, 2.98, "gate_a", 0.6, 0.6], # ... then up under the ceiling
+			["sized", Vector3(-4, 0.02, -3.5), W, 0.6, 0.6, 0.05, 0.1, "gate_b"], # low gate, north aisle
+		]},
+		# Hard: into the server room, east down the rack aisle, a hairpin round
+		# the end of the racks, west along the back, out the door; under the
+		# ping-pong table (southward) and a loop round it, the whoop ladder,
+		# round the pillars home.
+		{"id": "server_sprint", "name": "Server Sprint", "level": "hard", "calls": [
+			["sized", Vector3(-9, 0.02, 1.5), E, 0.6, 0.6, 0.05, 0.3, "gate_dark"],
+			["sized", Vector3(13.3, 0.02, 7.6), E, 0.6, 0.6, 0.05, 0.4, "gate_a"], # rack aisle
+			["sized", Vector3(14.5, 0.02, 10.45), W, 0.6, 0.6, 0.05, 0.4, "gate_b"], # behind the racks, after the hairpin (square: the aisle is 1.1 m)
+			["sized", Vector3(10.8, 0.02, 7.5), W, 0.6, 0.6, 0.05, 0.4, "gate_a"], # out the door
+			["sized", Vector3(13.9, 0.02, 0.2), S, 0.6, 0.5, 0.04, 0.0, "gate_b"], # under the ping-pong table
+			["turn", Vector3(15.4, 0.02, -0.2), N, "right", "gate_a", K], # back up its east side
+			["ladder", Vector3(6.5, 0.02, -1.0), W, 0.9, "gate_b", 0.6],
+			["turn", Vector3(5.0, 0.02, 5.0), S, "right", "gate_a", K], # west of the pillar
+			["turn", Vector3(-10.6, 0.02, 5.0), N, "left", "gate_b", K], # round the other pillar
+		]},
+		# Hard, a lap of (nearly) everything: a three-flag slalom east along
+		# the middle aisle, the whoop ladder, the meeting room in at the south
+		# door and out at the west door, a gate hung from the ceiling over
+		# the north aisle, a snake of three gates (two hairpins), home.
+		{"id": "overtime", "name": "Overtime", "level": "hard", "calls": [
+			["sized", Vector3(-11.5, 0.02, 1.5), E, 0.6, 0.6, 0.05, 0.3, "gate_dark"],
+			["turn", Vector3(-6, 0.02, 1.5), E, "left", "gate_a", K],
+			["turn", Vector3(-2, 0.02, 1.5), E, "right", "gate_b", K],
+			["turn", Vector3(2, 0.02, 1.5), E, "left", "gate_a", K],
+			["ladder", Vector3(6.5, 0.02, 1.5), E, 0.9, "gate_b", 0.6],
+			["sized", Vector3(16.1, 0.02, -2.9), N, 0.6, 0.6, 0.05, 0.4, "gate_a"], # south door, in
+			["sized", Vector3(13, 0.02, -9.7), W, 0.6, 0.6, 0.05, 0.5, "gate_b"], # behind the table
+			["sized", Vector3(7.8, 0.02, -4.5), W, 0.6, 0.6, 0.05, 0.5, "gate_a"], # west door, out
+			["hanging", Vector3(-2.5, 2.2, -3.5), W, 2.98, "gate_b", 0.6, 0.6],
+			["sized", Vector3(-13, 0.02, -4.0), W + 0.35, 0.6, 0.6, 0.05, 0.3, "gate_a"], # snake: west, east, west
+			["sized", Vector3(-13, 0.02, -2.2), E - 0.35, 0.6, 0.6, 0.05, 0.3, "gate_b"],
+			["sized", Vector3(-13, 0.02, -0.4), W + 0.35, 0.6, 0.6, 0.05, 0.3, "gate_a"],
+		]},
+	]
