@@ -260,6 +260,20 @@ func _test_menu_flow() -> void:
 	await _wait(0.2)
 	var settings: Control = menu.get("_settings")
 	_check(settings.visible and not menu._screens["main"].visible, "menu: Settings opens from home")
+	# Settings by topic (2026-10-12): six tabs, radio first; each setting in
+	# its topic's tab (nothing lost in the move).
+	var stabs: TabContainer = settings.settings_tabs
+	var tab_ok: bool = stabs != null and stabs.get_tab_count() == 6
+	var where: Dictionary = {"Radio": ["Calibrate Radio", "Assign Arm Switch", "Assign Mode Switch"], "Rates": ["Betaflight"], "Flying": ["Battery simulation", "Wind (outdoor maps)", "Performance mode (240 Hz physics)"],
+		"Race": ["Competition rule", "Ghost of your best lap"], "Camera & screen": ["Camera angle", "Crosshair"], "Graphics": ["Graphics quality", "VSync"]}
+	var missing: Array = []
+	if tab_ok:
+		for tname: String in where:
+			var page: Node = stabs.get_child(SettingsScreens.TAB_NAMES.find(tname))
+			for txt: String in where[tname]:
+				if _find_button(page, txt) == null and _find_text(page, txt) == null:
+					missing.append("%s/%s" % [tname, txt])
+	_check(tab_ok and missing.is_empty() and stabs.get_tab_title(0) == "Radio", "settings: six tabs radio first, every setting in its topic", str(missing))
 	# Racing line: one slider, far left Off, then hues; orange by default.
 	var line_sl := settings.find_child("RaceLineSlider", true, false) as HSlider
 	var hue0: int = Settings.race_line_hue
@@ -291,6 +305,29 @@ func _test_menu_flow() -> void:
 		play.pressed.emit()
 	await _wait(0.2)
 	_check(menu._screens["mode"].visible, "menu: Play asks for the mode first")
+	# The menu's look (2026-10-12): the original logo image on the home
+	# screen; a step bar over Mode with Drone clickable back, Mode current.
+	var logo: TextureRect = menu._screens["main"].find_child("Logo", true, false) as TextureRect
+	_check(logo != null and logo.texture != null, "menu: the home screen shows the original logo image")
+	var sb: Node = menu._screens["main"].find_child("SpecBars", true, false)
+	var sp_ok: bool = sb != null
+	if sb:
+		for n in ["Speed", "Punch", "Weight"]:
+			var v: float = (sb.get_node(n) as ProgressBar).value
+			sp_ok = sp_ok and v > 0.05 and v <= 1.0
+	var whoop: Dictionary = menu.spec_values("whoop")
+	var race: Dictionary = menu.spec_values("race")
+	_check(sp_ok and race.speed > whoop.speed and race.weight > whoop.weight, "menu: the drone card's spec bars show the real numbers on one scale",
+		"whoop %s race %s" % [whoop, race])
+	# No step bar (the user, 2026-10-12): Back leads back step by step.
+	_check(menu.find_child("StepBar", true, false) == null, "menu: no step bar on any screen")
+	var mode_back: Button = _find_button(menu._screens["mode"], "Back")
+	if mode_back:
+		mode_back.pressed.emit()
+		await _wait(0.2)
+		_check(menu._screens["main"].visible, "menu: Back on the mode screen goes home")
+		_find_button(menu, "Play").pressed.emit()
+		await _wait(0.2)
 	_find_button(menu._screens["mode"], "Race").pressed.emit()
 	await _wait(0.2)
 	var race_cards: int = 0
@@ -477,6 +514,17 @@ func _test_village_course() -> void:
 	root.queue_free()
 	DirAccess.remove_absolute(VillageCourse.BEST_PATH)
 
+func _find_text(n: Node, text: String) -> Node:
+	if n is Label and (n as Label).text == text:
+		return n
+	if n is Button and (n as Button).text == text:
+		return n
+	for c in n.get_children():
+		var f: Node = _find_text(c, text)
+		if f:
+			return f
+	return null
+
 func _fly_to(d: Node3D, to: Vector3) -> void:
 	var pos: Vector3 = d.global_position
 	while pos.distance_to(to) > 0.01:
@@ -562,6 +610,8 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		_float_checked[map] = true
 		var fl: Array = (sc as BuiltMap).floating_pieces()
 		_check(fl.is_empty(), tag + ": nothing floats in the air", str(fl.slice(0, 3)))
+		var lc: Array = (sc as BuiltMap).layout_conflicts()
+		_check(lc.is_empty(), tag + ": layout makes sense (no building on a road or rail, none in another)", "%d: %s" % [lc.size(), str(lc.slice(0, 4))])
 		if sc.has_method("surface_glitches"):
 			var sg: Array = sc.surface_glitches()
 			_check(sg.is_empty(), tag + ": no terrain through roads or rails", "%d spots: %s" % [sg.size(), str(sg.slice(0, 3))])

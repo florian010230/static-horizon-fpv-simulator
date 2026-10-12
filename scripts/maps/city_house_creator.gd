@@ -140,6 +140,7 @@ static func _pick(r: RandomNumberGenerator, weights: Dictionary, not_this: Strin
 ## map's overrides: "seed", "remove", "style", and the pins "floors",
 ## "shop", "shop_name", "awning", "arch", "balcony".
 static func build_row(g: Geo, lots: Array, seed_value: int) -> Dictionary:
+	g.begin_object("town house row")
 	ensure_materials(g)
 	var out: Array = []
 	var row_trees: Array = []
@@ -151,6 +152,11 @@ static func build_row(g: Geo, lots: Array, seed_value: int) -> Dictionary:
 		var ov: Dictionary = Pieces.override(g, id)
 		lot["id"] = id
 		if ov.get("remove", false):
+			continue
+		# Never into another building (two rows meeting at a block corner):
+		# the lot stays empty (layout rule, 2026-10-12).
+		var fc: Vector3 = fr * Vector3(0, 0, -lot.depth * 0.5)
+		if not g.claim_free(Vector2(fc.x, fc.z), Vector2(fr.basis.x.x, fr.basis.x.z), Vector2(lot.width, lot.depth) * 0.5, 0.7): # (with the eaves)
 			continue
 		var r := RandomNumberGenerator.new()
 		r.seed = ov.get("seed", Pieces.seed_of(id, seed_value))
@@ -167,6 +173,7 @@ static func build_row(g: Geo, lots: Array, seed_value: int) -> Dictionary:
 			if not shown.has(v[0]):
 				shown[v[0]] = true
 				out.append(["%s_%02d" % [v[0], i], v[1], v[2]])
+	g.end_object()
 	return {"views": out, "trees": row_trees}
 
 ## Which sides (-1 / +1 along the house's x) of lot i have no neighbour
@@ -193,6 +200,7 @@ static func open_sides(lots: Array, i: int) -> Array:
 	return out
 
 static func build(g: Geo, frame: Transform3D, width: float, depth: float, style_name: String, r: RandomNumberGenerator, o: Dictionary = {}) -> Dictionary:
+	g.begin_object("town house")
 	ensure_materials(g)
 	var h := CityHouseCreator.new()
 	h.geo = g
@@ -203,6 +211,7 @@ static func build(g: Geo, frame: Transform3D, width: float, depth: float, style_
 	h.style = style_name
 	h.opts = o
 	h._build()
+	g.end_object()
 	return {"views": h.views, "trees": h.trees}
 
 # --- helpers (all in the house frame) ---------------------------------------------
@@ -253,6 +262,9 @@ func _build() -> void:
 	H = gf + (floors - 1) * fl
 	var cols: Array = PLASTER[style]
 	col = cols[rng.randi() % cols.size()] * rng.randf_range(0.96, 1.03)
+	if opts.get("lod", false):
+		_lod()
+		return
 	var bays: int = maxi(2, int(W / (2.8 if style != "modern" else 3.4)))
 	var bay: float = W / bays
 	# Pinned options (opts, the map's overrides) still draw: see Pieces.
@@ -291,6 +303,29 @@ func _build() -> void:
 	if arch:
 		views.append(["archway", f * Vector3(arch_x, 2.0, 6.0), f * Vector3(arch_x, 1.8, -D)])
 	views.append(["town_" + style, f * Vector3(-W * 0.8, 3.0, 6.5), f * Vector3(W * 0.2, H * 0.55, 0.0)])
+
+## Low detail (far outside the flying area, user 2026-10-12): the same
+## width, depth, height and wall colour (the same first random draws), a
+## plain box, a gable roof (flat for "modern") from the same palette - no
+## windows, shop, balconies or collision (Geo.mark_solid keeps the
+## footprint); Geo merges them per material and cell.
+func _lod() -> void:
+	var body := f * Transform3D(Basis(), Vector3(0, H * 0.5, -D * 0.5))
+	if not geo.has_material("ch_lod_facade"):
+		# A facade with a window pattern: from the street it still reads
+		# as a house, not a block of plaster.
+		geo.add_material("ch_lod_facade", Geo.tex_mat(MapTextures.get_tex("facade_b"), Color(1.0, 0.97, 0.92), 7.0))
+	geo.tint = col
+	geo.box_xf(body, Vector3(W, H, D), "ch_lod_facade", false)
+	geo.mark_solid(body, Vector3(W, H, D))
+	if style != "modern":
+		var pitch: float = deg_to_rad(rng.randf_range(42.0, 50.0) if style == "altbau" else rng.randf_range(28.0, 34.0))
+		var e: float = D * 0.5 + 0.3
+		geo.tint = [Color(0.85, 0.42, 0.3), Color(0.55, 0.3, 0.25), Color(0.4, 0.42, 0.46)][rng.randi() % 3]
+		# (Its base 0.3 m down inside the box: on the box top, the two hidden
+		# faces lay flush - a flicker stack for the surface check.)
+		geo.prism(f * Transform3D(Basis(), Vector3(0, H - 0.3, -D * 0.5)), [Vector2(-e, 0.0), Vector2(e, 0.0), Vector2(0.0, 0.3 + D * 0.5 * tan(pitch))], W + 0.02, "ch_roof", false)
+	geo.tint = Color.WHITE
 
 ## Walls: one box per part; with an archway the ground floor leaves a
 ## passage open front to back (lined, with a lit vault).

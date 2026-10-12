@@ -335,7 +335,7 @@ func _works(site: Dictionary, r: RandomNumberGenerator) -> Array:
 	geo.tint = Color.WHITE
 	IndustryCreator.chimney(geo, o + Vector3(-44, 0, 32), 45.0)
 	IndustryCreator.tanks(geo, o + Vector3(28, 0, -40), 2, 2, r)
-	IndustryCreator.pipe_rack(geo, land, [Vector2(o.x - 33, o.z + 24), Vector2(o.x + 46, o.z + 24), Vector2(o.x + 46, o.z - 27)], 5.5, o.y)
+	IndustryCreator.pipe_rack(geo, land, [Vector2(o.x - 33, o.z + 24), Vector2(o.x + 40, o.z + 24), Vector2(o.x + 40, o.z - 27)], 5.5, o.y) # (x 46 ran through the gatehouse)
 	# Grain silos with their conveyor up from the hopper.
 	v.append_array(IndustryCreator.silos(geo, o + Vector3(12, 0, 45), 3, r, o + Vector3(-28, 0, 45)))
 	# Containers waiting by the gate.

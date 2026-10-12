@@ -149,8 +149,10 @@ static func _tex(img: Image) -> Texture2D:
 	return ImageTexture.create_from_image(img)
 
 static func build(g: Geo, pos: Vector3, yaw: float, seed_value: int, opts: Dictionary = {}) -> Dictionary:
+	g.begin_object("house")
 	var h := HouseCreator.new()
 	h._run(g, pos, yaw, seed_value, opts)
+	g.end_object()
 	return {"views": h.views, "size": Vector2(h.W, h.D), "toilets": h.toilets,
 		"gate": h.gate_at, "drive": h.drive_at, "xf": h.xf}
 
@@ -162,6 +164,7 @@ static func build(g: Geo, pos: Vector3, yaw: float, seed_value: int, opts: Dicti
 ## Returns build()'s dict plus "trees" (TreeCreator entries) and the
 ## garden's views.
 static func build_plot(g: Geo, plot: Dictionary, seed_value: int, opts: Dictionary = {}) -> Dictionary:
+	g.begin_object("house plot")
 	var f: Transform3D = plot.frame
 	var setback: float = opts.get("setback", PLOT_SETBACK)
 	var centre: Vector3 = f * Vector3(0, 0, -(setback + 5.4))
@@ -169,11 +172,16 @@ static func build_plot(g: Geo, plot: Dictionary, seed_value: int, opts: Dictiona
 	var o: Dictionary = opts.duplicate()
 	o["path_to"] = setback + 5.4
 	var info: Dictionary = build(g, centre, atan2(fz.x, fz.z), seed_value, o)
+	if opts.get("lod", false):
+		info["trees"] = [] # no garden at this distance
+		g.end_object()
+		return info
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value * 31 + 7
 	var garden: Dictionary = GardenCreator.build(g, plot, info, rng, opts)
 	info["trees"] = garden.trees
 	info.views.append_array(garden.views)
+	g.end_object()
 	return info
 
 ## House front (door face) to the plot's street edge, in build_plot.
@@ -203,6 +211,9 @@ func _run(g: Geo, pos: Vector3, yaw: float, seed_value: int, opts: Dictionary) -
 	garage = opts.get("garage", ["none", "none", "garage", "carport"][rng.randi() % 4])
 	gside = -1.0 if rng.randf() < 0.5 else 1.0
 	_style()
+	if opts.get("lod", false):
+		_lod()
+		return
 	# A house stands on its own level plot and sets its own occlusion
 	# levels (_ao, from its base): the terrain's ground hook would count
 	# from the ground instead (wrong upstairs) and costs a call per vertex.
@@ -233,6 +244,24 @@ func _run(g: Geo, pos: Vector3, yaw: float, seed_value: int, opts: Dictionary) -
 	geo.ground_fn = saved[4]
 
 var pins: Dictionary = {}
+
+## Low detail (a house far outside the flying area, user 2026-10-12): the
+## same size, wall colour, roof colour and pitch from the same random
+## draws, as a plain box with a gable roof - no windows, garage, garden or
+## collision (Geo.mark_solid keeps its footprint for the layout check and
+## the scatter); Geo merges them per material and cell.
+func _lod() -> void:
+	var saved_tint: Color = geo.tint
+	var mat: String = "hc_plaster" if plaster else "hc_brick"
+	geo.tint = facade_tint
+	var body := xf * Transform3D(Basis(), Vector3(0, wall_top * 0.5, 0))
+	geo.box_xf(body, Vector3(W, wall_top, D), mat, false)
+	geo.mark_solid(body, Vector3(W, wall_top, D))
+	var e: float = D * 0.5 + 0.4
+	var rise: float = e * tan(pitch)
+	geo.tint = roof_tint
+	geo.prism(xf * Transform3D(Basis(), Vector3(0, wall_top - 0.3, 0)), [Vector2(-e, 0.0), Vector2(e, 0.0), Vector2(0.0, rise + 0.3)], W + 0.6, "hc_roof", false) # (base inside the box: no flush hidden faces)
+	geo.tint = saved_tint
 
 func _style() -> void:
 	# Every number is drawn whatever the pins say (see Pieces).
@@ -1031,7 +1060,18 @@ func _garage() -> void:
 		_tint(Color.WHITE)
 		var paint: String = Vehicles.random_paint(rng)
 		var fwd: Vector3 = xf.basis * Vector3(0, 0, 1)
-		Vehicles.car(geo, xf * Vector3(x, 0.0, z), atan2(fwd.x, fwd.z), paint, ["sedan", "hatch", "suv"][rng.randi() % 3])
+		# On the carport's level - where the real ground under a wheel lies
+		# lower (a plot on a slope), the car settles onto it: no tyre in the
+		# air (Geo.floor_fn).
+		var cp: Vector3 = xf * Vector3(x, 0.0, z)
+		if geo.floor_fn.is_valid():
+			for wx in [-0.8, 0.8]:
+				for wz in [-1.4, 1.4]:
+					var wp: Vector3 = xf * Vector3(x + wx, 0.0, z + wz)
+					var gy: float = geo.floor_fn.call(wp.x, wp.z)
+					if gy > -1e5 and gy < cp.y - 0.02:
+						cp.y = gy
+		Vehicles.car(geo, cp, atan2(fwd.x, fwd.z), paint, ["sedan", "hatch", "suv"][rng.randi() % 3])
 	# Driveway out to the street (on a plot: to its street edge).
 	var drive_end: float = maxf(D * 0.5 + 5.3, path_end)
 	_paving(x, D * 0.5 + 0.3, drive_end, gw)

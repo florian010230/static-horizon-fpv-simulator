@@ -40,6 +40,10 @@ func build() -> void:
 	geo.ao_height = 1.2
 	geo.add_material("concrete", Geo.tex_mat(MapTextures.get_tex("old_concrete"), Color.WHITE, 5.0))
 	geo.add_material("deck", Geo.tex_mat(MapTextures.get_tex("old_concrete"), Color(0.85, 0.85, 0.84), 6.0))
+	geo.add_material("paint_yellow", Geo.flat_mat(Color(0.92, 0.75, 0.15), 0.6))
+	geo.add_material("paint_white", Geo.flat_mat(Color(0.92, 0.92, 0.88), 0.6))
+	geo.add_material("lamp_dead", Geo.flat_mat(Color(0.2, 0.21, 0.22), 0.3))
+	geo.add_material("steel_thin", Geo.flat_mat(Color(0.7, 0.72, 0.74), 0.3, 0.6))
 	geo.add_material("asphalt", Geo.ground_mat(MapTextures.get_tex("cracked_asphalt"), Color.WHITE, 8.0, 1))
 	geo.add_material("grass", Geo.ground_mat(MapTextures.get_tex("meadow"), Color.WHITE, 8.0, 0, 0.45))
 	geo.add_material("paint_line", Geo.flat_mat(Color(0.85, 0.82, 0.6)))
@@ -54,11 +58,16 @@ func build() -> void:
 
 	geo.slab(Rect2(-3000, -3000, 6000, 6000), 0.0, 0.5, "grass")
 	geo.slab(Rect2(-45, -24, 90, 50), 0.06, 0.1, "asphalt") # ground level + apron
+	# Inside, the light is the strip lamps' and the daylight from the open
+	# sides, baked (Geo.light_fn) - sun and sky alone left every ceiling
+	# black (2026-10-12).
+	geo.light_fn = _garage_light
 	for lvl in range(1, LEVELS):
 		_deck(lvl)
 	for lvl in range(LEVELS):
 		_level_contents(lvl)
 	_ramps()
+	geo.light_fn = Callable()
 	_stair_tower(Vector3(-33, 0, -21))
 	_stair_tower(Vector3(-33, 0, 21))
 	_surroundings()
@@ -83,7 +92,8 @@ func _deck(lvl: int) -> void:
 			geo.beam(Vector3(a.x, y + 0.5, a.y), Vector3(b.x, y + 0.5, b.y), Vector2(0.2, 1.0), "concrete")
 	if lvl < LEVELS - 1:
 		for i in range(6):
-			geo.box(Vector3(-25 + i * 10, y - 0.32, 0), Vector3(0.3, 0.05, 30), "lamp", 0.0, false, false)
+			# About one tube in four is dead.
+			geo.box(Vector3(-25 + i * 10, y - 0.32, 0), Vector3(0.3, 0.05, 30), "lamp_dead" if (i * 7 + lvl * 3) % 4 == 0 else "lamp", 0.0, false, false)
 	else:
 		# Roof: lamp posts.
 		for p in [Vector3(-20, y, -10), Vector3(0, y, -10), Vector3(20, y, -10), Vector3(-20, y, 10), Vector3(0, y, 10), Vector3(20, y, 10)]:
@@ -111,6 +121,8 @@ func _level_contents(lvl: int) -> void:
 			geo.box(Vector3(x, y + 0.025, side * 13.5), Vector3(0.1, 0.04, 5.0), "paint_line", 0.0, false, false) # (4.5 cm: 3 cm over the deck flickered)
 			if rng.randf() < 0.3 and not _in_hole(lvl, Vector2(x + 1.3, side * 13.5), 2.5):
 				_car(Vector3(x + 1.3, y, side * 13.5), rng.randf_range(-0.1, 0.1))
+	_car_park_paint(lvl, y)
+	_bando(lvl, y)
 	# Rubble under the collapsed holes above.
 	for h: Rect2 in HOLES.get(lvl + 1, []):
 		if not _in_hole(lvl, h.get_center(), 0.0):
@@ -118,6 +130,83 @@ func _level_contents(lvl: int) -> void:
 				var p := Vector3(rng.randf_range(h.position.x, h.end.x), y, rng.randf_range(h.position.y, h.end.y))
 				var s: float = rng.randf_range(0.5, 1.8)
 				geo.box_xf(Transform3D(Basis.from_euler(Vector3(rng.randf() * 0.6, rng.randf() * TAU, rng.randf() * 0.6)), p + Vector3(0, s * 0.2, 0)), Vector3(s, 0.3, s * 0.8), "deck")
+
+## Baked light inside the decks: a base, each working strip lamp (the
+## dead ones as in _deck) falling off with distance and facing, daylight
+## within ~8 m of an open side; the roof's top lies in full daylight.
+func _garage_light(n: Vector3, p: Vector3) -> Color:
+	var top: float = (LEVELS - 1) * FLOOR_H
+	if p.y >= top - 0.05 and n.y > 0.5:
+		return Color(1.05, 1.0, 0.95)
+	var lvl: int = clampi(int(floor((p.y + 0.05) / FLOOR_H)), 0, LEVELS - 2)
+	var l: float = 0.4
+	var ty: float = (lvl + 1) * FLOOR_H - 0.32
+	for i in range(6):
+		if (i * 7 + (lvl + 1) * 3) % 4 == 0:
+			continue # a dead tube
+		var t := Vector3(-25 + i * 10, ty, clampf(p.z, -15.0, 15.0))
+		var d: Vector3 = t - p
+		var dist2: float = d.length_squared()
+		var face: float = maxf(0.25, n.dot(d / maxf(sqrt(dist2), 0.01)))
+		l += 0.85 * face / (1.0 + 0.06 * dist2)
+	var edge: float = minf(18.0 - absf(p.z), p.x + 30.0)
+	if p.x > 30.0:
+		edge = 0.0 # the ramp bay is open
+	l += 0.5 * clampf(1.0 - edge / 8.0, 0.0, 1.0)
+	l = minf(l, 1.25)
+	return Color(l, l * 0.99, l * 0.95)
+
+## What makes it read as a car park: a yellow band and the level number
+## on the middle row of columns, arrows down the aisle.
+func _car_park_paint(lvl: int, y: float) -> void:
+	if lvl >= LEVELS - 1:
+		return
+	for i in [1, 4, 7]:
+		var x: float = -30 + i * 7.5
+		if _in_hole(lvl + 1, Vector2(x, 0), 0.5):
+			continue
+		geo.box(Vector3(x, y + 0.6, 0), Vector3(0.54, 1.2, 0.54), "paint_yellow", 0.0, false, false)
+		for sd in [-1.0, 1.0]:
+			var l := Label3D.new()
+			l.text = "P%d" % lvl if lvl > 0 else "E"
+			l.font = UIKit.oswald_font()
+			l.font_size = 96
+			l.pixel_size = 0.004
+			l.modulate = Color(0.12, 0.12, 0.13)
+			l.outline_size = 0
+			l.position = Vector3(x, y + 1.9, sd * 0.28)
+			l.rotation.y = 0.0 if sd > 0 else PI
+			add_child(l)
+	for k in range(3):
+		var x: float = -18 + k * 18
+		var dir: float = 1.0 if lvl % 2 == 0 else -1.0
+		geo.box(Vector3(x, y + 0.026, 0), Vector3(2.4, 0.04, 0.3), "paint_white", 0.0, false, false)
+		for sd in [-1.0, 1.0]:
+			geo.box(Vector3(x + dir * 1.05, y + 0.027, sd * 0.32), Vector3(0.9, 0.04, 0.25), "paint_white", dir * sd * 0.6, false, false)
+
+## Abandoned: debris, a burnt-out car on level 1, shopping trolleys.
+func _bando(lvl: int, y: float) -> void:
+	if lvl >= LEVELS - 1:
+		return
+	for k in range(5):
+		var p := Vector3(rng.randf_range(-26, 26), y, rng.randf_range(-8, 8))
+		if _in_hole(lvl, Vector2(p.x, p.z), 1.0):
+			continue
+		var sz := Vector3(rng.randf_range(0.3, 1.0), rng.randf_range(0.1, 0.3), rng.randf_range(0.3, 0.9))
+		geo.box(p + Vector3(0, sz.y * 0.5, 0), sz, "deck", rng.randf() * TAU)
+	if lvl == 1:
+		var c := Vector3(-14.7, y, -13.5)
+		geo.box(c + Vector3(0, 0.5, 0), Vector3(1.8, 0.6, 4.3), "rust", 0.15)
+		geo.box(c + Vector3(0, 1.02, 0.2), Vector3(1.5, 0.42, 2.0), "rust", 0.15)
+	if lvl in [0, 2]:
+		for k in range(2):
+			var t := Vector3(rng.randf_range(-20, 20), y, rng.randf_range(-6, 6))
+			var yaw: float = rng.randf() * TAU
+			var b := Basis(Vector3.UP, yaw)
+			for lx in [-0.3, 0.3]:
+				for lz in [-0.4, 0.4]:
+					geo.box(t + b * Vector3(lx, 0.25, lz), Vector3(0.03, 0.5, 0.03), "steel_thin", yaw, false)
+			geo.box(t + Vector3(0, 0.75, 0), Vector3(0.6, 0.45, 0.9), "steel_thin", yaw, false)
 
 func _car(p: Vector3, yaw: float) -> void:
 	var paint: String = ["car_red", "car_blue", "car_grey", "car_white"][rng.randi() % 4]
@@ -159,11 +248,13 @@ func _stair_tower(o: Vector3) -> void:
 func _surroundings() -> void:
 	var roads := Roads.new(geo, rng, fleet)
 	var city := City.new(geo, rng, fleet)
-	# Real town houses (CityHouseCreator) in the blocks round the garage; the
-	# cheap boxes stay further out. ~22 ms a house, so a capped count.
+	# Real town houses (CityHouseCreator) in the blocks round the garage
+	# (~22 ms a house, so a capped count); every block further out gets the
+	# same houses in low detail (2026-10-12).
 	city.house_centre = Vector2(-40, 0)
 	city.house_radius = 110.0
 	city.house_cap = 40
+	city.lod_houses = true
 	roads.junction(Vector3(60, 0, 31), Vector2(10, 10), ["w", "e", "n"], 2.5)
 	var w := Route.from(Vector3(55, 0, 31), 180.0).straight(3055.0, 20.0)
 	var e := Route.from(Vector3(65, 0, 31), 0.0).straight(3000.0, 20.0)

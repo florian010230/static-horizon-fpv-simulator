@@ -74,6 +74,7 @@ static func _hb(g: Geo, xf: Transform3D, level: float, c: Vector3, s: Vector3, m
 	g.box_on(xf * Transform3D(Basis(), c), s, mat, level, collide)
 
 static func hall(g: Geo, xf: Transform3D, L: float, B: float, H: float, rng: RandomNumberGenerator, opts: Dictionary = {}) -> Array:
+	g.begin_object("hall")
 	ensure_materials(g)
 	var views: Array = []
 	var level: float = xf.origin.y
@@ -211,6 +212,7 @@ static func hall(g: Geo, xf: Transform3D, L: float, B: float, H: float, rng: Ran
 	views.append(["hall", xf * Vector3(B * 0.5 + 25.0, 14.0, -L * 0.5 - 20.0), xf * Vector3(0, H * 0.5, 0)])
 	views.append(["hall_door", xf * Vector3(-B * 0.25, 3.0, -L * 0.5 - 14.0), xf * Vector3(-B * 0.25, 3.0, 0)])
 	views.append(["hall_inside", xf * Vector3(-B * 0.25, 3.5, -L * 0.5 + 3.0), xf * Vector3(0, H - 2.0, L * 0.3)])
+	g.end_object()
 	return views
 
 ## The hall's working floor, kept off the aisle from the open door (x =
@@ -347,6 +349,7 @@ static func docks(xf: Transform3D, L: float, B: float, n: int = 3) -> Array:
 # --- tanks, pipes, chimney, silos -------------------------------------------------------
 
 static func tanks(g: Geo, c: Vector3, nx: int, nz: int, rng: RandomNumberGenerator) -> Array:
+	g.begin_object("tank farm")
 	ensure_materials(g)
 	var r: float = rng.randf_range(3.8, 5.0)
 	var gap: float = r * 2.0 + 3.0
@@ -380,11 +383,13 @@ static func tanks(g: Geo, c: Vector3, nx: int, nz: int, rng: RandomNumberGenerat
 		g.box_on(Transform3D(Basis(), c + Vector3(0, 0.6, s * hz)), Vector3(hx * 2.0 + 0.4, 1.2, 0.4), "in_concrete", c.y)
 		g.box_on(Transform3D(Basis(), c + Vector3(s * hx, 0.6, 0)), Vector3(0.4, 1.2, hz * 2.0), "in_concrete", c.y)
 	g.tint = Color.WHITE
+	g.end_object()
 	return tops
 
 ## A pipe rack along `path` (x, z corners): a portal frame every 6 m,
 ## pipes on its beam at `height`, bending round the corners (no kinks).
 static func pipe_rack(g: Geo, land: TerrainCreator, path: Array, height: float, base_y: float) -> void:
+	g.begin_object("pipe rack")
 	ensure_materials(g)
 	var corners: Array[Vector3] = []
 	for q: Vector2 in path:
@@ -399,6 +404,15 @@ static func pipe_rack(g: Geo, land: TerrainCreator, path: Array, height: float, 
 		var p: Vector3 = s[0]
 		var t: Vector3 = s[1]
 		var side := Vector3(-t.z, 0, t.x) * 1.4
+		# No post on a road or rail or in another building: that bent is
+		# left out, the pipes span on (layout rule, 2026-10-12).
+		var free: bool = true
+		for e in [-1.0, 1.0]:
+			var q: Vector3 = p + side * e
+			free = free and g.claim_free(Vector2(q.x, q.z), Vector2(1, 0), Vector2(0.15, 0.15), 0.3)
+		if not free:
+			d += 6.0
+			continue
 		for e in [-1.0, 1.0]:
 			var foot: Vector3 = p + side * e
 			var gy: float = land.ground(foot.x, foot.z) if land != null else base_y
@@ -414,8 +428,10 @@ static func pipe_rack(g: Geo, land: TerrainCreator, path: Array, height: float, 
 		g.tint = [Color(0.85, 0.86, 0.88), Color(0.95, 0.8, 0.2), Color(0.75, 0.2, 0.15)][k]
 		g.pipe_path(pp, rad, "in_steel", 0.0, 10, true, false)
 	g.tint = Color.WHITE
+	g.end_object()
 
 static func chimney(g: Geo, p: Vector3, height: float) -> void:
+	g.begin_object("chimney")
 	ensure_materials(g)
 	g.tint = Color(0.6, 0.6, 0.58)
 	g.cylinder(Vector3(p.x, g.sunk([p], p.y) - 0.3, p.z), p + Vector3(0, 1.0, 0), 3.0, "in_concrete", 16)
@@ -434,11 +450,13 @@ static func chimney(g: Geo, p: Vector3, height: float) -> void:
 		g.beam(p + Vector3(cos(a0) * 2.4, height - 9.0, sin(a0) * 2.4), p + Vector3(cos(a1) * 2.4, height - 9.0, sin(a1) * 2.4), Vector2(0.08, 0.08), "ind_paint", false)
 	g.cylinder(p + Vector3(0, height - 10.2, 0), p + Vector3(0, height - 10.0, 0), 2.4, "in_steel", 16)
 	g.tint = Color.WHITE
+	g.end_object()
 
 ## n silos in a row along x from p, a headhouse across their tops, and
 ## a covered conveyor gallery from a hopper at `hopper` up into it -
 ## a square tube open at both ends, big enough to fly up.
 static func silos(g: Geo, p: Vector3, n: int, rng: RandomNumberGenerator, hopper: Vector3) -> Array:
+	g.begin_object("silos")
 	ensure_materials(g)
 	var r: float = 3.4
 	var h: float = rng.randf_range(22.0, 26.0)
@@ -478,6 +496,7 @@ static func silos(g: Geo, p: Vector3, n: int, rng: RandomNumberGenerator, hopper
 	g.cone(hopper + Vector3(0, 1.2, 0), hopper + Vector3(0, 2.6, 0), 2.2, 1.0, "in_steel", 8)
 	g.beam(hopper + Vector3(0, 2.5, 0), foot + flat * 1.0 - Vector3(0, gh * 0.5 - 0.1, 0), Vector2(0.8, 0.8), "in_steel")
 	g.tint = Color.WHITE
+	g.end_object()
 	return [["silos", hc + Vector3(span * 0.5 + 30.0, -h * 0.4, 30.0), hc + Vector3(0, -h * 0.4, 0)],
 		["conveyor", foot - dir.normalized() * 9.0, top]]
 
@@ -487,6 +506,7 @@ static func silos(g: Geo, p: Vector3, n: int, rng: RandomNumberGenerator, hopper
 ## opts "gaps": [[side, offset from the side's middle, half width], ...] -
 ## more openings without a gatehouse (a rail siding's way in).
 static func fence(g: Geo, site: Dictionary, gate: String, opts: Dictionary = {}) -> Array:
+	g.begin_object("site fence")
 	ensure_materials(g)
 	if not g.has_material("ind_mesh"):
 		var mesh: StandardMaterial3D = Geo.tex_mat(_mesh_tex(), Color(0.55, 0.6, 0.55), 0.6)
@@ -519,9 +539,21 @@ static func fence(g: Geo, site: Dictionary, gate: String, opts: Dictionary = {})
 		if L - from > 0.5:
 			runs.append([from, L])
 		for run: Array in runs:
+			# A run ends clear of a road through its gap (the site road can
+			# be wider than the gate) - layout rule, 2026-10-12.
+			for e in [0, 1]:
+				for _s in range(20):
+					var q0: Vector3 = a + dir * run[e]
+					if not g.on_lane(Vector2(q0.x, q0.z), 0.4) or run[1] - run[0] < 1.0:
+						break
+					run[e] += 0.5 if e == 0 else -0.5
+			if run[1] - run[0] < 1.0:
+				continue
 			var n: int = maxi(1, int((run[1] - run[0]) / 3.0))
 			for i in range(n + 1):
 				var q: Vector3 = a + dir * (run[0] + (run[1] - run[0]) * i / n)
+				if g.on_lane(Vector2(q.x, q.z), 0.4):
+					continue # never a post on a road or rail
 				g.tint = Color(0.75, 0.75, 0.72)
 				g.box_on(Transform3D(Basis(), q + Vector3(0, 1.1, 0)), Vector3(0.14, 2.2, 0.14), "in_concrete", o.y)
 			var m0: Vector3 = a + dir * ((run[0] + run[1]) * 0.5)
@@ -552,6 +584,7 @@ static func fence(g: Geo, site: Dictionary, gate: String, opts: Dictionary = {})
 			g.tint = Color.WHITE
 			views.append(["gate", gm - inward * 14.0 + Vector3(0, 2.5, 0), gm + inward * 10.0])
 	g.tint = Color.WHITE
+	g.end_object()
 	return views
 
 ## Chain-link mesh: diagonal wires, see-through between them.

@@ -491,7 +491,7 @@ func _menu_shots() -> void:
 	await get_tree().create_timer(0.5).timeout
 	_shot("preview_settings.png")
 	var st: SettingsScreens = get_tree().current_scene.get("_settings")
-	for t in range(1, SettingsScreens.TAB_NAMES.size()):
+	for t in range(0, SettingsScreens.TAB_NAMES.size()):
 		st.settings_tabs.current_tab = t
 		await get_tree().create_timer(0.3).timeout
 		_shot("preview_settings_%s.png" % SettingsScreens.TAB_NAMES[t].to_lower().replace(" & ", "_"))
@@ -1341,7 +1341,7 @@ func _flight_shots() -> void:
 		settings_btn.pressed.emit()
 	await get_tree().create_timer(1.0).timeout
 	var st: SettingsScreens = get_tree().current_scene.get("_settings")
-	st.settings_tabs.current_tab = SettingsScreens.TAB_NAMES.find("Flight")
+	st.settings_tabs.current_tab = SettingsScreens.TAB_NAMES.find("Race")
 	await get_tree().create_timer(0.4).timeout
 	_shot("flight_settings.png")
 
@@ -1537,7 +1537,7 @@ func _linecolour_shots() -> void:
 		settings_btn.pressed.emit()
 	await get_tree().create_timer(1.0).timeout
 	var st: SettingsScreens = get_tree().current_scene.get("_settings")
-	st.settings_tabs.current_tab = SettingsScreens.TAB_NAMES.find("Flight")
+	st.settings_tabs.current_tab = SettingsScreens.TAB_NAMES.find("Race")
 	await get_tree().create_timer(0.4).timeout
 	_shot("linecolour_settings.png")
 	var sl := st.find_child("RaceLineSlider", true, false) as HSlider
@@ -1630,7 +1630,7 @@ func _linelength_shots() -> void:
 		settings_btn.pressed.emit()
 	await get_tree().create_timer(1.0).timeout
 	var st: SettingsScreens = get_tree().current_scene.get("_settings")
-	st.settings_tabs.current_tab = SettingsScreens.TAB_NAMES.find("Flight")
+	st.settings_tabs.current_tab = SettingsScreens.TAB_NAMES.find("Race")
 	await get_tree().create_timer(0.4).timeout
 	_shot("linelength_settings.png")
 

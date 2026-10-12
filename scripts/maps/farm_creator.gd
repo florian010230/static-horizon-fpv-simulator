@@ -75,6 +75,7 @@ static func plan(land: TerrainCreator, centre: Vector2, size: Vector2, entry: fl
 	return {"c": centre, "size": size, "y": y, "entry": entry}
 
 static func build(g: Geo, land: TerrainCreator, farm: Dictionary, seed_value: int) -> Dictionary:
+	g.begin_object("farm")
 	ensure_materials(g)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
@@ -110,6 +111,7 @@ static func build(g: Geo, land: TerrainCreator, farm: Dictionary, seed_value: in
 	# A walnut tree by the house, a couple of fruit trees.
 	var trees: Array = [[o + Vector3(ex * (-hx + 4.0), -0.05, hz + 6.0), "maple", rng.randi(), "none"],
 		[o + Vector3(ex * (-hx - 4.0), -0.05, hz - 2.0), "apple", rng.randi(), "none"]]
+	g.end_object()
 	return {"views": views, "trees": trees, "barn": barn}
 
 ## The farmyard's small things, each on the first free spot of a few

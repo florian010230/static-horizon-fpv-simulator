@@ -183,7 +183,7 @@ static func glow_mat(color: Color, energy: float = 2.0) -> StandardMaterial3D:
 const OBS_CELL: float = 32.0
 var _obs: Array = [] # [centre: Vector2, axis: Vector2, half: Vector2, y0, y1]
 var _obs_grid: Dictionary = {}
-var _lanes: Array = [] # [a: Vector2, b: Vector2, half width]
+var _lanes: Array = [] # [a: Vector2, b: Vector2, half width, surface y]
 var _lane_grid: Dictionary = {}
 
 func _obstacle(c: Vector2, ax: Vector2, half: Vector2, y0: float, y1: float, collide: bool = true) -> void:
@@ -194,6 +194,8 @@ func _obstacle(c: Vector2, ax: Vector2, half: Vector2, y0: float, y1: float, col
 	var r: float = half.length()
 	if r > 120.0:
 		return # whole ground slabs
+	if _obj_cur >= 0:
+		_objects[_obj_cur].rects.append([c, ax.normalized(), half, y0, y1])
 	_obs.append([c, ax.normalized(), half, y0, y1, _cell_key.get_slice("|", 0)])
 	_grid_add(_obs_grid, c, r, _obs.size() - 1)
 
@@ -217,8 +219,8 @@ func _obstacle_points(pts: Array, collide: bool = true) -> void:
 		return # a long diagonal brace: its box would cover far too much
 	_obstacle(Vector2(mn.x + mx.x, mn.z + mx.z) * 0.5, Vector2(1, 0), Vector2(mx.x - mn.x, mx.z - mn.z) * 0.5, mn.y, mx.y, collide)
 
-func _lane(a: Vector2, b: Vector2, half: float) -> void:
-	_lanes.append([a, b, half])
+func _lane(a: Vector2, b: Vector2, half: float, y: float = 0.0) -> void:
+	_lanes.append([a, b, half, y])
 	_grid_add(_lane_grid, (a + b) * 0.5, (b - a).length() * 0.5 + half, _lanes.size() - 1)
 
 func _grid_add(grid: Dictionary, c: Vector2, r: float, idx: int) -> void:
@@ -251,6 +253,148 @@ func on_lane(p: Vector2, margin: float) -> bool:
 		if (a + ab * t).distance_to(p) < l[2] + margin:
 			return true
 	return false
+
+# --- layout objects -------------------------------------------------------------
+# A creator wraps one thing it places - a house with its garden, a row of
+# town houses, a farm, a hall - in begin_object/end_object (nested calls
+# join the outermost). Its solid footprints are kept per object, so
+# layout_conflicts() can tell a house standing on a road or in another
+# house from the pieces of one house touching each other (user,
+# 2026-10-12: "a house built right on top of a street - never again").
+# claim_free() lets a creator test a spot before it builds there.
+
+var _objects: Array = [] # {kind, label, rects: [[centre, axis, half, y0, y1], ...]}
+var _obj_depth: int = 0
+var _obj_cur: int = -1
+
+func begin_object(kind: String, label: String = "") -> void:
+	if _obj_depth == 0:
+		_objects.append({"kind": kind, "label": label, "rects": []})
+		_obj_cur = _objects.size() - 1
+	_obj_depth += 1
+
+## A solid footprint with no geometry or collision of its own: a
+## low-detail stand-in (far houses) still keeps trees, cars and other
+## buildings out and counts for the layout check.
+func mark_solid(xf: Transform3D, size: Vector3) -> void:
+	var hx: Vector3 = xf.basis.x * size.x * 0.5
+	var hz: Vector3 = xf.basis.z * size.z * 0.5
+	var hy: Vector3 = xf.basis.y * size.y * 0.5
+	_obstacle_box(xf.origin, hx, hz, [xf.origin - hy, xf.origin + hy], true)
+
+func end_object() -> void:
+	_obj_depth = maxi(_obj_depth - 1, 0)
+	if _obj_depth == 0:
+		_obj_cur = -1
+
+## Is the oriented rectangle (centre, axis, half size) free of placed
+## objects and road/rail lanes (with `margin` round it)?
+## margin < 0 lets it touch (a row's next house against the last); the
+## object being built now (begin_object) is never in its own way.
+func claim_free(c: Vector2, ax: Vector2, half: Vector2, margin: float = 1.0) -> bool:
+	var me: Array = [c, ax.normalized(), half + Vector2(margin, margin), -INF, INF]
+	for i in range(_objects.size()):
+		if i == _obj_cur:
+			continue
+		for r: Array in _objects[i].rects:
+			if _rect_hit(me, r, 0.0):
+				return false
+	return _lane_hit(me, -INF) == ""
+
+## Every place where two objects overlap (more than touching) or an
+## object stands on a road or rail lane: ["what", Vector2 where], up to `limit`.
+func layout_conflicts(limit: int = 40) -> Array:
+	var out: Array = []
+	var grid: Dictionary = {}
+	var items: Array = [] # [object index, rect]
+	for i in range(_objects.size()):
+		for r: Array in _objects[i].rects:
+			items.append([i, r])
+			_grid_add(grid, r[0], (r[2] as Vector2).length(), items.size() - 1)
+	var seen: Dictionary = {}
+	for k in grid:
+		var cell: Array = grid[k]
+		for x in range(cell.size()):
+			for y in range(x + 1, cell.size()):
+				var a: Array = items[cell[x]]
+				var b: Array = items[cell[y]]
+				if a[0] == b[0] or seen.has(Vector2i(mini(a[0], b[0]), maxi(a[0], b[0]))):
+					continue
+				var ra: Array = a[1]
+				var rb: Array = b[1]
+				if minf(ra[4], rb[4]) - maxf(ra[3], rb[3]) > 0.1 and _rect_hit(ra, rb, -0.12):
+					seen[Vector2i(mini(a[0], b[0]), maxi(a[0], b[0]))] = true
+					out.append(["%s overlaps %s%s" % [_obj_name(a[0]), _obj_name(b[0]), _detail(ra, rb)], ra[0]])
+					if out.size() >= limit:
+						return out
+	for i in range(_objects.size()):
+		for r: Array in _objects[i].rects:
+			var hit: String = _lane_hit(r, r[3])
+			if hit != "":
+				out.append(["%s stands on a %s%s" % [_obj_name(i), hit, _detail(r, [])], r[0]])
+				if out.size() >= limit:
+					return out
+				break
+	return out
+
+## SH_LAYOUT=2: the pieces' sizes and heights, to tell what touches what.
+func _detail(a: Array, b: Array) -> String:
+	if OS.get_environment("SH_LAYOUT") != "2":
+		return ""
+	var t: String = "  [%.1fx%.1f y %.1f..%.1f]" % [a[2].x * 2, a[2].y * 2, a[3], a[4]]
+	if not b.is_empty():
+		t += " vs [%.1fx%.1f y %.1f..%.1f at %.1f,%.1f]" % [b[2].x * 2, b[2].y * 2, b[3], b[4], b[0].x, b[0].y]
+	return t
+
+func _obj_name(i: int) -> String:
+	var o: Dictionary = _objects[i]
+	return o.kind + (" '%s'" % o.label if o.label != "" else "")
+
+## Separating-axis test of two footprint rectangles; slack < 0 = they must
+## overlap by more than that much (walls of neighbours may touch).
+func _rect_hit(a: Array, b: Array, slack: float) -> bool:
+	for r in [a, b]:
+		var ax: Vector2 = r[1]
+		for axis in [ax, Vector2(-ax.y, ax.x)]:
+			var ca: float = (a[0] as Vector2).dot(axis)
+			var cb: float = (b[0] as Vector2).dot(axis)
+			var ea: float = absf(axis.dot(a[1])) * a[2].x + absf(axis.dot(Vector2(-a[1].y, a[1].x))) * a[2].y
+			var eb: float = absf(axis.dot(b[1])) * b[2].x + absf(axis.dot(Vector2(-b[1].y, b[1].x))) * b[2].y
+			if absf(ca - cb) > ea + eb + slack:
+				return false
+	return true
+
+## A lane under a footprint that reaches down to it ("road"/"" ): only
+## parts within 2.5 m of the lane's surface count (a pipe rack's beams or
+## a bridge deck above a road are fine).
+func _lane_hit(r: Array, y0: float) -> String:
+	var c: Vector2 = r[0]
+	var reach: float = (r[2] as Vector2).length()
+	var seen: Dictionary = {}
+	for gx in range(floori((c.x - reach) / OBS_CELL), floori((c.x + reach) / OBS_CELL) + 1):
+		for gz in range(floori((c.y - reach) / OBS_CELL), floori((c.y + reach) / OBS_CELL) + 1):
+			for idx in _lane_grid.get(Vector2i(gx, gz), []):
+				if seen.has(idx):
+					continue
+				seen[idx] = true
+				var l: Array = _lanes[idx]
+				if y0 > float(l[3]) + 2.5:
+					continue
+				var a: Vector2 = l[0]
+				var b: Vector2 = l[1]
+				var steps: int = maxi(1, ceili(a.distance_to(b) / 0.75))
+				for k in range(steps + 1):
+					var p: Vector2 = a.lerp(b, float(k) / steps)
+					var d: Vector2 = p - c
+					var ax: Vector2 = r[1]
+					var half: float = float(l[2]) - 0.3 # its kerb may touch
+					# Distance from the lane's centre line to the rectangle.
+					var gap := Vector2(maxf(absf(d.dot(ax)) - r[2].x, 0.0), maxf(absf(d.dot(Vector2(-ax.y, ax.x))) - r[2].y, 0.0))
+					if gap.length() < half:
+						if OS.get_environment("SH_LAYOUT") == "3":
+							print("    lane ", a, " -> ", b, " half ", l[2], " y ", l[3], " point ", p)
+						return "road or rail"
+	return ""
 
 ## Everything solid, flat or not (for the floating-object check).
 var _support: Array = []
@@ -696,7 +840,7 @@ func sweep(path: Array[Vector3], profile: Array, mat: String, closed: bool = fal
 		for q: Vector2 in profile:
 			half = maxf(half, absf(q.x))
 		for i in range(n - 1):
-			_lane(Vector2(path[i].x, path[i].z), Vector2(path[i + 1].x, path[i + 1].z), half)
+			_lane(Vector2(path[i].x, path[i].z), Vector2(path[i + 1].x, path[i + 1].z), half, minf(path[i].y, path[i + 1].y))
 	if closed:
 		inside = Vector2.ZERO
 		for q: Vector2 in profile:
@@ -777,12 +921,22 @@ func sweep(path: Array[Vector3], profile: Array, mat: String, closed: bool = fal
 ## x = -width/2 to +width/2, both sides capped. This is what gives cars,
 ## lorries and locomotives their real outline instead of stacked boxes.
 func prism(xf: Transform3D, profile: Array, width: float, mat: String, collide: bool = true, shadow: bool = true) -> void:
-	if true:
-		var pts: Array = []
+	var fp: Array = []
+	for q: Vector2 in profile:
+		fp.append(xf * Vector3(-width * 0.5, q.y, q.x))
+		fp.append(xf * Vector3(width * 0.5, q.y, q.x))
+	if absf(xf.basis.y.normalized().y) > 0.99:
+		# Upright (only turned about Y): its real oriented footprint - the
+		# axis-aligned box of a hedge on a bend reached over the road.
+		var z0: float = INF
+		var z1: float = -INF
 		for q: Vector2 in profile:
-			pts.append(xf * Vector3(-width * 0.5, q.y, q.x))
-			pts.append(xf * Vector3(width * 0.5, q.y, q.x))
-		_obstacle_points(pts, collide)
+			z0 = minf(z0, q.x)
+			z1 = maxf(z1, q.x)
+		var o: Vector3 = xf * Vector3(0, 0, (z0 + z1) * 0.5)
+		_obstacle_box(o, xf.basis.x * width * 0.5, xf.basis.z * (z1 - z0) * 0.5, fp, collide)
+	else:
+		_obstacle_points(fp, collide)
 	var poly := PackedVector2Array(profile)
 	var m: int = poly.size()
 	var area: float = 0.0
@@ -909,6 +1063,7 @@ func release_records() -> void:
 	_obs_grid.clear()
 	_lanes.clear()
 	_lane_grid.clear()
+	_objects.clear()
 	_support.clear()
 	_sup_grid.clear()
 	_lcache.clear()

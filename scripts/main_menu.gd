@@ -148,14 +148,15 @@ func _background_texture() -> ImageTexture:
 	var w := 160
 	var h := 90
 	var img := Image.create(w, h, false, Image.FORMAT_RGB8)
-	var sky_c := Vector2(w * 0.22, -h * 0.25)
-	var ground_c := Vector2(w * 0.85, h * 1.35)
+	# (2026-10-12, the user's pick "B": darker, small glows at the very top
+	# and bottom edges - the earlier big glows were too much.)
+	var base := Color("#0b0f15")
 	for y in range(h):
 		for x in range(w):
-			var p := Vector2(x, y)
-			var sky: float = clampf(1.0 - p.distance_to(sky_c) / (w * 0.6), 0.0, 1.0)
-			var ground: float = clampf(1.0 - p.distance_to(ground_c) / (w * 0.55), 0.0, 1.0)
-			var c: Color = UIKit.BG.lerp(UIKit.LOGO_SKY, sky * sky * 0.22).lerp(UIKit.LOGO_GROUND, ground * ground * 0.16)
+			var p := Vector2(x / float(w) - 0.5, y / float(h))
+			var sky: float = clampf(1.0 - Vector2(p.x / 0.7, (p.y + 0.06) / 0.30).length(), 0.0, 1.0)
+			var ground: float = clampf(1.0 - Vector2(p.x / 0.7, (1.06 - p.y) / 0.30).length(), 0.0, 1.0)
+			var c: Color = base.lerp(Color("#4f8fe6"), sky * 0.20).lerp(Color("#e8763a"), ground * 0.17)
 			img.set_pixel(x, y, c)
 	return ImageTexture.create_from_image(img)
 
@@ -190,7 +191,7 @@ func _refresh_update_hint() -> void:
 ## version, the quiet "new version" / "what's new" hint and a small
 ## Updates button bottom right.
 func _build_corners(screen: Control) -> void:
-	var settings := UIKit.button("Settings", "", 40)
+	var settings := UIKit.button("Settings", "MainChip", 40)
 	settings.add_theme_font_size_override("font_size", 19)
 	settings.custom_minimum_size.x = 130
 	settings.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
@@ -219,7 +220,7 @@ func _build_corners(screen: Control) -> void:
 	version.theme_type_variation = "Small"
 	version.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	corner.add_child(version)
-	var upd := UIKit.button("Updates", "", 40)
+	var upd := UIKit.button("Updates", "MainChip", 40)
 	upd.add_theme_font_size_override("font_size", 19)
 	upd.custom_minimum_size.x = 110
 	upd.pressed.connect(func(): _show("updates"))
@@ -232,29 +233,49 @@ func _build_main_screen(root: Control) -> Control:
 	screen.set_anchors_preset(Control.PRESET_FULL_RECT)
 	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(screen)
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	screen.add_child(center)
+	# Two halves filling the screen (2026-10-12, the user's pick): brand,
+	# text and buttons on the left, a tall drone window on the right.
+	var margin := MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	for side: Array in [["margin_left", 90], ["margin_right", 70], ["margin_top", 56], ["margin_bottom", 92]]:
+		margin.add_theme_constant_override(side[0], side[1])
+	screen.add_child(margin)
 	_build_corners(screen)
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 80)
-	center.add_child(row)
+	row.add_theme_constant_override("separation", 70)
+	margin.add_child(row)
 
 	var left := VBoxContainer.new()
 	left.custom_minimum_size = Vector2(600, 0)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.size_flags_stretch_ratio = 1.0
 	left.alignment = BoxContainer.ALIGNMENT_CENTER
 	left.add_theme_constant_override("separation", 14)
 	row.add_child(left)
 
-	left.add_child(UIKit.eyebrow("FREE  ·  SOURCE ON GITHUB"))
+	var badge := PanelContainer.new()
+	badge.add_theme_stylebox_override("panel", UIKit.box(Color(0, 0, 0, 0), Color(0.5, 0.69, 1.0, 0.55), 999, 1, Vector4(14, 4, 14, 4)))
+	badge.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var badge_l := Label.new()
+	badge_l.text = "FREE  ·  SOURCE ON GITHUB"
+	badge_l.add_theme_font_override("font", UIKit.oswald())
+	badge_l.add_theme_font_size_override("font_size", 15)
+	badge_l.add_theme_color_override("font_color", Color("#9cc2ff"))
+	badge.add_child(badge_l)
+	left.add_child(badge)
+	UIKit.gap(left, 12)
 
 	var brand := HBoxContainer.new()
-	brand.add_theme_constant_override("separation", 18)
+	brand.add_theme_constant_override("separation", 20)
 	left.add_child(brand)
-	var logo := Control.new()
-	logo.custom_minimum_size = Vector2(96, 96)
-	logo.draw.connect(func(): _draw_logo(logo))
+	# The original logo (assets/brand master = res://icon.png), not redrawn.
+	var logo := TextureRect.new()
+	logo.name = "Logo"
+	logo.texture = load("res://icon.png")
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo.custom_minimum_size = Vector2(104, 104)
 	brand.add_child(logo)
 	var heading := Control.new()
 	heading.custom_minimum_size = Vector2(480, 96)
@@ -266,10 +287,12 @@ func _build_main_screen(root: Control) -> Control:
 	subtitle.theme_type_variation = "Muted"
 	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	subtitle.custom_minimum_size = Vector2(560, 0)
+	UIKit.gap(left, 12)
 	left.add_child(subtitle)
 
-	UIKit.gap(left, 18)
-	var play := UIKit.button("Play", "PrimaryButton", 68)
+	UIKit.gap(left, 22)
+	var play := UIKit.button("Play", "MainPlay", 72)
+	play.add_theme_font_size_override("font_size", 28)
 	play.pressed.connect(func(): _show("mode"))
 	play.set_meta("default_focus", true)
 	left.add_child(play)
@@ -279,11 +302,10 @@ func _build_main_screen(root: Control) -> Control:
 	# the bottom-right one (see _build_corners).
 	for entry in [["Achievements", func(): _show("achievements")],
 			["About", func(): _show("about")]]:
-		var b := UIKit.button(entry[0], "", 50)
+		var b := UIKit.button(entry[0], "MainButton", 58)
 		b.pressed.connect(entry[1])
 		left.add_child(b)
-	var quit := UIKit.button("Quit", "GhostButton", 56)
-	quit.add_theme_font_size_override("font_size", 26)
+	var quit := UIKit.button("Quit", "MainButton", 58)
 	quit.pressed.connect(func(): get_tree().quit())
 	left.add_child(quit)
 
@@ -294,10 +316,12 @@ func _build_main_screen(root: Control) -> Control:
 	left.add_child(hint)
 
 	var card := PanelContainer.new()
-	card.theme_type_variation = "Card"
-	# Fixed width: switching drones must not resize the card (and shift
-	# the whole screen) just because one description is longer.
-	card.custom_minimum_size = Vector2(620, 0)
+	card.add_theme_stylebox_override("panel", CutBox.make(Color(0.047, 0.063, 0.086, 0.86), UIKit.LOGO_SKY, Color(1, 1, 1, 0.09), Vector4(30, 20, 26, 20), 26.0))
+	# A share of the width, not its content: switching drones must not
+	# resize the card just because one description is longer.
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.size_flags_vertical = Control.SIZE_SHRINK_CENTER # (full height was too big, 2026-10-12)
+	card.size_flags_stretch_ratio = 0.85
 	row.add_child(card)
 	var card_box := VBoxContainer.new()
 	card_box.add_theme_constant_override("separation", 8)
@@ -311,6 +335,7 @@ func _build_main_screen(root: Control) -> Control:
 	var picker := HBoxContainer.new()
 	picker.add_theme_constant_override("separation", 4)
 	picker.alignment = BoxContainer.ALIGNMENT_CENTER
+	picker.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	card_box.add_child(picker)
 	var prev_btn := _arrow_button("‹", -1)
 	prev_btn.set_meta("find_text", "prev_drone")
@@ -333,6 +358,37 @@ func _build_main_screen(root: Control) -> Control:
 	_preview_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_preview_text.custom_minimum_size = Vector2(0, 44)
 	card_box.add_child(_preview_text)
+	# Spec bars (2026-10-12): speed, punch (thrust to weight), weight - from
+	# the real drone numbers, one scale for all four drones.
+	_spec_grid = GridContainer.new()
+	_spec_grid.name = "SpecBars"
+	_spec_grid.columns = 3
+	_spec_grid.add_theme_constant_override("h_separation", 16)
+	_spec_grid.add_theme_constant_override("v_separation", 8)
+	card_box.add_child(_spec_grid)
+	for st: String in ["Speed", "Punch", "Weight"]:
+		var l := Label.new()
+		l.text = st.to_upper()
+		l.add_theme_font_override("font", UIKit.oswald())
+		l.add_theme_font_size_override("font_size", 17)
+		l.add_theme_color_override("font_color", UIKit.MUTED_LIGHT)
+		_spec_grid.add_child(l)
+		var bar := ProgressBar.new()
+		bar.name = st
+		bar.show_percentage = false
+		bar.max_value = 1.0
+		bar.step = 0.0
+		bar.custom_minimum_size = Vector2(0, 10)
+		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		bar.add_theme_stylebox_override("background", UIKit.box(Color(1, 1, 1, 0.08), Color(0, 0, 0, 0), 5, 0, Vector4.ZERO))
+		bar.add_theme_stylebox_override("fill", UIKit.box(UIKit.LOGO_SKY, Color(0, 0, 0, 0), 5, 0, Vector4.ZERO))
+		_spec_grid.add_child(bar)
+		var v := Label.new()
+		v.name = st + "Value"
+		v.custom_minimum_size = Vector2(110, 0)
+		v.add_theme_font_size_override("font_size", 18)
+		_spec_grid.add_child(v)
 	_refresh_preview_labels()
 	return screen
 
@@ -353,30 +409,6 @@ func _draw_heading(c: Control) -> void:
 	c.draw_string(font_var, xform.affine_inverse() * Vector2(8 + fpv_w + 14, 90), "SIMULATOR", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, UIKit.MUTED)
 	c.draw_set_transform_matrix(Transform2D.IDENTITY)
 
-## The real logo mark from the companion website project (images/favicon.svg
-## and index.html's .hz-instrument-icon): an artificial horizon - the
-## instrument that tells a pilot which way is up when everything else is
-## spinning. A circle split sky/ground by a horizon line, an outer ring,
-## a center dot, and two flanking "wing" dashes, same as a real attitude
-## indicator, drawn with primitives in the dark-mode brand colors.
-func _draw_logo(c: Control) -> void:
-	var center: Vector2 = c.size * 0.5
-	var r: float = min(c.size.x, c.size.y) * 0.5 - 3.0
-	c.draw_circle(center, r, UIKit.LOGO_SKY)
-	var ground_points := PackedVector2Array()
-	var steps := 24
-	for i in range(steps + 1):
-		var a: float = PI * float(i) / float(steps) # 0..PI sweeps the lower half in screen space
-		ground_points.append(center + Vector2(cos(a), sin(a)) * r)
-	c.draw_colored_polygon(ground_points, UIKit.LOGO_GROUND)
-	c.draw_arc(center, r, 0.0, TAU, 48, UIKit.LOGO_INK, 2.0, true)
-	c.draw_line(center - Vector2(r - 2.0, 0), center + Vector2(r - 2.0, 0), UIKit.LOGO_INK, 1.8)
-	c.draw_circle(center, 3.2, UIKit.LOGO_INK)
-	var wing_len: float = r * 0.42
-	var wing_gap: float = r * 0.3
-	c.draw_line(center - Vector2(wing_gap + wing_len, 0), center - Vector2(wing_gap, 0), UIKit.LOGO_INK, 4.5)
-	c.draw_line(center + Vector2(wing_gap, 0), center + Vector2(wing_gap + wing_len, 0), UIKit.LOGO_INK, 4.5)
-
 ## A tiny display-piece 3D scene rendered into a small viewport - whichever
 ## drone is currently selected (Settings.selected_drone), slowly
 ## turning. Only rendered while the main screen (its card) is visible. Kept deliberately small and simple (one
@@ -386,7 +418,8 @@ func _build_drone_preview(parent: Control) -> void:
 	var container := SubViewportContainer.new()
 	container.stretch = true
 	container.custom_minimum_size = Vector2(360, 340)
-	container.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL # the bigger drone window (2026-10-12)
+	container.custom_minimum_size = Vector2(420, 330)
 	parent.add_child(container)
 
 	var viewport := SubViewport.new()
@@ -454,11 +487,28 @@ func _build_preview_drone(parent: Node3D) -> void:
 func _drone_info(id: String) -> Dictionary:
 	return Drone.PROFILES.get(id, Drone.PROFILES["seeker3"]).display
 
+var _spec_grid: GridContainer
+const SPEC_MAX := {"speed": 220.0, "punch": 12.0, "weight": 0.7} ## km/h, thrust:weight, kg - the bars' full length
 func _refresh_preview_labels() -> void:
 	var d: Dictionary = _drone_info(Settings.selected_drone)
 	_preview_name.text = d.name
 	_preview_tags.text = Settings.spec_tags(d.tags)
 	_preview_text.text = d.text
+	if _spec_grid:
+		var st: Dictionary = spec_values(Settings.selected_drone)
+		(_spec_grid.get_node("Speed") as ProgressBar).value = st.speed / SPEC_MAX.speed
+		(_spec_grid.get_node("Punch") as ProgressBar).value = st.punch / SPEC_MAX.punch
+		(_spec_grid.get_node("Weight") as ProgressBar).value = st.weight / SPEC_MAX.weight
+		(_spec_grid.get_node("SpeedValue") as Label).text = Settings.spec_tag(d.tags[1]) # (km/h or mph, as set)
+		(_spec_grid.get_node("PunchValue") as Label).text = "%d : 1" % roundi(st.punch)
+		(_spec_grid.get_node("WeightValue") as Label).text = Settings.spec_tag(d.tags[2])
+
+## A drone's numbers for the spec bars: top speed (km/h, the profile's
+## own figure), thrust to weight (4 motors' max thrust / weight), mass (kg).
+static func spec_values(id: String) -> Dictionary:
+	var p: Dictionary = Drone.PROFILES.get(id, Drone.PROFILES["seeker3"])
+	var speed: float = float(String(p.display.tags[1]).to_float())
+	return {"speed": speed, "punch": 4.0 * float(p.max_motor_thrust_n) / (float(p.mass) * 9.81), "weight": float(p.mass)}
 
 func _arrow_button(glyph: String, step: int) -> Button:
 	var b := UIKit.button(glyph, "GhostButton", 72)
@@ -534,9 +584,11 @@ func _build_about_screen(root: Control) -> Control:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 18)
 	content.add_child(head)
-	var logo := Control.new()
-	logo.custom_minimum_size = Vector2(72, 72)
-	logo.draw.connect(func(): _draw_logo(logo))
+	var logo := TextureRect.new()
+	logo.texture = load("res://icon.png") # the original logo
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo.custom_minimum_size = Vector2(76, 76)
 	head.add_child(logo)
 	var name_box := VBoxContainer.new()
 	head.add_child(name_box)

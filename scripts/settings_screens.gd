@@ -86,7 +86,9 @@ const CAMERA_HINTS: Array[String] = [
 	"Sharp HD with a little delay; blocky and frozen when the link gets weak. LQ in the OSD.",
 	"Clean 720p, almost no delay; breaks up suddenly at the edge of range. LQ in the OSD.",
 ]
-const TAB_NAMES: Array[String] = ["Graphics", "Camera & HUD", "Flight", "Rates", "Radio"]
+## In the order a new pilot needs them (2026-10-12, the user's pick):
+## radio first. Inside a tab the settings sit in panels by topic.
+const TAB_NAMES: Array[String] = ["Radio", "Rates", "Flying", "Race", "Camera & screen", "Graphics"]
 const QUALITY_HINTS: Array[String] = [
 	"Low: 55% render resolution, small objects only drawn nearby. For older laptops and integrated graphics.",
 	"Medium: 75% render resolution, most details. For most laptops.",
@@ -109,30 +111,23 @@ func _build_settings() -> Control:
 	tabs.add_theme_color_override("font_unselected_color", UIKit.MUTED_LIGHT)
 	tabs.add_theme_constant_override("side_margin", 0)
 	parts[1].add_child(tabs)
-	var pages: Array = []
+	var pages: Dictionary = {}
 	for title in TAB_NAMES:
 		var page := HBoxContainer.new()
 		page.name = title
-		page.add_theme_constant_override("separation", 56)
+		page.add_theme_constant_override("separation", 14)
 		tabs.add_child(page)
-		var cols_of_page: Array = []
-		for k in range(1 if title == "Rates" else 2):
-			var col := VBoxContainer.new()
-			col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			col.add_theme_constant_override("separation", 8)
-			page.add_child(col)
-			UIKit.gap(col, 10)
-			cols_of_page.append(col)
-		pages.append(cols_of_page)
+		pages[title] = page
 
 	# Graphics
-	var g1: VBoxContainer = pages[0][0]
-	var g2: VBoxContainer = pages[0][1]
+	var g1: VBoxContainer = _group(pages["Graphics"])
+	var g2: VBoxContainer = _group(pages["Graphics"])
 	UIKit.section(g1, "Quality")
 	var quality_hint := _hint_label()
 	_segmented(g1, "Graphics quality", Settings.QUALITY_NAMES, Settings.graphics_quality, func(i: int):
 		Settings.graphics_quality = i
-		quality_hint.text = QUALITY_HINTS[i])
+		quality_hint.text = QUALITY_HINTS[i]
+		_refresh_tab_titles())
 	quality_hint.text = QUALITY_HINTS[clampi(Settings.graphics_quality, 0, 2)]
 	g1.add_child(quality_hint)
 	UIKit.gap(g1, 6)
@@ -172,9 +167,9 @@ func _build_settings() -> Control:
 	UIKit.toggle(g2, "VSync", Settings.vsync, func(v: bool): Settings.set_vsync(v))
 	_hint(g2, "On: smooth, at most your screen's refresh rate. Off: more FPS on a strong PC, but uneven or torn frames on a weak one.")
 
-	# Camera & HUD
-	var c1: VBoxContainer = pages[1][0]
-	var c2: VBoxContainer = pages[1][1]
+	# Camera & screen
+	var c1: VBoxContainer = _group(pages["Camera & screen"])
+	var c2: VBoxContainer = _group(pages["Camera & screen"])
 	UIKit.section(c1, "FPV camera")
 	var ang_lbl: Label = UIKit.slider(c1, "Camera angle", 0.0, 60.0, 1.0, Settings.camera_angle_deg, func(v: float): Settings.set_camera_angle(v), " deg")
 	Settings.follow_camera(c1, ang_lbl, func() -> float: return Settings.camera_angle_deg, " deg")
@@ -200,38 +195,47 @@ func _build_settings() -> Control:
 	UIKit.gap(c2, 6)
 	_segmented(c2, "Units", ["Metric (km/h, m)", "Imperial (mph, ft)"], Settings.units, func(i: int): Settings.units = i)
 
-	# Flight
-	var f1: VBoxContainer = pages[2][0]
-	var f2: VBoxContainer = pages[2][1]
-	UIKit.section(f1, "Realism")
+	# Flying: battery and damage, the air, physics
+	var f1: VBoxContainer = _group(pages["Flying"])
+	var f_air: VBoxContainer = _group(pages["Flying"])
+	var f_phys: VBoxContainer = _group(pages["Flying"])
+	UIKit.section(f1, "Battery & damage")
 	UIKit.toggle(f1, "Battery simulation", Settings.battery_enabled, func(v: bool): Settings.battery_enabled = v)
 	_hint(f1, "A real pack per drone: it drains, sags under load and loses punch. The OSD shows volts and mAh, LOW BATTERY at 3.5 V per cell. R fits a fresh pack.")
 	UIKit.toggle(f1, "Prop damage", Settings.prop_damage, func(v: bool): Settings.prop_damage = v)
 	_hint(f1, "Hard crashes chip props: less thrust on that motor, vibration, a slight pull. R fits new props.")
-	UIKit.gap(f1, 6)
-	_segmented(f1, "Wind (outdoor maps)", Settings.WIND_NAMES, Settings.wind_level, func(i: int): Settings.wind_level = i)
-	_hint(f1, "3 / 6 / 10 m/s at 10 m height, with gusts and turbulence. Calmer near the ground and in the lee of buildings.")
-	UIKit.toggle(f1, "Prop wash", Settings.prop_wash, func(v: bool): Settings.prop_wash = v)
-	_hint(f1, "Shaking and lost lift when you dive into your own downwash. Off: a clean catch every time.")
-	UIKit.section(f2, "Race mode")
+	UIKit.section(f_air, "Air")
+	_segmented(f_air, "Wind (outdoor maps)", Settings.WIND_NAMES, Settings.wind_level, func(i: int):
+		Settings.wind_level = i
+		_refresh_tab_titles())
+	_hint(f_air, "3 / 6 / 10 m/s at 10 m height, with gusts and turbulence. Calmer near the ground and in the lee of buildings.")
+	UIKit.toggle(f_air, "Prop wash", Settings.prop_wash, func(v: bool): Settings.prop_wash = v)
+	_hint(f_air, "Shaking and lost lift when you dive into your own downwash. Off: a clean catch every time.")
+	UIKit.section(f_phys, "Physics")
+	UIKit.toggle(f_phys, "Performance mode (240 Hz physics)", Settings.performance_mode, func(v: bool): Settings.performance_mode = v)
+	_hint(f_phys, "A slightly crisper flight controller. Costs CPU - for strong PCs.")
+
+	# Race: what helps you, and the rules
+	var f2: VBoxContainer = _group(pages["Race"], 1.4)
+	var f_rules: VBoxContainer = _group(pages["Race"])
+	UIKit.section(f2, "Race helpers")
 	UIKit.toggle(f2, "Ghost of your best lap", Settings.race_ghost, func(v: bool): Settings.race_ghost = v)
-	UIKit.toggle(f2, "Competition rule", Settings.race_strict, func(v: bool): Settings.race_strict = v)
-	_hint(f2, "On: a missed gate voids the lap (race rules). Off: go back and fly it.")
 	UIKit.gap(f2, 6)
 	_race_line_row(f2)
 	_segmented(f2, "Line length", ["Short", "Medium", "Long"], clampi(Settings.race_line_length, 0, 2), func(i: int): Settings.race_line_length = i)
 	_hint(f2, "Always to the next gate; close gates show up to three. Fades out after the last.")
-	UIKit.gap(f2, 6)
-	UIKit.section(f2, "Physics")
-	UIKit.toggle(f2, "Performance mode (240 Hz physics)", Settings.performance_mode, func(v: bool): Settings.performance_mode = v)
-	_hint(f2, "A slightly crisper flight controller. Costs CPU - for strong PCs.")
+	UIKit.section(f_rules, "Rules")
+	UIKit.toggle(f_rules, "Competition rule", Settings.race_strict, func(v: bool): Settings.race_strict = v)
+	_hint(f_rules, "On: a missed gate voids the lap (race rules). Off: go back and fly it.")
 
 	# Rates
-	_build_rates(pages[3][0])
+	_build_rates(_group(pages["Rates"]))
 
-	# Radio
-	var third: VBoxContainer = pages[4][0]
-	_radio_help(pages[4][1])
+	# Radio: the radio itself, the optional controls, the controller - and
+	# how to connect one
+	var third: VBoxContainer = _group(pages["Radio"])
+	var r_other: VBoxContainer = _group(pages["Radio"])
+	var r_ctrl: VBoxContainer = _group(pages["Radio"])
 	UIKit.section(third, "Radio")
 	_radio_status = Label.new()
 	_radio_status.theme_type_variation = "Muted"
@@ -257,30 +261,62 @@ func _build_settings() -> Control:
 		InputManager.arm_is_switch = v
 		InputManager.save_calibration())
 
-	UIKit.gap(third, 10)
-	UIKit.section(third, "Other controls (optional)")
-	_hint(third, "Assign a switch or button for any of these, or leave it unassigned and use the keyboard only.")
-	_assign_row(third, "Assign Mode Switch", "mode", Callable(InputManager, "mode_control_name"), Callable(InputManager, "clear_mode_control"))
-	_assign_row(third, "Assign Reset Button", "reset", Callable(InputManager, "reset_control_name"), Callable(InputManager, "clear_reset_control"))
-	_assign_row(third, "Assign Line-of-Sight Button", "los", Callable(InputManager, "los_control_name"), Callable(InputManager, "clear_los_control"))
-	_assign_row(third, "Assign Restart Switch", "restart", Callable(InputManager, "restart_control_name"), Callable(InputManager, "clear_restart_control"))
-	_hint(third, "For everyday flying, use Reset: it puts the drone back, starts the race fresh and fits a new pack and props, all in an instant. Restart reloads the whole map (a few seconds) - only needed if something gets stuck.")
+	UIKit.section(r_other, "Other controls (optional)")
+	_hint(r_other, "Assign a switch or button for any of these, or leave it unassigned and use the keyboard only.")
+	_assign_row(r_other, "Assign Mode Switch", "mode", Callable(InputManager, "mode_control_name"), Callable(InputManager, "clear_mode_control"))
+	_assign_row(r_other, "Assign Reset Button", "reset", Callable(InputManager, "reset_control_name"), Callable(InputManager, "clear_reset_control"))
+	_assign_row(r_other, "Assign Line-of-Sight Button", "los", Callable(InputManager, "los_control_name"), Callable(InputManager, "clear_los_control"))
+	_assign_row(r_other, "Assign Restart Switch", "restart", Callable(InputManager, "restart_control_name"), Callable(InputManager, "clear_restart_control"))
+	_hint(r_other, "For everyday flying, use Reset: it puts the drone back, starts the race fresh and fits a new pack and props, all in an instant. Restart reloads the whole map (a few seconds) - only needed if something gets stuck.")
 
-	UIKit.gap(third, 10)
-	UIKit.section(third, "Controller")
+	UIKit.section(r_ctrl, "Controller")
 	_device_picker = OptionButton.new()
 	_device_picker.custom_minimum_size = Vector2(0, 44)
 	_device_picker.item_selected.connect(func(i: int):
 		InputManager.preferred_device_name = "" if i == 0 else _device_picker.get_item_text(i).trim_suffix(" (not connected)")
 		InputManager.save_calibration())
-	third.add_child(_device_picker)
+	r_ctrl.add_child(_device_picker)
 	_refresh_devices()
 	Input.joy_connection_changed.connect(func(_d: int, _c: bool): _refresh_devices())
-	UIKit.slider(third, "Stick deadzone", 0.0, 10.0, 0.5, InputManager.deadzone * 100.0, func(v: float):
+	UIKit.slider(r_ctrl, "Stick deadzone", 0.0, 10.0, 0.5, InputManager.deadzone * 100.0, func(v: float):
 		InputManager.deadzone = v / 100.0
 		InputManager.save_calibration(), " %")
-
+	UIKit.gap(r_ctrl, 14)
+	_radio_help(r_ctrl)
+	_refresh_tab_titles()
 	return parts[0]
+
+## A panel for one topic inside a tab (2026-10-12): dark, a sky-blue top
+## edge, its own column. `ratio`: its share of the tab's width.
+func _group(page: HBoxContainer, ratio: float = 1.0) -> VBoxContainer:
+	var panel := PanelContainer.new()
+	var sb := UIKit.box(Color(0.071, 0.094, 0.129), Color(1, 1, 1, 0.09), 6, 1, Vector4(18, 10, 18, 14))
+	sb.border_width_top = 3
+	sb.border_color = Color(1, 1, 1, 0.09)
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_stretch_ratio = ratio
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(panel)
+	var top := ColorRect.new() # the coloured top edge (a StyleBoxFlat has one border colour)
+	top.color = UIKit.LOGO_SKY
+	top.custom_minimum_size = Vector2(0, 3)
+	top.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(top)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	panel.add_child(col)
+	UIKit.gap(col, 4)
+	return col
+
+## Tab titles with the key value beside them (Flying: the wind, Graphics:
+## the quality).
+func _refresh_tab_titles() -> void:
+	if settings_tabs == null:
+		return
+	settings_tabs.set_tab_title(TAB_NAMES.find("Flying"), "Flying  ·  wind %s" % String(Settings.WIND_NAMES[clampi(Settings.wind_level, 0, Settings.WIND_NAMES.size() - 1)]).to_lower())
+	settings_tabs.set_tab_title(TAB_NAMES.find("Graphics"), "Graphics  ·  %s" % Settings.QUALITY_NAMES[clampi(Settings.graphics_quality, 0, 2)])
 
 func _hint_label() -> Label:
 	var l := Label.new()

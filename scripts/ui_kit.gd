@@ -99,6 +99,37 @@ static func make_theme() -> Theme:
 	t.set_color("font_color", "GhostButton", MUTED)
 	t.set_color("font_hover_color", "GhostButton", TEXT)
 
+	# Menu buttons (main menu, 2026-10-12, the user's pick "solid dark
+	# panels"): the race UI's cut-corner panel, solid and dark with a thin
+	# light edge and a grey stripe; hover and focus (radio/keyboard) light
+	# the stripe and edge up blue. Play: solid sky blue, orange stripe.
+	var mb_normal := CutBox.make(Color("#151c26"), Color("#3b4656"), Color(1, 1, 1, 0.12))
+	var mb_hover := CutBox.make(Color("#1d2735"), LOGO_SKY, Color(0.5, 0.69, 1.0, 0.6))
+	var mb_focus := CutBox.make(Color(0, 0, 0, 0), LOGO_SKY, Color(0.5, 0.69, 1.0, 0.75))
+	for v: Array in [["MainButton", mb_normal, mb_hover, CutBox.make(Color("#10161e"), LOGO_SKY, Color(0.5, 0.69, 1.0, 0.6))],
+			["MainPlay", CutBox.make(LOGO_SKY, LOGO_GROUND, Color(0, 0, 0, 0)), CutBox.make(LOGO_SKY.lightened(0.12), LOGO_GROUND, Color(1, 1, 1, 0.35)), CutBox.make(LOGO_SKY.darkened(0.15), LOGO_GROUND, Color(0, 0, 0, 0))]]:
+		t.set_type_variation(v[0], "Button")
+		t.set_stylebox("normal", v[0], v[1])
+		t.set_stylebox("hover", v[0], v[2])
+		t.set_stylebox("pressed", v[0], v[3])
+		t.set_stylebox("disabled", v[0], v[1])
+		t.set_stylebox("focus", v[0], mb_focus if v[0] == "MainButton" else CutBox.make(Color(0, 0, 0, 0), LOGO_GROUND, Color(1, 1, 1, 0.7)))
+		t.set_color("font_color", v[0], TEXT if v[0] == "MainButton" else Color.WHITE)
+		t.set_color("font_hover_color", v[0], Color.WHITE)
+		t.set_color("font_focus_color", v[0], Color.WHITE)
+		t.set_color("font_pressed_color", v[0], ACCENT if v[0] == "MainButton" else Color.WHITE)
+		t.set_constant("h_separation", v[0], 0)
+
+	# The main menu's corner buttons (Settings, Updates): plain small boxes,
+	# as in the user's pick - not cut-corner panels.
+	t.set_type_variation("MainChip", "Button")
+	t.set_stylebox("normal", "MainChip", box(Color("#151c26"), Color(1, 1, 1, 0.12), 5, 1, Vector4(16, 6, 16, 6)))
+	t.set_stylebox("hover", "MainChip", box(Color("#1d2735"), Color(0.5, 0.69, 1.0, 0.6), 5, 1, Vector4(16, 6, 16, 6)))
+	t.set_stylebox("pressed", "MainChip", box(Color("#10161e"), Color(0.5, 0.69, 1.0, 0.6), 5, 1, Vector4(16, 6, 16, 6)))
+	t.set_stylebox("focus", "MainChip", box(Color(0, 0, 0, 0), Color(0.5, 0.69, 1.0, 0.8), 5, 2, Vector4(16, 6, 16, 6)))
+	t.set_color("font_color", "MainChip", TEXT)
+	t.set_color("font_hover_color", "MainChip", Color.WHITE)
+
 	# Option cards (drone/map choice) are big buttons too.
 	t.set_type_variation("CardButton", "Button")
 	# (No shadow: they sit inside a card, and the scroll area would clip it.)
@@ -108,7 +139,9 @@ static func make_theme() -> Theme:
 	t.set_stylebox("focus", "CardButton", card_box(LINK, Color(0, 0, 0, 0), 2, false))
 
 	t.set_type_variation("Card", "PanelContainer")
-	t.set_stylebox("panel", "Card", card_box(BORDER))
+	# The screens' cards in the race UI's panel shape (2026-10-12): dark,
+	# the top right corner cut, a sky-blue stripe down the left.
+	t.set_stylebox("panel", "Card", CutBox.make(Color(0.063, 0.078, 0.102, 0.96), LOGO_SKY, Color(1, 1, 1, 0.09), Vector4(32, 24, 28, 24), 26.0))
 
 	t.set_type_variation("Title", "Label")
 	t.set_font("font", "Title", oswald())

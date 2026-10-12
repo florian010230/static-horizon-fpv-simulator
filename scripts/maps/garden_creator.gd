@@ -40,6 +40,7 @@ static func ensure_materials(g: Geo) -> void:
 ## o: "fence" pins the boundary ("hedge", "picket_white", "picket_wood",
 ## "rails", "wall"); the draw for it still happens (see Pieces).
 static func build(g: Geo, plot: Dictionary, house: Dictionary, r: RandomNumberGenerator, o: Dictionary = {}) -> Dictionary:
+	g.begin_object("garden")
 	ensure_materials(g)
 	var gc := GardenCreator.new()
 	gc.geo = g
@@ -48,6 +49,7 @@ static func build(g: Geo, plot: Dictionary, house: Dictionary, r: RandomNumberGe
 	gc.W = plot.width
 	gc.D = plot.depth
 	gc.pins = o
+	g.end_object()
 	return gc._build(house)
 
 func _build(house: Dictionary) -> Dictionary:
@@ -499,6 +501,10 @@ func _spot(yard: Rect2, size: Vector2, used: Array) -> Rect2:
 		var z: float = rng.randf_range(yard.position.y, maxf(yard.end.y - size.y, yard.position.y))
 		var r := Rect2(x, z, size.x, size.y)
 		var free: bool = yard.encloses(r)
+		# Not on a road or in a neighbour's building (a plot on a bend can
+		# reach over the kerb - layout rule, 2026-10-12).
+		var wc: Vector3 = f * Vector3(x + size.x * 0.5, 0, z + size.y * 0.5)
+		free = free and geo.claim_free(Vector2(wc.x, wc.z), Vector2(f.basis.x.x, f.basis.x.z), size * 0.5, 0.3)
 		for u: Rect2 in used:
 			if u.grow(0.8).intersects(r):
 				free = false

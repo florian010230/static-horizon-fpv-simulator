@@ -127,20 +127,32 @@ func _drape(area: PackedVector2Array, lift: float, mat: String) -> PackedVector3
 	var iz0: int = maxi(0, floori((mn.y - r.position.y) / st))
 	var iz1: int = mini(land._nz - 2, floori((mx.y - r.position.y) / st))
 	var out := PackedVector3Array()
+	# Each grid point's height and inside-flag once (a cell's corners are
+	# shared by four cells - this was most of a field's build time).
+	var w: int = ix1 - ix0 + 2
+	var pts := PackedVector3Array()
+	var ins := PackedByteArray()
+	for iz in range(iz0, iz1 + 2):
+		for ix in range(ix0, ix1 + 2):
+			var x: float = r.position.x + ix * st
+			var z: float = r.position.y + iz * st
+			pts.append(Vector3(x, land.ground(x, z) + lift, z))
+			ins.append(1 if Geometry2D.is_point_in_polygon(Vector2(x, z), area) else 0)
 	for iz in range(iz0, iz1 + 1):
 		for ix in range(ix0, ix1 + 1):
-			var x0: float = r.position.x + ix * st
-			var z0: float = r.position.y + iz * st
-			var p00 := Vector3(x0, land.ground(x0, z0) + lift, z0)
-			var p10 := Vector3(x0 + st, land.ground(x0 + st, z0) + lift, z0)
-			var p01 := Vector3(x0, land.ground(x0, z0 + st) + lift, z0 + st)
-			var p11 := Vector3(x0 + st, land.ground(x0 + st, z0 + st) + lift, z0 + st)
+			var i00: int = (iz - iz0) * w + (ix - ix0)
+			var p00: Vector3 = pts[i00]
+			var p10: Vector3 = pts[i00 + 1]
+			var p01: Vector3 = pts[i00 + w]
+			var p11: Vector3 = pts[i00 + w + 1]
 			# (The terrain splits each cell along the 10-01 diagonal.)
-			for tri: Array in [[p00, p10, p01], [p10, p11, p01]]:
-				var t2 := PackedVector2Array([Vector2(tri[0].x, tri[0].z), Vector2(tri[1].x, tri[1].z), Vector2(tri[2].x, tri[2].z)])
-				if Geometry2D.is_point_in_polygon(t2[0], area) and Geometry2D.is_point_in_polygon(t2[1], area) and Geometry2D.is_point_in_polygon(t2[2], area):
+			for t in range(2):
+				var tri: Array = [p00, p10, p01] if t == 0 else [p10, p11, p01]
+				var a_in: bool = (ins[i00] + ins[i00 + 1] + ins[i00 + w] == 3) if t == 0 else (ins[i00 + 1] + ins[i00 + w + 1] + ins[i00 + w] == 3)
+				if a_in:
 					out.append_array(PackedVector3Array(tri)) # (fields are convex: all corners in = all in)
 					continue
+				var t2 := PackedVector2Array([Vector2(tri[0].x, tri[0].z), Vector2(tri[1].x, tri[1].z), Vector2(tri[2].x, tri[2].z)])
 				for cp: PackedVector2Array in Geometry2D.intersect_polygons(t2, area):
 					var idx: PackedInt32Array = Geometry2D.triangulate_polygon(cp)
 					for k: int in idx:
@@ -312,14 +324,17 @@ func _track(a: Vector2, b: Vector2, h: float) -> void:
 
 ## Round bales where the baler dropped them (in loose lines along the
 ## rows), and a stack of six by the first corner.
+const MAX_BALES: int = 24 ## per field, not counting the stack
 func _bales() -> void:
 	var wrapped: bool = crop == "meadow" # hay off the meadow: greener than straw
 	var line_every: float = rng.randf_range(18.0, 26.0)
 	var v: float = line_every / maxf((c[0] as Vector2).distance_to(c[3]), 1.0) * 0.5
+	var left: int = MAX_BALES # (a big field had ~50 at ~1.5 ms each - load time)
 	while v < 0.95:
 		var u: float = rng.randf_range(0.04, 0.12)
 		while u < 0.95:
-			if rng.randf() < 0.75:
+			if rng.randf() < 0.75 and left > 0:
+				left -= 1
 				var q: Vector2 = _at(u, v + rng.randf_range(-0.01, 0.01))
 				_bale(q, rng.randf() * TAU, wrapped)
 			u += rng.randf_range(0.08, 0.16)

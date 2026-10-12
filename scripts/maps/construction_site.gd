@@ -77,7 +77,9 @@ func build() -> void:
 	geo.add_material("steel_red", Geo.flat_mat(Color(0.55, 0.22, 0.16), 0.6, 0.3))
 	geo.add_material("rebar", Geo.tex_mat(MapTextures.get_tex("rust"), Color(0.9, 0.8, 0.75), 2.0))
 	geo.add_material("sheet_pile", Geo.tex_mat(MapTextures.get_tex("corrugated_rust"), Color(0.8, 0.8, 0.8), 1.5))
-	geo.add_material("screen", Geo.flat_mat(Color(0.85, 0.18, 0.14)))
+	geo.add_material("screen", Geo.flat_mat(Color(0.74, 0.2, 0.15)))
+	geo.add_material("screen_rib", Geo.flat_mat(Color(0.3, 0.31, 0.33), 0.5, 0.4))
+	geo.add_material("steel_primer", Geo.flat_mat(Color(0.47, 0.49, 0.5), 0.6, 0.3)) # (the steel frame: grey primer, 2026-10-12)
 	geo.add_material("glass_panel", Geo.tex_mat(MapTextures.get_tex("curtain_wall"), Color(1.05, 1.08, 1.12), 3.0))
 	geo.add_material("net", Geo.flat_mat(Color(0.95, 0.8, 0.1)))
 	geo.add_material("hoarding", Geo.flat_mat(Color(0.2, 0.36, 0.55)))
@@ -98,7 +100,8 @@ func build() -> void:
 	# cheap boxes stay further out. ~22 ms a house, so a capped count.
 	city.house_centre = Vector2(120, 88)
 	city.house_radius = 130.0
-	city.house_cap = 40
+	city.house_cap = 80 # (40 left streets next to the site in low detail)
+	city.lod_houses = true # every other block house in low detail (2026-10-12)
 
 	_ground()
 	_streets_and_blocks()
@@ -110,7 +113,11 @@ func build() -> void:
 	_site_yard()
 	_viaduct()
 	# Site clutter wherever there's room left (not in the pit).
-	YardProps.scatter(geo, SITE.grow(-5.0), 0.05, 70, rng, [PIT])
+	# (Its own random numbers: when the city's draws change, the props
+	# must not move onto each other.)
+	var yrng := RandomNumberGenerator.new()
+	yrng.seed = 2610
+	YardProps.scatter(geo, SITE.grow(-5.0), 0.05, 70, yrng, [PIT])
 	Forest.plant(self, city.trees, self)
 
 # --- ground ---------------------------------------------------------------------
@@ -198,7 +205,10 @@ func _streets_and_blocks() -> void:
 			var on_grid_street: bool = (x0 >= XS[0] - 1.0 and x1 <= XS[-1] + 1.0) or (z0 >= ZS[0] - 1.0 and z1 <= ZS[-1] + 1.0)
 			if not on_grid_street:
 				geo.slab(Rect2(x0, z0, x1 - x0, z1 - z0), 0.0, 0.5, "far_asphalt", false)
-			city.filler_block(inner, 0.0)
+			if cc.length() < 600.0:
+				city.perimeter_block(inner, 0.0, 4, 7) # low-detail town houses
+			else:
+				city.filler_block(inner, 0.0) # the horizon, in the haze
 
 # --- the high-rise ------------------------------------------------------------------
 
@@ -240,6 +250,13 @@ func _tower() -> void:
 				var s: float = 1.0 if side % 2 == 0 else -1.0
 				var pos: Vector3 = o + (Vector3(0, y + FLOOR_H * 0.5 + 1.0, s * (d * 0.5 + 1.2)) if along_x else Vector3(s * (w * 0.5 + 1.2), y + FLOOR_H * 0.5 + 1.0, 0))
 				geo.box(pos, Vector3(w + 2.6, FLOOR_H, 0.2) if along_x else Vector3(0.2, FLOOR_H, d + 2.6), "screen")
+				# Its vertical steel ribs, every 2.4 m, on the outside.
+				var span: float = (w if along_x else d) + 2.6
+				var nr: int = int(span / 2.4)
+				for r in range(nr + 1):
+					var t: float = -span * 0.5 + r * span / nr
+					var rp: Vector3 = pos + (Vector3(t, 0, s * 0.14) if along_x else Vector3(s * 0.14, 0, t))
+					geo.box(rp, Vector3(0.12, FLOOR_H, 0.08) if along_x else Vector3(0.08, FLOOR_H, 0.12), "screen_rib", 0.0, false)
 				# The steel brackets that hang it from the slab edge.
 				for k in [-0.3, 0.3]:
 					var bpos: Vector3 = o + (Vector3(k * w, y + 0.55, s * (d * 0.5 + 0.55)) if along_x else Vector3(s * (w * 0.5 + 0.55), y + 0.55, k * d))
@@ -429,18 +446,18 @@ func _steel_frame(o: Vector3) -> void:
 			for iz in range(nz):
 				var p: Vector3 = o + Vector3((ix - (nx - 1) * 0.5) * g, 0, (iz - (nz - 1) * 0.5) * g)
 				if f < 4:
-					geo.box(p + Vector3(0, y + h * 0.5, 0), Vector3(0.35, h, 0.35), "steel_red")
+					geo.box(p + Vector3(0, y + h * 0.5, 0), Vector3(0.35, h, 0.35), "steel_primer")
 				if f > 0:
 					if ix < nx - 1:
-						geo.box(p + Vector3(g * 0.5, y - 0.2, 0), Vector3(g, 0.4, 0.2), "steel_red")
+						geo.box(p + Vector3(g * 0.5, y - 0.2, 0), Vector3(g, 0.4, 0.2), "steel_primer")
 					if iz < nz - 1:
-						geo.box(p + Vector3(0, y - 0.2, g * 0.5), Vector3(0.2, 0.4, g), "steel_red")
+						geo.box(p + Vector3(0, y - 0.2, g * 0.5), Vector3(0.2, 0.4, g), "steel_primer")
 		if f in [1, 2]:
 			geo.box(o + Vector3(0, y + 0.02, 0), Vector3((nx - 1) * g, 0.1, (nz - 1) * g * 0.5), "steel")
 	for s in [-1.0, 1.0]:
 		for f in range(4):
 			var a: Vector3 = o + Vector3(s * (nx - 1) * g * 0.5, f * h, -(nz - 1) * g * 0.5)
-			geo.beam(a, a + Vector3(0, h, g), Vector2(0.15, 0.15), "steel_red", true, false)
+			geo.beam(a, a + Vector3(0, h, g), Vector2(0.15, 0.15), "steel_primer", true, false)
 
 # --- site yard -------------------------------------------------------------------------
 

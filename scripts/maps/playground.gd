@@ -205,7 +205,6 @@ var rng := RandomNumberGenerator.new()
 func _street() -> void:
 	rng.seed = 77
 	var roads := Roads.new(geo, rng, fleet)
-	var city := City.new(geo, rng, fleet)
 	roads.junction(Vector3(34, 0, -23.5), Vector2(7, 7), ["w", "e"], 1.8)
 	var w := Route.from(Vector3(30.5, 0, -23.5), 180.0).straight(3000.0, 20.0)
 	var e := Route.from(Vector3(37.5, 0, -23.5), 0.0).straight(3000.0, 20.0)
@@ -214,32 +213,44 @@ func _street() -> void:
 		roads.road(r, 7.0, {"walk": 1.8, "lamps": 25.0, "detail": 350.0})
 		roads.parked(Route.from_pts(r.slice(0.0, 300.0)), 2.3, 0.4)
 		roads.traffic(Route.from_pts(r.slice(0.0, 500.0)), 4.0, 1, 8.0, 0.0)
-	# Houses along the street (the six opposite the playground are below).
-	for k in range(30):
-		for sgn in [-1.0, 1.0]:
-			var x: float = sgn * (62.0 + k * 16.0)
-			city.house(Vector3(x, 0, -36), 0.0, rng.randf_range(9, 12), 9.0)
-			if absf(x) > 50.0:
-				city.house(Vector3(x, 0, -9), 0.0, rng.randf_range(9, 12), 9.0)
-	for k in range(25):
-		city.house(Vector3(48, 0, 5 + k * 16.0), PI * 0.5, rng.randf_range(9, 12), 9.0)
-	Forest.plant(self, city.trees, self)
 
-## A row of simple houses across the street, so the playground sits in
-## a neighbourhood instead of in a void.
+## The neighbourhood (rebuilt 2026-10-12, map rebuild part 8): house
+## plots (HouseCreator.build_plot - house, fences, garden, drive) on both
+## sides of the main road and along the side road, every house facing its
+## street. Within NEAR m of the playground in full detail, beyond that the
+## same houses in low detail (no collision, merged) - the flying area
+## ends at 55 m.
+const NEAR: float = 75.0
+const PLOT_W: float = 21.0
+const PLOT_D: float = 28.0
 func _houses() -> void:
-	for i in range(6):
-		var c := Vector3(-45 + i * 18, 0, -36)
-		var w: float = 10.0 + (i % 3)
-		geo.box(c + Vector3(0, 3.2, 0), Vector3(w, 6.4, 9), "plaster")
-		# Gable roof: two tilted slabs.
-		for s in [-1.0, 1.0]:
-			var xf := Transform3D(Basis(Vector3.RIGHT, s * 0.6), c + Vector3(0, 7.7, s * 2.4))
-			geo.box_xf(xf, Vector3(w + 0.6, 0.2, 5.8), "roof")
-		geo.box(c + Vector3(0, 1.1, 4.52), Vector3(1.0, 2.1, 0.05), "rope")
-		for fy in [1.6, 4.6]:
-			for fx in [-w * 0.32, w * 0.32] + ([] if fy < 3.0 else [0.0]):
-				geo.box(c + Vector3(fx, fy, 4.52), Vector3(1.3, 1.3, 0.05), "window", 0.0, false, false)
+	var plots: Array = [] # [frame, label]
+	var edge: float = 3.5 + 1.8 # half the road + pavement
+	var x: float = -420.0
+	while x <= 420.0: # north side of the main road, facing south
+		plots.append(Transform3D(Basis(), Vector3(x, 0, -23.5 - edge)))
+		x += PLOT_W + 1.0
+	x = -55.0
+	while x >= -420.0: # south side, west of the playground, facing north
+		plots.append(Transform3D(Basis(Vector3.UP, PI), Vector3(x, 0, -23.5 + edge)))
+		x -= PLOT_W + 1.0
+	x = 80.0
+	while x <= 420.0: # south side, east of the side road
+		plots.append(Transform3D(Basis(Vector3.UP, PI), Vector3(x, 0, -23.5 + edge)))
+		x += PLOT_W + 1.0
+	var z: float = -6.0
+	while z <= 420.0: # east of the side road, facing west
+		plots.append(Transform3D(Basis(Vector3.UP, -PI * 0.5), Vector3(34.0 + edge, 0, z)))
+		z += PLOT_W + 1.0
+	var trees: Array = []
+	for fr: Transform3D in plots:
+		var pl: Dictionary = {"frame": fr, "width": PLOT_W, "depth": PLOT_D}
+		var mid: Vector3 = fr * Vector3(0, 0, -PLOT_D * 0.5)
+		var far: bool = Vector2(mid.x, mid.z).length() > NEAR
+		var id: String = Pieces.id_at("plot", fr.origin)
+		var info: Dictionary = HouseCreator.build_plot(geo, pl, Pieces.seed_of(id, 4242), {"lod": far, "interior": false})
+		trees.append_array(info.get("trees", []))
+	TreeCreator.plant(self, geo, trees)
 
 ## Trees (TreeCreator): big maples and birches shading the playground
 ## inside the fence, the garden mix round it - now and then a birdhouse

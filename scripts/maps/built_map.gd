@@ -47,6 +47,14 @@ func floating_pieces() -> Array:
 	var b: Array = border()
 	return geo.floating(g, b[4] if b.size() > 4 else Vector2.ZERO, b[1] + 100.0)
 
+## Layout sanity (Geo.layout_conflicts): buildings standing on a road or
+## rail, or in each other. The self-test wants none - fix the map, never
+## loosen the check (user, 2026-10-12).
+func layout_conflicts() -> Array:
+	if from_cache:
+		push_warning("layout_conflicts(): %s came from the map cache - Geo holds nothing to check" % name)
+	return geo.layout_conflicts()
+
 func _plant_trees() -> void:
 	var kept: Array = []
 	for t in _queued_trees:
@@ -163,6 +171,11 @@ func _ready() -> void:
 		print("  by kind: ", kinds)
 		for k in range(mini(f.size(), 60)):
 			print("  float ", f[k])
+	if OS.has_environment("SH_LAYOUT"):
+		var lc: Array = layout_conflicts()
+		print("LAYOUT %s: %d" % [name, lc.size()])
+		for e: Array in lc:
+			print("  ", e[0], " at (%.1f, %.1f)" % [e[1].x, e[1].y])
 	lt.append(Time.get_ticks_usec())
 	geo.commit(self)
 	Pieces.show_ids(self, geo)
@@ -182,7 +195,7 @@ func _finish(lt: Array, how: String) -> void:
 	if ui.has_method("set_drone"):
 		ui.set_drone(drone)
 	after_build()
-	if not OS.has_environment("SH_FLOAT") and not OS.get_cmdline_user_args().has("--selftest"):
+	if not OS.has_environment("SH_FLOAT") and not OS.has_environment("SH_LAYOUT") and not OS.get_cmdline_user_args().has("--selftest"):
 		geo.release_records() # (the floating check is the only later reader)
 	Settings.apply_graphics_settings()
 	lt.append(Time.get_ticks_usec())

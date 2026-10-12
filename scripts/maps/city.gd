@@ -20,6 +20,10 @@ var house_centre := Vector2.ZERO
 var house_radius: float = 0.0
 var house_cap: int = 0
 var houses_built: int = 0
+## Every other block house as a low-detail CityHouseCreator house instead
+## of a plain City.building (map rebuilds 2026-10-12: "replace every
+## house with generated ones").
+var lod_houses: bool = false
 
 const STOREY: float = 3.5
 const FACADES := ["cty_plaster", "cty_plaster_warm", "cty_plaster_grey", "cty_brick", "cty_plaster_warm", "cty_plaster"]
@@ -58,6 +62,7 @@ func _init(g: Geo, r: RandomNumberGenerator, cars: Fleet = null) -> void:
 ## ground floor if `shop`, a cornice, and a roof: "flat" (parapet and
 ## plant), "mansard", "gable" (ridge along the longer side).
 func building(c: Vector3, size: Vector2, yaw: float, floors: int, facade: String, roof: String, shop: bool) -> void:
+	geo.begin_object("building")
 	var h: float = floors * STOREY
 	var b := Basis(Vector3.UP, yaw)
 	var old_cell: float = geo.cell
@@ -109,11 +114,13 @@ func building(c: Vector3, size: Vector2, yaw: float, floors: int, facade: String
 			if rng.randf() < 0.5:
 				geo.box_xf(Transform3D(b, top + b * Vector3(size.x * 0.2, rise * 0.7, 0)), Vector3(0.7, rise * 0.9, 0.7), "cty_brick", false, false)
 	geo.cell = old_cell
+	geo.end_object()
 
 ## A European perimeter block filling rect r (ground y): separate
 ## buildings along all four sides, `depth` deep, courtyard inside
 ## (paved, a tree or two). Streets are assumed all round (shops face out).
 func perimeter_block(r: Rect2, y: float, floors_min: int = 4, floors_max: int = 6, depth: float = 13.0, shops: bool = true) -> void:
+	geo.begin_object("perimeter block") # one connected building: its corners join
 	geo.slab(r, y + 0.02, 0.1, "cty_court", false)
 	# North and south sides run the full width; east and west between.
 	for side in range(4):
@@ -141,22 +148,25 @@ func perimeter_block(r: Rect2, y: float, floors_min: int = 4, floors_max: int = 
 					c = Vector3(r.end.x - depth * 0.5, y, r.position.y + r.size.y * 0.5 + t)
 					size = Vector2(depth, seg - 0.1)
 			var shop: bool = shops and rng.randf() < 0.75
-			if houses_built < house_cap and Vector2(c.x, c.z).distance_to(house_centre) < house_radius:
+			var full: bool = houses_built < house_cap and Vector2(c.x, c.z).distance_to(house_centre) < house_radius
+			if full or lod_houses:
 				# The front faces out of the block: house frame +z = outward.
 				var out: Vector3 = [Vector3(0, 0, -1), Vector3(0, 0, 1), Vector3(-1, 0, 0), Vector3(1, 0, 0)][side]
 				var frame := Transform3D(Basis.looking_at(-out, Vector3.UP), c + out * depth * 0.5)
 				var style: String = "fifties" if floors <= 3 else ("altbau" if floors <= 5 else "modern")
-				CityHouseCreator.build(geo, frame, size.x if side < 2 else size.y, depth, style, rng)
-				houses_built += 1
+				CityHouseCreator.build(geo, frame, size.x if side < 2 else size.y, depth, style, rng, {"lod": not full})
+				houses_built += 1 if full else 0
 			else:
 				building(c, size, 0.0, floors, facade, roof, shop)
 	var inner: Rect2 = r.grow(-depth - 3.0)
 	if inner.size.x > 8.0 and inner.size.y > 8.0:
 		for i in range(rng.randi_range(1, 3)):
 			trees.append([Vector3(rng.randf_range(inner.position.x, inner.end.x), y, rng.randf_range(inner.position.y, inner.end.y)), 1, rng.randf_range(0.55, 0.85)])
+	geo.end_object()
 
 ## Office tower on a two-storey podium filling r.
 func tower(r: Rect2, y: float, height: float) -> void:
+	geo.begin_object("tower")
 	var c := Vector3(r.get_center().x, y, r.get_center().y)
 	geo.slab(r, y + 0.02, 0.1, "cty_court", false)
 	geo.box(c + Vector3(0, STOREY, 0), Vector3(r.size.x - 4.0, STOREY * 2.0, r.size.y - 4.0), "cty_shop")
@@ -166,6 +176,7 @@ func tower(r: Rect2, y: float, height: float) -> void:
 	geo.box(c + Vector3(0, STOREY * 2.0 + 0.2, 0), Vector3(r.size.x - 3.5, 0.4, r.size.y - 3.5), "cty_cornice", false, false)
 	if rng.randf() < 0.5:
 		geo.cylinder(c + Vector3(tw.x * 0.25, STOREY * 2.0 + height + 3.2, 0), c + Vector3(tw.x * 0.25, STOREY * 2.0 + height + 15.0, 0), 0.25, "cty_metal", 6)
+	geo.end_object()
 
 ## A park: lawn, crossing gravel paths, trees, benches, a fountain.
 func park(r: Rect2, y: float) -> void:
@@ -212,8 +223,10 @@ func car_park(r: Rect2, y: float, fill: float = 0.75) -> void:
 
 ## A gabled house (1-2 storeys) at p (ground), turned by yaw.
 func house(p: Vector3, yaw: float, w: float, d: float, floors: int = 2) -> void:
+	geo.begin_object("house")
 	var wall: String = ["cty_plaster", "cty_plaster_warm", "cty_brick", "cty_plaster_grey"][rng.randi() % 4]
 	building(p, Vector2(w, d), yaw, floors, wall, "gable" if rng.randf() < 0.75 else "slate", false)
+	geo.end_object()
 
 ## Cheap distant buildings along a street (no shops, no detail): what
 ## the far city looks like through the haze. `side` = +1/-1 of route.

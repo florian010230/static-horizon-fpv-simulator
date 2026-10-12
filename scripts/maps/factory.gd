@@ -21,6 +21,16 @@ const LAND := Rect2(-520, -520, 1040, 1040)
 const SITE := Vector2(0, 0)
 const SITE_SIZE := Vector2(230, 170)
 const RAIL_Z: float = -135.0
+## The farmland round the works (2026-10-12, "more around it"): fields
+## (FieldCreator, hedges on the listed sides), a farm east of the road,
+## a row of houses along the road south of the works.
+const FIELDS: Array = [
+	["wheat", [Vector2(-480, -100), Vector2(-180, -100), Vector2(-180, 90), Vector2(-480, 90)], [0, 1]],
+	["rapeseed", [Vector2(-150, 130), Vector2(60, 130), Vector2(60, 330), Vector2(-150, 330)], [0]],
+	["stubble", [Vector2(300, 0), Vector2(480, 0), Vector2(480, 180), Vector2(300, 180)], [0, 3]],
+	["meadow", [Vector2(-290, -330), Vector2(-60, -330), Vector2(-60, -170), Vector2(-290, -170)], [1]],
+]
+const FARM := Vector2(250, 230)
 var land: TerrainCreator
 var _views: Array = []
 var _gnomes: Array = []
@@ -104,16 +114,22 @@ func build() -> void:
 	# road's turning circle lay buried in the yard's edge.
 	var road := RoadCreator.plan(land, Vector3(170, 0, 1600), -90.0, [Vector2(160, 400), Vector2(150, 120), Vector2(150, -40), Vector2(190, -95), Vector2(400, -100), Vector2(1600, -60)], 7.0, {"radius": 70.0, "hold": [[Vector2(150, 0), y + 0.05, 14.0]]})
 	var gate_rd := RoadCreator.branch(land, road, Vector2(150, 0), -1.0, [Vector2(SITE.x + SITE_SIZE.x * 0.5 + 11.0, 0)], 7.0, {"end": "turning", "lead": 8.0})
+	var farm: Dictionary = FarmCreator.plan(land, FARM, Vector2(64, 48), -1.0)
+	var farm_lane := RoadCreator.branch(land, road, Vector2(154, FARM.y), 1.0, [Vector2(FARM.x - 46.0, FARM.y)], 4.5, {"end": "turning", "radius": 40.0, "lead": 10.0}) # (its turning circle ends just short of the yard: inside, it hung over the lower yard)
+	for fd: Array in FIELDS:
+		land.keep_clear_poly(FieldCreator.poly(fd[1]))
+	var plots: Array = []
+	VillageKit.plots_along(land, road, road.dist_at(Vector2(155, 390)), road.dist_at(Vector2(152, 175)), -1.0, plots)
 	var t1: int = Time.get_ticks_msec()
 	land.build(self, geo, LAND)
-	for rd: RoadCreator in [road, gate_rd]:
+	for rd: RoadCreator in [road, gate_rd, farm_lane]:
 		_lines.append(rd.line)
 	_lines.append(rail.line)
 	_materials()
 	var lrng := RandomNumberGenerator.new()
 	lrng.seed = 5
 	var roads := Roads.new(geo, lrng, fleet)
-	for rd: RoadCreator in [road, gate_rd]:
+	for rd: RoadCreator in [road, gate_rd, farm_lane]:
 		rd.draw(geo, roads, lrng)
 	VillageKit.lamps(roads, road, 200.0, road.line.length() * 0.5, 36.0)
 	StreetKit.give_way(geo, gate_rd)
@@ -221,10 +237,46 @@ func build() -> void:
 	geo.tint = Color.WHITE
 	for lp in [Vector3(-38, 0, -28), Vector3(40, 0, -60), Vector3(90, 0, 10), Vector3(-110, 0, 60), Vector3(20, 0, 70), Vector3(-30, 0, 60)]:
 		_light_mast(o + lp, y)
-	# --- countryside ---
+	# --- countryside: the hamlet, the farm, the fields, a power line, the bus stop ---
 	var trees: Array = []
+	var tp: Array = [Time.get_ticks_usec()]
+	# The hamlet's houses closed inside (nobody flies in this far out), the
+	# ones past the warning line in low detail - load time (2026-10-12).
+	for pl: Dictionary in plots:
+		var fr: Transform3D = pl.frame
+		var mid: Vector3 = fr * Vector3(0, 0, -pl.depth * 0.5)
+		var id: String = Pieces.id_at("plot", fr.origin)
+		var far: bool = Vector2(mid.x, mid.z).distance_to(Vector2(10, -20)) > 330.0
+		var pinfo: Dictionary = HouseCreator.build_plot(geo, pl, Pieces.seed_of(id, 911), {"interior": false, "lod": far})
+		trees.append_array(pinfo.get("trees", []))
+	tp.append(Time.get_ticks_usec())
+	_views.append(["hamlet", Vector3(175, 16, 320), Vector3(118, 4, 230)])
+	var fv: Dictionary = FarmCreator.build(geo, land, farm, 78)
+	tp.append(Time.get_ticks_usec())
+	trees.append_array(fv.trees)
+	_views.append_array(fv.views.slice(0, 2))
+	var frng := RandomNumberGenerator.new()
+	frng.seed = 61
+	for fd: Array in FIELDS:
+		var tf: int = Time.get_ticks_usec()
+		var fi: Dictionary = FieldCreator.build(geo, land, fd[1], fd[0], frng, {"hedges": fd[2]})
+		if OS.has_environment("SH_PERF"):
+			print("FIELD %s %d ms" % [fd[0], (Time.get_ticks_usec() - tf) / 1000])
+		trees.append_array(fi.trees)
+	tp.append(Time.get_ticks_usec())
+	PowerLineCreator.build(geo, land, [Vector2(-600, -260), Vector2(-200, -255), Vector2(200, -250), Vector2(600, -235)], "pylons")
+	tp.append(Time.get_ticks_usec())
+	_views.append_array(StreetKit.bus_stop(geo, road, road.dist_at(Vector2(152, 40)), 1.0, "Werk Lindner"))
 	var woods: Array = [[Vector2(-380, 260), 160.0], [Vector2(380, -360), 150.0], [Vector2(-420, -300), 120.0], [Vector2(330, 330), 130.0]]
+	tp.append(Time.get_ticks_usec())
 	trees.append_array(land.woods(lrng, LAND.grow(-60.0), 1800, 90.0, woods))
+	tp.append(Time.get_ticks_usec())
+	if OS.has_environment("SH_PERF"):
+		var names: Array = ["plots", "farm", "fields", "pylons", "bus stop", "woods"]
+		var parts: Array = []
+		for ti in range(tp.size() - 1):
+			parts.append("%s %d ms" % [names[ti], (tp[ti + 1] - tp[ti]) / 1000])
+		print("FACTORY parts: ", ", ".join(parts))
 	for i in range(14):
 		trees.append([Vector3(o.x - hx - 6.0, y, o.z - hz + 10 + i * 11.0), "birch" if i % 3 else "maple", 900 + i, "none"])
 	TreeCreator.plant(self, geo, trees)
