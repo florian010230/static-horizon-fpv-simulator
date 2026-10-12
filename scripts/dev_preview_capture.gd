@@ -376,6 +376,29 @@ func _go() -> void:
 		await _linecolour_shots()
 		get_tree().quit()
 		return
+	if OS.get_cmdline_user_args().has("loadflash"):
+		# Every frame of a map load through the loading screen, small ->
+		# scratch dir given after "loadflash" (run with SH_NOCACHE=1 to
+		# force the shadow capture).
+		var args := OS.get_cmdline_user_args()
+		var out_dir: String = args[args.find("loadflash") + 1]
+		var map_scene: String = args[args.find("loadflash") + 2] if args.size() > args.find("loadflash") + 2 else "res://scenes/maps/RaceField.tscn"
+		get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+		await get_tree().create_timer(2.0).timeout
+		SceneLoader.goto(map_scene, "Flash test")
+		for i in range(150):
+			await RenderingServer.frame_post_draw
+			var img: Image = get_viewport().get_texture().get_image()
+			if not SceneLoader.is_loading() or SceneLoader._root.modulate.a < 1.0:
+				img.save_png("%s/full%03d.png" % [out_dir, i])
+				if i > 0 and not FileAccess.file_exists("%s/full%03d.png" % [out_dir, i - 3]):
+					print("FLASH first uncovered frame %d (drawn %d)" % [i, Engine.get_frames_drawn()])
+			img.resize(320, 180)
+			img.save_png("%s/f%03d.png" % [out_dir, i])
+			if i > 60:
+				break
+		get_tree().quit()
+		return
 	if OS.get_cmdline_user_args().has("trackmenu"):
 		get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
 		await get_tree().create_timer(2.5).timeout
@@ -1663,7 +1686,7 @@ func _flag_shots() -> void:
 		_shot("flag_%s_above.png" % shot[0])
 	Settings.race_track = 1
 
-## `-- --dev-preview raceui`: the finish card in both styles, plain and
+## `-- --dev-preview raceui`: the finish card (podium), plain and
 ## with a new track record, and the race bar mid-lap -> previews/
 ## raceui_*.png. The card data is made up here (nothing is saved).
 func _raceui_shots() -> void:
@@ -1688,14 +1711,11 @@ func _raceui_shots() -> void:
 		"you": 0, "record": true, "new_best": false}
 	var best := plain.duplicate()
 	best.merge({"total": 82.70, "laps": [41.80, 40.90], "top": [[82.70, 40.90, "2026-10-11"], [83.12, 41.02, "2026-10-09"], [84.37, 41.46, "2026-10-11"]], "you": 0, "new_best": true}, true)
-	for style in ["slash", "podium"]:
-		ui.FINISH_STYLE = style
-		for shot in [["plain", plain], ["record", record], ["newbest", best]]:
-			ui.show_race_finish(shot[1].duplicate())
-			await get_tree().create_timer(0.5).timeout
-			await _drawn_frames(3)
-			_shot("raceui_finish_%s_%s.png" % [style, shot[0]])
-	ui.FINISH_STYLE = "slash"
+	for shot in [["plain", plain], ["record", record], ["newbest", best]]:
+		ui.show_race_finish(shot[1].duplicate())
+		await get_tree().create_timer(0.5).timeout
+		await _drawn_frames(3)
+		_shot("raceui_finish_podium_%s.png" % shot[0])
 	ui.close_race_results()
 	# Mid-lap: a split against the best lap just in.
 	course._best = 41.02

@@ -119,6 +119,28 @@ func goto(path: String, title: String = "") -> void:
 			await get_tree().process_frame
 		else:
 			await RenderingServer.frame_post_draw
+	# The sun's shadow map is rendered with every material swapped for a
+	# depth shader: stay up until that is over and the real materials have
+	# been drawn once (at most ~5 s, never stuck).
+	if not headless and WorldShading.capturing > 0:
+		var n: int = 0
+		while WorldShading.capturing > 0 and n < 300:
+			await RenderingServer.frame_post_draw
+			n += 1
+		await RenderingServer.frame_post_draw
+	# And until frames come quickly again: the first ones stall while the
+	# GPU driver compiles shaders, and one of those was seen drawn half
+	# done (untextured, banded ground) as the card faded (at most ~2 s).
+	if not headless:
+		var quick: int = 0
+		var t: int = Time.get_ticks_msec()
+		for k in range(120):
+			await RenderingServer.frame_post_draw
+			var now: int = Time.get_ticks_msec()
+			quick = quick + 1 if now - t < 100 else 0
+			t = now
+			if quick >= 2:
+				break
 	_bar.value = 100.0
 	_finish()
 

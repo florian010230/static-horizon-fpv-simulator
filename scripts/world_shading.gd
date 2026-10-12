@@ -232,6 +232,11 @@ static func _shader(cull: int, blend: bool, scissor: bool) -> Shader:
 ## cache_file: where a map from the map cache keeps its shadow map (the
 ## image only - the projection is recomputed); read instead of rendering
 ## when it exists, written after a render.
+## While a capture runs (> 0) every world material is the grey depth
+## shader: SceneLoader keeps the loading screen up until it is done (the
+## player saw the world in red/green depth colours for a frame as the
+## loading screen faded, 2026-10-11).
+static var capturing: int = 0
 static func capture(scene: Node3D, sun_dir: Vector3, region: Rect2, res: int, cache_file: String = "") -> void:
 	if DisplayServer.get_name() == "headless":
 		return
@@ -268,6 +273,7 @@ static func capture(scene: Node3D, sun_dir: Vector3, region: Rect2, res: int, ca
 				print("LOAD shadow map from the map cache: %d ms" % (Time.get_ticks_msec() - t0))
 			return
 
+	capturing += 1
 	var vp := SubViewport.new()
 	vp.size = Vector2i(res, res)
 	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
@@ -308,6 +314,7 @@ static func capture(scene: Node3D, sun_dir: Vector3, region: Rect2, res: int, ca
 			gi.visibility_range_begin = s[2]
 			gi.visibility_range_end = s[3]
 	vp.queue_free()
+	capturing -= 1
 	img.convert(Image.FORMAT_RG8)
 	RenderingServer.global_shader_parameter_set("sh_shadow_map", ImageTexture.create_from_image(img))
 	if cache_file != "":

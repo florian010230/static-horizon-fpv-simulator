@@ -373,8 +373,6 @@ func set_race_hud(d: Dictionary) -> void:
 ## The finish card (RaceCourse._finish; the data: RaceUI.finish_card),
 ## centred over the flight view until SPACE (or the radio's reset
 ## control, which also puts the drone back in front of START) closes it.
-## FINISH_STYLE: "slash" (top 3 as rows) or "podium" (three tiles).
-static var FINISH_STYLE: String = "slash"
 var _results: Control
 var _close_was_on: bool = true
 func show_race_finish(d: Dictionary) -> void:
@@ -384,7 +382,7 @@ func show_race_finish(d: Dictionary) -> void:
 	# Plain words, never a raw control id ("switch on axis 7").
 	var radio: bool = InputManager.reset_control_name() != "not assigned"
 	d["close_hint"] = "SPACE  close     ·     %s  back to START" % ("R / radio reset" if radio else "R")
-	var card: Control = RaceUI.finish_card(d, FINISH_STYLE)
+	var card: Control = RaceUI.finish_card(d)
 	var holder := CenterContainer.new()
 	holder.set_anchors_preset(Control.PRESET_FULL_RECT)
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE

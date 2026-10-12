@@ -34,15 +34,15 @@ static func caps(text: String, colour: Color = UIKit.MUTED_LIGHT, size: int = 14
 ## finish), laps (Array), top (up to 3 of [total, best lap, date]), you
 ## (your race's place in top, -1 if not in it), record (new track record:
 ## fastest race on this track by any drone), new_best (your best with this
-## drone, not a track record), close_hint. style "slash": the top 3 as
-## rows; "podium": as three tiles, 2-1-3.
-static func finish_card(d: Dictionary, style: String = "slash") -> Control:
+## drone, not a track record), close_hint. The top 3 as podium tiles,
+## 2-1-3, everything centred.
+static func finish_card(d: Dictionary) -> Control:
 	var accent: Color = UIKit.GOLD if d.record else UIKit.ACCENT
 	var card := MarginContainer.new()
 	card.name = "FinishCard"
 	card.theme = UIKit.theme()
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.custom_minimum_size = Vector2(500 if style == "slash" else 520, 0)
+	card.custom_minimum_size = Vector2(520, 0)
 	card.add_theme_constant_override("margin_left", 34)
 	card.add_theme_constant_override("margin_right", 30)
 	card.add_theme_constant_override("margin_top", 22)
@@ -62,7 +62,6 @@ static func finish_card(d: Dictionary, style: String = "slash") -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
 	card.add_child(box)
-	var centre: bool = style == "podium"
 	if d.record:
 		var banner := PanelContainer.new()
 		banner.add_theme_stylebox_override("panel", UIKit.box(UIKit.GOLD, UIKit.GOLD, 4, 0, Vector4(14, 4, 14, 4)))
@@ -81,16 +80,14 @@ static func finish_card(d: Dictionary, style: String = "slash") -> Control:
 	box.add_child(eyebrow)
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 12)
-	if centre:
-		head.alignment = BoxContainer.ALIGNMENT_CENTER
+	head.alignment = BoxContainer.ALIGNMENT_CENTER
 	head.add_child(label(d.track, 30))
 	head.add_child(UIKit.level_badge(d.level, 13))
 	box.add_child(head)
 	# The time, big; NEW BEST and the delta to your best beside it.
 	var trow := HBoxContainer.new()
 	trow.add_theme_constant_override("separation", 16)
-	if centre:
-		trow.alignment = BoxContainer.ALIGNMENT_CENTER
+	trow.alignment = BoxContainer.ALIGNMENT_CENTER
 	var tl := label(RaceCourse._fmt(d.total), 76, UIKit.GOLD if d.record else UIKit.TEXT)
 	tl.name = "Time"
 	tl.add_theme_constant_override("line_spacing", -12)
@@ -114,8 +111,7 @@ static func finish_card(d: Dictionary, style: String = "slash") -> Control:
 	# The laps, small; the faster one brighter.
 	var laps := HBoxContainer.new()
 	laps.add_theme_constant_override("separation", 22)
-	if centre:
-		laps.alignment = BoxContainer.ALIGNMENT_CENTER
+	laps.alignment = BoxContainer.ALIGNMENT_CENTER
 	var lap_t: Array = d.laps
 	for i in range(lap_t.size()):
 		var fast: bool = lap_t[i] == lap_t.min() and lap_t.size() > 1
@@ -132,59 +128,19 @@ static func finish_card(d: Dictionary, style: String = "slash") -> Control:
 	box.add_child(rule)
 	UIKit.gap(box, 4)
 	var top_head := caps("Your top 3  ·  this track", UIKit.MUTED_LIGHT, 13)
-	if centre:
-		top_head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	top_head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(top_head)
-	var top: Array = d.top
-	if style == "podium":
-		box.add_child(_podium(top, int(d.you), accent))
-	else:
-		for i in range(top.size()):
-			box.add_child(_row(i, top[i], i == int(d.you), accent))
+	box.add_child(_podium(d.top, int(d.you), accent))
 	if int(d.you) < 0:
 		var nr := label("This race isn't in your top 3", 15, UIKit.MUTED_LIGHT, false)
-		if centre:
-			nr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(nr)
 	UIKit.gap(box, 8)
 	var hint := label(d.close_hint, 13, UIKit.MUTED_LIGHT, false)
 	hint.name = "Hint"
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER if centre else HORIZONTAL_ALIGNMENT_LEFT
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(hint)
 	return card
-
-## A place number on a medal-coloured disc.
-static func _medal(i: int, size: float) -> Control:
-	var m := Control.new()
-	m.custom_minimum_size = Vector2(size, size)
-	m.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	m.draw.connect(func():
-		var c: Vector2 = m.size * 0.5
-		m.draw_circle(c, size * 0.5, MEDALS[i])
-		var f: Font = UIKit.oswald()
-		var fs: int = int(size * 0.62)
-		var tw: float = f.get_string_size(str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		m.draw_string(f, Vector2(c.x - tw * 0.5, c.y + fs * 0.36), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.08, 0.08, 0.09)))
-	return m
-
-static func _row(i: int, e: Array, you: bool, accent: Color) -> Control:
-	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", UIKit.box(Color(accent, 0.16) if you else Color(1, 1, 1, 0.0), Color(accent, 0.5) if you else Color(0, 0, 0, 0), 6, 1, Vector4(8, 3, 10, 3)))
-	var r := HBoxContainer.new()
-	r.add_theme_constant_override("separation", 12)
-	p.add_child(r)
-	r.add_child(_medal(i, 26))
-	r.add_child(label(RaceCourse._fmt(e[0]), 24, UIKit.TEXT if you or i == 0 else UIKit.MUTED))
-	if you:
-		r.add_child(UIKit.pill("YOU", accent, 12, true))
-	var sp := Control.new()
-	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	r.add_child(sp)
-	var dt := label(str(e[2]), 14, UIKit.MUTED_LIGHT, false)
-	dt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	r.add_child(dt)
-	return p
 
 ## Three tiles, second - first - third, the winner's a little taller.
 static func _podium(top: Array, you: int, accent: Color) -> Control:
