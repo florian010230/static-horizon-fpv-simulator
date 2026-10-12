@@ -164,8 +164,8 @@ func build() -> void:
 	var main := RoadCreator.plan(land, Vector3(1600, 0, 520), -169.0, [Vector2(450, 300), Vector2(280, 190), Vector2(170, 80), Vector2(90, 12), Vector2(0, -22), Vector2(-80, -32), Vector2(-200, -75), Vector2(-240, -200), Vector2(-258, -420), Vector2(-320, -1500)], 6.5, {"radius": 90.0, "bridge": "arch"})
 	var kirch := RoadCreator.branch(land, main, Vector2(120, 34), 1.0, [Vector2(135, -50), Vector2(150, -150)], 5.5, {"end": "turning", "radius": 60.0, "lead": 20.0})
 	var muehl := RoadCreator.branch(land, main, Vector2(40, -8), -1.0, [Vector2(30, 80), Vector2(40, 180)], 5.0, {"end": "turning", "radius": 60.0, "lead": 20.0})
-	var farm_lane := RoadCreator.branch(land, main, Vector2(215, 135), -1.0, [Vector2(175, 205), Vector2(FARM.x + 40.0, FARM.y)], 4.5, {"end": "turning", "radius": 40.0, "lead": 12.0})
-	var club_lane := RoadCreator.branch(land, main, Vector2(330, 222), 1.0, [Vector2(330, 120), Vector2(325, 70)], 4.5, {"end": "turning", "radius": 40.0, "lead": 12.0})
+	var farm_lane := RoadCreator.branch(land, main, Vector2(215, 135), -1.0, [Vector2(175, 205), Vector2(FARM.x + 40.0, FARM.y)], 4.5, {"end": "entrance", "gate": true, "radius": 40.0, "lead": 12.0})
+	var club_lane := RoadCreator.branch(land, main, Vector2(330, 222), 1.0, [Vector2(330, 120), Vector2(325, 70)], 4.5, {"end": "entrance", "radius": 40.0, "lead": 12.0})
 	# The club's car park, level with the lane's turning circle beside it
 	# (the hillside and the lane's bank rose through its gravel).
 	_park_y = club_lane.line.pts[-1].y
@@ -552,8 +552,10 @@ func _club(trees: Array) -> Array:
 	# camera (2 cm up) under the mat and saw only its grey underside.
 	geo.polygon([PAD + Vector3(-1.8, 0.05, -1.8), PAD + Vector3(1.8, 0.05, -1.8), PAD + Vector3(1.8, 0.05, 1.8), PAD + Vector3(-1.8, 0.05, 1.8)], "vg_mat", true)
 	geo.tint = Color(0.95, 0.95, 0.95)
-	geo.box(PAD + Vector3(0, 0.055, 0), Vector3(3.0, 0.01, 0.18), "vg_paint", PI * 0.25, false, false)
-	geo.box(PAD + Vector3(0, 0.055, 0), Vector3(3.0, 0.01, 0.18), "vg_paint", -PI * 0.25, false, false)
+	# The cross a clear 2.5 cm over the mat (at 1 cm it lost the depth
+	# test to the mat at a distance and came and went, 2026-10-12).
+	geo.box(PAD + Vector3(0, 0.065, 0), Vector3(3.0, 0.02, 0.18), "vg_paint", PI * 0.25, false, false)
+	geo.box(PAD + Vector3(0, 0.066, 0), Vector3(3.0, 0.02, 0.18), "vg_paint", -PI * 0.25, false, false)
 	geo.tint = Color.WHITE
 	# The course, flown anticlockwise from the pad: west through the
 	# start, north through the ladder, east under the tower gate, the

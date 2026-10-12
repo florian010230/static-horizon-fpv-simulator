@@ -26,6 +26,7 @@ const CALIBRATION_STEPS: Array[Dictionary] = [
 
 var _settings_screen: Control
 var settings_tabs: TabContainer
+var _tab_buttons: Array[Button] = []
 var _device_picker: OptionButton
 var _calibration_screen: Control
 var _fps_value_label: Label
@@ -95,7 +96,7 @@ const QUALITY_HINTS: Array[String] = [
 	"High: full resolution, every detail, longest tree distance. For gaming PCs."]
 
 func _build_settings() -> Control:
-	var parts: Array = UIKit.screen_card(self, "Settings", "", 860, close, 1440)
+	var parts: Array = UIKit.screen_card(self, "Settings", "", 860, close, 1540) # (wide enough for every page: one size on every tab)
 	# One tab per topic, each a page of two columns (Rates: one wide
 	# page). Every option has a one-line explanation under it.
 	var tabs := TabContainer.new()
@@ -110,13 +111,53 @@ func _build_settings() -> Control:
 	tabs.add_theme_color_override("font_selected_color", Color.WHITE)
 	tabs.add_theme_color_override("font_unselected_color", UIKit.MUTED_LIGHT)
 	tabs.add_theme_constant_override("side_margin", 0)
+	# Our own tab row: every tab the same width (the built-in tabs sized
+	# to their text); the TabContainer only switches the pages (2026-10-12).
+	tabs.tabs_visible = false
+	var tab_row := HBoxContainer.new()
+	tab_row.name = "TabRow"
+	tab_row.add_theme_constant_override("separation", 6)
+	parts[1].add_child(tab_row)
+	UIKit.gap(parts[1], 8)
+	var group := ButtonGroup.new()
+	_tab_buttons.clear()
+	for i in range(TAB_NAMES.size()):
+		var tb := Button.new()
+		tb.text = TAB_NAMES[i]
+		tb.toggle_mode = true
+		tb.button_group = group
+		tb.button_pressed = i == 0
+		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tb.custom_minimum_size = Vector2(0, 46)
+		tb.add_theme_font_override("font", UIKit.oswald())
+		tb.add_theme_font_size_override("font_size", 21)
+		tb.add_theme_stylebox_override("normal", UIKit.box(Color("#151c26"), Color(1, 1, 1, 0.12), 6, 1, Vector4(10, 6, 10, 6)))
+		tb.add_theme_stylebox_override("hover", UIKit.box(Color("#1d2735"), Color(0.5, 0.69, 1.0, 0.6), 6, 1, Vector4(10, 6, 10, 6)))
+		tb.add_theme_stylebox_override("pressed", UIKit.box(UIKit.LOGO_SKY, UIKit.LOGO_SKY, 6, 1, Vector4(10, 6, 10, 6)))
+		tb.add_theme_stylebox_override("hover_pressed", UIKit.box(UIKit.LOGO_SKY.lightened(0.1), UIKit.LOGO_SKY, 6, 1, Vector4(10, 6, 10, 6)))
+		tb.add_theme_color_override("font_pressed_color", Color.WHITE)
+		tb.add_theme_color_override("font_hover_pressed_color", Color.WHITE)
+		var idx: int = i
+		tb.pressed.connect(func(): tabs.current_tab = idx)
+		tab_row.add_child(tb)
+		_tab_buttons.append(tb)
+	tabs.tab_changed.connect(func(t: int):
+		if t >= 0 and t < _tab_buttons.size():
+			_tab_buttons[t].set_pressed_no_signal(true))
 	parts[1].add_child(tabs)
 	var pages: Dictionary = {}
 	for title in TAB_NAMES:
+		# Each page scrolls (a long one isn't squeezed), so the window keeps
+		# one size whichever tab is open.
+		var scroll := ScrollContainer.new()
+		scroll.name = title
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		tabs.add_child(scroll)
 		var page := HBoxContainer.new()
-		page.name = title
 		page.add_theme_constant_override("separation", 14)
-		tabs.add_child(page)
+		page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		page.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		scroll.add_child(page)
 		pages[title] = page
 
 	# Graphics
@@ -281,6 +322,9 @@ func _build_settings() -> Control:
 	UIKit.slider(r_ctrl, "Stick deadzone", 0.0, 10.0, 0.5, InputManager.deadzone * 100.0, func(v: float):
 		InputManager.deadzone = v / 100.0
 		InputManager.save_calibration(), " %")
+	UIKit.section(r_ctrl, "Keyboard (no radio)")
+	UIKit.slider(r_ctrl, "Keyboard stick strength", 30.0, 100.0, 5.0, Settings.keyboard_strength * 100.0, func(v: float): Settings.keyboard_strength = v / 100.0, " %")
+	_hint(r_ctrl, "How far a held key moves the stick; it moves there smoothly. Lower = gentler turns. H shows or hides the key guide while flying.")
 	UIKit.gap(r_ctrl, 14)
 	_radio_help(r_ctrl)
 	_refresh_tab_titles()
@@ -315,8 +359,13 @@ func _group(page: HBoxContainer, ratio: float = 1.0) -> VBoxContainer:
 func _refresh_tab_titles() -> void:
 	if settings_tabs == null:
 		return
-	settings_tabs.set_tab_title(TAB_NAMES.find("Flying"), "Flying  ·  wind %s" % String(Settings.WIND_NAMES[clampi(Settings.wind_level, 0, Settings.WIND_NAMES.size() - 1)]).to_lower())
-	settings_tabs.set_tab_title(TAB_NAMES.find("Graphics"), "Graphics  ·  %s" % Settings.QUALITY_NAMES[clampi(Settings.graphics_quality, 0, 2)])
+	var titles: Dictionary = {"Flying": "Flying  ·  wind %s" % String(Settings.WIND_NAMES[clampi(Settings.wind_level, 0, Settings.WIND_NAMES.size() - 1)]).to_lower(),
+		"Graphics": "Graphics  ·  %s" % Settings.QUALITY_NAMES[clampi(Settings.graphics_quality, 0, 2)]}
+	for k: String in titles:
+		var i: int = TAB_NAMES.find(k)
+		settings_tabs.set_tab_title(i, titles[k])
+		if i < _tab_buttons.size():
+			_tab_buttons[i].text = titles[k]
 
 func _hint_label() -> Label:
 	var l := Label.new()

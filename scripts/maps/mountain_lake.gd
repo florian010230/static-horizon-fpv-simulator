@@ -269,7 +269,7 @@ func build() -> void:
 	# --- the valley road and its branches ---
 	var main := RoadCreator.plan(land, Vector3(-72, 0, 2700), -90.0, [Vector2(-72, 900), Vector2(-78, 420), Vector2(-92, 260), Vector2(-150, 182), Vector2(-218, 114), Vector2(-246, 40), Vector2(-240, -50), Vector2(-205, -118), Vector2(-142, -160), Vector2(-80, -182), Vector2(-40, -192)], 6.5, {"radius": 70.0, "end": "turning", "verge": 1.2})
 	var lane_w := RoadCreator.branch(land, main, Vector2(-246, 4), 1.0, [Vector2(-330, 0)], 5.0, {"end": "turning", "radius": 40.0, "lead": 15.0})
-	var hotel_ln := RoadCreator.branch(land, main, Vector2(-160, 170), 1.0, [Vector2(-150, 140)], 5.0, {"end": "turning", "radius": 30.0, "lead": 10.0})
+	var hotel_ln := RoadCreator.branch(land, main, Vector2(-160, 170), 1.0, [Vector2(-150, 140)], 5.0, {"end": "entrance", "radius": 30.0, "lead": 10.0})
 	# --- plots along the road through the village ---
 	var plots: Array = []
 	var v0: float = main.dist_at(Vector2(-240, 96))

@@ -16,8 +16,11 @@ extends RefCounted
 ##
 ## Roads meet at junctions: a branch starts square-on at the edge of the
 ## road it leaves, at that road's level, through a mouth with rounded
-## corners and a give-way line. A road ends at a junction, a turning
-## circle ("end": "turning"), or runs on past the detailed terrain over
+## corners and a give-way line. A road ends at a junction, at an entrance
+## ("end": "entrance" - square into the yard, car park or plant it serves;
+## "gate": true adds two posts and an open field gate), a turning circle
+## ("end": "turning" - only where it ends in nothing, e.g. a dead-end
+## street; user rule 2026-10-12), or runs on past the detailed terrain over
 ## the horizon ring into the haze (the default) - never just stops.
 ## Plan after the rivers (it asks the land for them), before land.build().
 ## Real numbers: country roads 5.5-7 m wide, curves R >= 60 m, gradients
@@ -211,6 +214,32 @@ func at(p: Vector2) -> Array:
 		return []
 	return [n[1], Route._tangent(line.pts, n[2]), n[0]]
 
+## Two posts either side of the road's end and a field gate swung open
+## into the yard beside the left post (an entrance, not a turning circle).
+func _gate(geo: Geo, pts: Array[Vector3]) -> void:
+	if not geo.has_material("rd_gatepost"):
+		geo.add_material("rd_gatepost", Geo.tex_mat(MapTextures.get_tex("wood"), Color(0.75, 0.68, 0.58), 1.2))
+		geo.add_material("rd_gate", Geo.flat_mat(Color(0.82, 0.83, 0.8), 0.5, 0.3))
+	var e: Vector3 = pts[-1]
+	var b: Vector3 = pts[-2]
+	var t := Vector3(e.x - b.x, 0, e.z - b.z).normalized()
+	var n := Vector3(-t.z, 0, t.x)
+	var yaw: float = atan2(t.x, t.z)
+	geo.begin_object("gate")
+	var half: float = width * 0.5 + 0.5
+	for sd in [-1.0, 1.0]:
+		var p: Vector3 = e + n * sd * half
+		geo.box(p + Vector3(0, 0.45, 0), Vector3(0.18, 1.9, 0.18), "rd_gatepost", yaw) # (0.5 m in the ground)
+	# The leaf, open: from the left post back along the road's side, into
+	# the yard - five rails and two stiles.
+	var hinge: Vector3 = e - n * half
+	var L: float = minf(width + 0.4, 4.2)
+	for k in range(5):
+		geo.box(hinge + t * (L * 0.5 + 0.15) + n * 0.12 + Vector3(0, 0.25 + k * 0.24, 0), Vector3(0.05, 0.06, L), "rd_gate", yaw, false)
+	for f in [0.15, L + 0.1]:
+		geo.box(hinge + t * f + n * 0.12 + Vector3(0, 0.72, 0), Vector3(0.06, 1.08, 0.06), "rd_gate", yaw, false)
+	geo.end_object()
+
 ## Carriageway, markings and verges along the whole road (on into the
 ## haze where it runs on), the junction mouth, the turning circle, the
 ## bridges. Returns {"views": [...], "bridges": [style, ...]}.
@@ -283,6 +312,8 @@ func draw(geo: Geo, roads: Roads, rng: RandomNumberGenerator) -> Dictionary:
 			r1.y = lv.call(r1) + Roads.SURF - 0.02
 			ring.append(PackedVector3Array([r0, r1]))
 		geo.strip(ring, "rd_verge", false)
+	if end_style == "entrance" and opts.get("gate", false):
+		_gate(geo, pts)
 	for br: Array in bridges:
 		var deck: Array[Vector3] = []
 		for k in range(br[0], br[1] + 1):

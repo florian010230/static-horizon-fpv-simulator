@@ -123,6 +123,10 @@ var race_ghost: bool = true
 ## Competition rule (MultiGP style): a missed gate voids the lap instead of
 ## "go back". Off by default (decided 2026-10-11).
 var race_strict: bool = false
+## Keyboard flying: how far a held key pushes the stick (0.3-1.0); the
+## stick ramps there (InputManager.KB_RAMP). And the key guide on screen.
+var keyboard_strength: float = 0.6
+var keyboard_help: bool = true
 ## The racing line through a race track's gates (RaceCourse._build_line):
 ## its hue in degrees (full saturation), -1 = off. One slider in
 ## Settings -> Flight: far left Off, then the colour wheel. Orange default.
@@ -186,7 +190,7 @@ const SAVED_FIELDS: Array[String] = ["crosshair_enabled", "shadows_enabled", "gr
 	"max_fps", "vsync", "camera_angle_deg", "camera_fov_deg", "view_distance", "rates_type", "rates_roll", "rates_pitch", "rates_yaw",
 	"selected_drone", "game_mode", "osd_enabled", "battery_enabled", "video_effect", "wind_level", "units",
 	"stick_overlay", "prop_wash", "throttle_mid", "throttle_expo", "lens_fisheye",
-	"prop_damage", "race_ghost", "race_strict", "race_line_hue", "race_line_length", "check_updates", "camera_look"]
+	"prop_damage", "race_ghost", "race_strict", "keyboard_strength", "keyboard_help", "race_line_hue", "race_line_length", "check_updates", "camera_look"]
 var _persist: bool = true
 var _last_saved: String = ""
 var _save_timer: float = 0.0

@@ -146,7 +146,12 @@ var test_override = null
 ## all run exactly as for real hardware. Lets --selftest drive the
 ## calibration wizard and the arm switch on machines with no radio.
 var test_joy = null
-var self_level: bool = false ## Acro by default. Toggle with L.
+var self_level: bool = true ## Angle on the keyboard, Acro once a radio sends data (radio_found_mode). Toggle with L.
+var _level_user_set: bool = false ## L pressed: the pilot's own choice stays
+## The keyboard's sticks, ramped (2026-10-12: full stick at a key press
+## made Acro turn in huge jerks). x roll, y pitch, z yaw.
+const KB_RAMP: float = 0.25 ## seconds from centre to full key deflection
+var _kb_axes := Vector3.ZERO
 
 var _prev_arm_key: bool = false
 var _prev_arm_button: bool = false
@@ -203,6 +208,7 @@ func _process(delta: float) -> void:
 	_handle_level_toggle()
 	if not _joy_connected():
 		_update_keyboard_throttle(delta)
+		update_keyboard_axes(delta)
 
 func _detect_joy_activity() -> void:
 	if not _joy_present():
@@ -215,10 +221,12 @@ func _detect_joy_activity() -> void:
 	for i in range(AXES):
 		if absf(joy_axis(i)) > 0.01:
 			_joy_active = true
+			radio_found_mode()
 			return
 	for b in range(BUTTONS):
 		if joy_button(b):
 			_joy_active = true
+			radio_found_mode()
 			return
 
 ## Several controllers plugged in (a radio plus a gamepad, or a radio
@@ -588,6 +596,7 @@ func _handle_level_toggle() -> void:
 	var key_pressed := Input.is_key_pressed(KEY_L)
 	if key_pressed and not _prev_level_key:
 		self_level = not self_level
+		_level_user_set = true
 	_prev_level_key = key_pressed
 	# A mode switch, once assigned, is authoritative every frame (like a
 	# real FC's AUX-mapped ANGLE mode) - L still works, but is only
@@ -600,6 +609,22 @@ func _update_keyboard_throttle(delta: float) -> void:
 		_kb_throttle = clamp(_kb_throttle + KEYBOARD_THROTTLE_RATE * delta, 0.0, 1.0)
 	elif Input.is_key_pressed(KEY_CTRL):
 		_kb_throttle = clamp(_kb_throttle - KEYBOARD_THROTTLE_RATE * delta, 0.0, 1.0)
+
+## A radio has just started sending: radio pilots fly Acro unless they
+## chose otherwise (L) or a mode switch decides.
+func radio_found_mode() -> void:
+	if not _level_user_set and mode_source == "":
+		self_level = false
+
+## Each keyboard stick moves toward its key's target over KB_RAMP, the
+## target being Settings.keyboard_strength (not full stick).
+## `keys`: the held keys as -1/0/+1 per axis (the self-test passes them;
+## headless runs can't press keys).
+func update_keyboard_axes(delta: float, keys: Variant = null) -> void:
+	var held: Vector3 = keys if keys is Vector3 else Vector3(_key_axis(KEY_A, KEY_D), _key_axis(KEY_S, KEY_W), _key_axis(KEY_Q, KEY_E))
+	var target: Vector3 = held * Settings.keyboard_strength
+	var step: float = delta / KB_RAMP
+	_kb_axes = Vector3(move_toward(_kb_axes.x, target.x, step), move_toward(_kb_axes.y, target.y, step), move_toward(_kb_axes.z, target.z, step))
 
 func _key_axis(neg: Key, pos: Key) -> float:
 	var v := 0.0
@@ -622,21 +647,21 @@ func get_roll() -> float:
 	if _joy_connected():
 		var v: float = _shape_stick(axis_roll)
 		return -v if invert_roll else v
-	return _key_axis(KEY_A, KEY_D)
+	return _kb_axes.x
 
 func get_pitch() -> float:
 	if test_override != null: return test_override["pitch"]
 	if _joy_connected():
 		var v: float = _shape_stick(axis_pitch)
 		return -v if invert_pitch else v
-	return _key_axis(KEY_S, KEY_W)
+	return _kb_axes.y
 
 func get_yaw() -> float:
 	if test_override != null: return test_override["yaw"]
 	if _joy_connected():
 		var v: float = _shape_stick(axis_yaw)
 		return -v if invert_yaw else v
-	return _key_axis(KEY_Q, KEY_E)
+	return _kb_axes.z
 
 func get_throttle() -> float:
 	if test_override != null: return test_override["throttle"]

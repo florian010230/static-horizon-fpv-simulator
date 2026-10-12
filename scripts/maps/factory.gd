@@ -113,9 +113,9 @@ func build() -> void:
 	# there): left to the ground, it ran 2.3 m under the yard and the gate
 	# road's turning circle lay buried in the yard's edge.
 	var road := RoadCreator.plan(land, Vector3(170, 0, 1600), -90.0, [Vector2(160, 400), Vector2(150, 120), Vector2(150, -40), Vector2(190, -95), Vector2(400, -100), Vector2(1600, -60)], 7.0, {"radius": 70.0, "hold": [[Vector2(150, 0), y + 0.05, 14.0]]})
-	var gate_rd := RoadCreator.branch(land, road, Vector2(150, 0), -1.0, [Vector2(SITE.x + SITE_SIZE.x * 0.5 + 11.0, 0)], 7.0, {"end": "turning", "lead": 8.0})
+	var gate_rd := RoadCreator.branch(land, road, Vector2(150, 0), -1.0, [Vector2(SITE.x + SITE_SIZE.x * 0.5 + 11.0, 0)], 7.0, {"end": "entrance", "lead": 8.0})
 	var farm: Dictionary = FarmCreator.plan(land, FARM, Vector2(64, 48), -1.0)
-	var farm_lane := RoadCreator.branch(land, road, Vector2(154, FARM.y), 1.0, [Vector2(FARM.x - 46.0, FARM.y)], 4.5, {"end": "turning", "radius": 40.0, "lead": 10.0}) # (its turning circle ends just short of the yard: inside, it hung over the lower yard)
+	var farm_lane := RoadCreator.branch(land, road, Vector2(154, FARM.y), 1.0, [Vector2(FARM.x - 33.0, FARM.y)], 4.5, {"end": "entrance", "gate": true, "radius": 40.0, "lead": 10.0}) # (to the yard gate)
 	for fd: Array in FIELDS:
 		land.keep_clear_poly(FieldCreator.poly(fd[1]))
 	var plots: Array = []

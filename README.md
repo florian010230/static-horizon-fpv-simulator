@@ -20,14 +20,14 @@ of it - then **Play** -> **Choose a Mode** -> **Choose a Map**:
 
 - **Choose a Mode**: **Freestyle** (every map, including the race
   tracks - no lap timer, next-gate marker or ghost there) or **Race**
-  (the three race tracks only - Race Field, Race Arena, Office Whoop
-  Race - with a full 3-lap timed race, live splits, a ghost of your own
-  best lap, and personal bests). `Settings.game_mode` persists the
+  (the three race maps only - Race Field, Race Arena, Office Whoop
+  Race - with a full 2-lap timed race, live splits, a ghost of your own
+  best lap, and personal bests; Race goes Choose a Map -> Choose a Track). `Settings.game_mode` persists the
   choice; `MapCatalog.is_race()` marks which maps are race tracks and
   `RaceCourse` disables its own timing/marker/ghost entirely in
   Freestyle. Every map card in Choose a Map now shows a real rendered
   preview picture of that map (`images/maps/<id>.jpg`); a race map's
-  card also shows each drone's best lap and best 3-lap race once one is
+  card also shows each drone's best lap and best 2-lap race once one is
   set.
 - **Static Three**, **Static Five**, **Static Race** or **Static
   Whoop** - the Static Three is this sim's own 3-inch freestyle quad (3
@@ -73,7 +73,8 @@ of it - then **Play** -> **Choose a Mode** -> **Choose a Map**:
   stone railway viaduct with a goods train on it to slalom through; a
   ruined bando (abandoned farmhouse and barn) beyond the railway; a farm
   with fields; and the FPV club field where you start, with gates,
-  hoops, a tunnel, a ladder and a dive gate.
+  hoops, a tunnel, a ladder and a dive gate, plus two small timed courses
+  (Club Course, Flag Slalom: fly through a course's start gate).
 - **Factory** (Werk Lindner) - a working plant on the edge of a town:
   a production hall open at both ends to fly through, a warehouse with
   loading docks and lorries, a boiler house with a tall chimney, a
@@ -103,9 +104,9 @@ performance and can filter by it:
 | Mountain Lake | High | Kaltensee, an alpine reservoir under rocky peaks: a curved concrete dam with its spillway and a gorge to fly out of, a long avalanche gallery over the shore road, a chapel on an island, a waterfall in a hanging valley, a cable car to a summit station, a lakeside village, a campground and an alpine farm. |
 | Parking Garage | Medium | An abandoned multi-storey car park: 2.7 m decks, two-lane ramps, collapsed slabs, broken parapets, stair towers. |
 | Harbour & Central Station | High | A compact port city where everything connects: container terminal with ship-to-shore and gantry cranes, a rail branch curving into the terminal's loading tracks, a double-track main line through a through-station (real 1:9 turnouts, a 280 m glass train shed), freight sidings, road bridges over the railway, the old harbour basin with a marina and brick warehouses, grain silos, an oil terminal, and a city grid with towers, a tram boulevard and traffic. Rails and roads run out of the map into the haze. |
-| Race Arena (Race mode) | Medium | Indoor league race with glowing LED gates, a tunnel, a scaffold tower gate and a gate hung from the roof trusses before the finish. |
-| Race Field (Race mode) | Low | A 12-gate clockwise lap round the whole field: MultiGP-style gates, a ladder, two dive gates, hurdles, a double gate, a tower gate, turn flags at the corners. |
-| Office Whoop Race (Race mode) | Low, whoop | 60 cm gates between desks on a 5th floor, one hung from the ceiling, glass meeting room, city below. |
+| Race Arena (Race mode) | Medium | Indoor league race, 6 tracks (2 easy, 2 medium, 2 hard), with glowing LED gates, a tunnel, a scaffold tower gate and a gate hung from the roof trusses before the finish. |
+| Race Field (Race mode) | Low | 6 tracks (2 easy, 2 medium, 2 hard) round the whole field: MultiGP-style gates, a ladder, two dive gates, hurdles, a double gate, a tower gate, turn flags at the corners. |
+| Office Whoop Race (Race mode) | Low, whoop | 6 tracks (2 easy, 2 medium, 2 hard) of 60 cm gates between desks on a 5th floor, one hung from the ceiling, glass meeting room, city below. |
 | Playground | Low, whoop | Tower with slide and rope bridge, swings, crawl tubes, sandbox. |
 
 In flight the top left shows one status line (armed state, mode,
@@ -124,19 +125,19 @@ rates (Settings -> Rates) are Betaflight's own: all four rate types
 (Betaflight, Actual, Quick, KISS) with Betaflight's formulas from
 `rc.c`, per axis, entered as the same numbers the Configurator shows,
 with its three-axis preview graph and presets (`scripts/rates.gd`;
-default Actual 70 / 670 / 0.54) - copy them from your quad. Optional realism (Settings -> Flight, all off by default):
+default Actual 70 / 670 / 0.54) - copy them from your quad. Optional realism (Settings -> Flying, all off by default):
 battery sag with Betaflight-style LOW BATTERY / LAND NOW warnings, prop
 damage after hard crashes (less thrust, a yaw pull, jitter), and wind on
 outdoor maps (Light / Medium / Strong, 3-10 m/s with gusts and shelter
-behind buildings). Camera look (Settings -> Camera & HUD): Clean,
+behind buildings). Camera look (Settings -> Camera & screen): Clean,
 Analog, Digital or HDZero - each breaks up like the real system when
 walls, hills or distance come between you and the drone (the OSD shows
 the link quality). Settings has
-five tabs: Graphics, Camera & HUD, Flight, Rates, Radio (with per-radio
+six tabs: Radio, Rates, Flying, Race, Camera & screen, Graphics (Radio with per-radio
 connection tips), every option explained in one line under it.
 All settings are saved (`user://settings.cfg`).
 
-In Race mode a race is `RaceCourse.LAPS = 3` laps from a flying start:
+In Race mode a race is `RaceCourse.LAPS = 2` laps from a flying start:
 the clock starts at the first pass of START, not a countdown, and fly
 the gates in order (the next one glows green with an arrow over it,
 numbered with a billboard `Label3D` above every gate, START labelled
@@ -149,13 +150,16 @@ beating it flashes "NEW PERSONAL BEST LAP" in the HUD. Timing events
 (gate, lap, personal best, race start, finish, a missed gate) each get
 their own short synthesized beep. At the finish line a results card
 lists every lap, the total, "NEW TRACK RECORD" or your rank, and your
-local top 5 races for that exact track and drone
+top 3 races (podium tiles 2nd-1st-3rd) for that exact track and drone
 (`user://race_board.cfg`, with the date; `RaceCourse.boards(map_id)`);
 the next pass of START starts a new race without returning to the menu.
-Records are kept per *track layout*: each race map's `MapCatalog` entry
-carries a `"track"` number, and `RaceCourse.section(map_id)` turns that
-into a key like `race_field@2`, so redesigning a track starts a fresh
-record table instead of comparing against times set on the old layout.
+Each race map has 6 tracks (2 easy, 2 medium, 2 hard), picked on a track
+card screen that shows your best. Tracks have turn flags you must pass on
+the marked side, and hairpins on the hard ones. Records are kept per track
+and per drone (a top 5 each is stored), so redesigning a track starts a
+fresh record table. Settings -> Race adds a see-through racing line to the
+next gates and a competition rule (off by default): a missed gate voids the
+lap and restarts the race; off, you just go back to the missed gate.
 In Freestyle the same three maps can still be flown, just without the
 timer, splits, next-gate marker or ghost.
 
@@ -193,7 +197,9 @@ is an optional extra (see above).
   bottom-right corner - no popup. The **Updates** screen shows what's
   new. To switch it off: the Updates screen has a "Check for updates
   when the game starts" toggle (this is the only network request the
-  sim ever makes, and it sends nothing about you).
+  sim ever makes, and it sends nothing about you). The Updates screen can
+  install a signed update pack (checked with a built-in public key) when a
+  release provides one; otherwise it links to the release page.
 - **Faster loading**: a generated map is built once and cached
   (`user://mapcache`); every later load takes 1-5 seconds instead of
   10-20, and uses less memory. The cache refreshes by itself after an
@@ -422,13 +428,13 @@ credits and a link to statichorizonfpv.com.
 
 **Pilot aids** (Settings; a research pass over Liftoff, Velocidrone,
 Uncrashed, DRL and TRYP FPV - sources in the code comments):
-- **Stick overlay** (Settings -> Camera & HUD, optional, off by default) - a small roll/pitch/yaw/
+- **Stick overlay** (Settings -> Camera & screen, optional, off by default) - a small roll/pitch/yaw/
   throttle overlay in the OSD, the way Liftoff and Velocidrone show what
   your hands are doing.
 - **Betaflight throttle curve** (Settings -> Rates) - MID and EXPO,
   `rc.c`'s own formula, so a throttle curve copied from a real quad's
   Betaflight dump behaves the same way here.
-- **Fisheye lens** (Settings -> Camera & HUD: Flat / Light / Strong) -
+- **Fisheye lens** (Settings -> Camera & screen: Flat / Light / Strong) -
   barrel distortion in the analog-video shader, matching how a real
   wide-FOV FPV lens looks rather than a flat rectilinear projection.
 - **Line-of-sight view** (`V`) - see above.
@@ -699,7 +705,7 @@ gains stable.
   always visible, content scrolls if needed. A big Oswald wordmark heading, the real
   artificial-horizon logo mark, and a small live `SubViewport` preview
   (whichever drone is currently selected, hanging off a wall hook,
-  slowly turning) sit above Play (-> Choose Your Drone -> Choose a Map)
+  slowly turning) sit above Play (-> Choose a Mode -> Choose a Map)
   / Settings (fullscreen, crosshair, shadows, max FPS, Acro rates + rate
   curve graph) / Quit, all built at runtime (`scripts/main_menu.gd`) -
   the menu itself stays flat 2D UI, so the tiny 3D preview is the only
@@ -891,7 +897,7 @@ convention).
 `Drone.PROFILES` (in `drone.gd`) holds four complete, independently-real
 frames - mass, arm length, thrust, drag, PID gains, collision size, and
 visual model all switch together via `Drone.apply_profile()`, driven by
-`Settings.selected_drone` (set by the menu's Choose Your Drone panel).
+`Settings.selected_drone` (set by the drone card on the menu's home screen).
 It's two real drones, not one drone with a costume change.
 
 ### DeepSpace Seeker3

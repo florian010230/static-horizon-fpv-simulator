@@ -98,6 +98,8 @@ func _run() -> void:
 			await _test_collectibles()
 		if only.has("village"):
 			await _test_village_course()
+		if only.has("keyboard"):
+			await _test_keyboard()
 		if only.has("update"):
 			_test_updater()
 			_test_update_pack()
@@ -113,6 +115,7 @@ func _run() -> void:
 	_test_update_pack()
 	_test_save_keeps_unknown_keys()
 	await _test_village_course()
+	await _test_keyboard()
 	await _test_collectibles()
 	await _test_calibration_and_arm_switch()
 	_test_creators()
@@ -274,6 +277,19 @@ func _test_menu_flow() -> void:
 				if _find_button(page, txt) == null and _find_text(page, txt) == null:
 					missing.append("%s/%s" % [tname, txt])
 	_check(tab_ok and missing.is_empty() and stabs.get_tab_title(0) == "Radio", "settings: six tabs radio first, every setting in its topic", str(missing))
+	# Every tab the same width, and the window one size whichever tab is
+	# open (each page scrolls instead of pushing it).
+	var sizes: Array = []
+	if tab_ok:
+		for i in range(stabs.get_tab_count()):
+			stabs.current_tab = i
+			await get_tree().process_frame
+			await get_tree().process_frame
+			sizes.append(stabs.size)
+		stabs.current_tab = 0
+	var widths: Array = settings._tab_buttons.map(func(b: Button) -> int: return roundi(b.size.x))
+	_check(not sizes.is_empty() and sizes.all(func(v: Vector2) -> bool: return v == sizes[0]) and widths.all(func(w: int) -> bool: return absi(w - widths[0]) <= 1),
+		"settings: tabs all one width, the window one size on every tab", "%s %s" % [str(widths), str(sizes)])
 	# Racing line: one slider, far left Off, then hues; orange by default.
 	var line_sl := settings.find_child("RaceLineSlider", true, false) as HSlider
 	var hue0: int = Settings.race_line_hue
@@ -525,6 +541,47 @@ func _find_text(n: Node, text: String) -> Node:
 			return f
 	return null
 
+## Keyboard flying (2026-10-12): Angle by default without a radio, Acro
+## once a radio sends (unless the pilot chose with L); held keys ramp the
+## stick up to Settings.keyboard_strength instead of jumping to full.
+func _test_keyboard() -> void:
+	var saved_joy = InputManager.test_joy
+	var saved_ov = InputManager.test_override
+	InputManager.test_joy = null
+	InputManager.test_override = null
+	if InputManager._joy_connected():
+		print("SELFTEST SKIP keyboard: a real radio is connected")
+		InputManager.test_joy = saved_joy
+		InputManager.test_override = saved_ov
+		return
+	var fresh: Node = (InputManager.get_script() as GDScript).new()
+	var default_angle: bool = fresh.self_level
+	fresh.free()
+	var lvl0: bool = InputManager.self_level
+	var user0: bool = InputManager._level_user_set
+	InputManager._level_user_set = false
+	InputManager.self_level = true
+	InputManager.radio_found_mode()
+	var radio_acro: bool = not InputManager.self_level
+	InputManager._level_user_set = true
+	InputManager.self_level = true
+	InputManager.radio_found_mode()
+	var kept: bool = InputManager.self_level
+	InputManager.self_level = lvl0
+	InputManager._level_user_set = user0
+	_check(default_angle and radio_acro and kept, "keyboard: Angle by default without a radio; a radio switches to Acro unless the pilot chose")
+	InputManager._kb_axes = Vector3.ZERO
+	InputManager.update_keyboard_axes(0.05, Vector3(1, 0, 0)) # D held
+	var r1: float = InputManager.get_roll()
+	InputManager.update_keyboard_axes(0.4, Vector3(1, 0, 0))
+	var r2: float = InputManager.get_roll()
+	InputManager.update_keyboard_axes(0.5, Vector3.ZERO) # released
+	var r3: float = InputManager.get_roll()
+	_check(r1 > 0.0 and r1 < r2 * 0.5 and is_equal_approx(r2, Settings.keyboard_strength) and r3 == 0.0,
+		"keyboard: a held key ramps the stick up to the keyboard strength, release brings it back", "%.2f %.2f %.2f" % [r1, r2, r3])
+	InputManager.test_joy = saved_joy
+	InputManager.test_override = saved_ov
+
 func _fly_to(d: Node3D, to: Vector3) -> void:
 	var pos: Vector3 = d.global_position
 	while pos.distance_to(to) > 0.01:
@@ -620,6 +677,10 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		var sr: Dictionary = SurfaceCheck.run(sc as BuiltMap)
 		var sv: String = SurfaceCheck.verdict(sc.name, sr)
 		_check(sv == "", tag + ": ground surfaces clean (no poke-through, hanging road edge or flicker)", sv if sv != "" else "%d faces, %d ms" % [sr.tris, sr.ms])
+	var hud: Node = sc.find_child("UI", true, false)
+	if hud and hud.has_method("_wanted_mouse_mode") and not _float_checked.has("cursor"):
+		_float_checked["cursor"] = true
+		_check(hud._wanted_mouse_mode() == Input.MOUSE_MODE_CONFINED_HIDDEN, tag + ": no mouse cursor while flying (hidden, kept in the window)")
 	var forced: String = MapCatalog.forced_drone(map)
 	var expected_profile: String = forced if forced != "" else drone_id
 	_check(Settings.selected_drone == expected_profile, tag + ": right drone profile", Settings.selected_drone)

@@ -101,9 +101,9 @@ func build() -> void:
 	var main := RoadCreator.plan(land, Vector3(160, 0, 1700), -90.0, [Vector2(140, 600), Vector2(120, 200), Vector2(112, 0), Vector2(125, -200), Vector2(165, -600), Vector2(210, -1700)], 6.5, {"radius": 160.0})
 	var bridge_st := RoadCreator.branch(land, main, Vector2(112, 25), -1.0, [Vector2(0, 28), Vector2(-120, 22), Vector2(-195, 10)], 6.0, {"end": "turning", "radius": 70.0, "lead": 30.0, "bridge": "arch"})
 	var lane_e := RoadCreator.branch(land, main, Vector2(118, -90), 1.0, [Vector2(220, -92), Vector2(285, -70)], 5.0, {"end": "turning", "radius": 55.0, "lead": 30.0})
-	var farm_lane := RoadCreator.branch(land, main, Vector2(122, 230), -1.0, [Vector2(86, 230)], 4.5, {"end": "turning", "radius": 40.0, "lead": 10.0})
+	var farm_lane := RoadCreator.branch(land, main, Vector2(122, 230), -1.0, [Vector2(86, 230)], 4.5, {"end": "entrance", "gate": true, "radius": 40.0, "lead": 10.0})
 	var cross_st := RoadCreator.branch(land, main, Vector2(130, -275), -1.0, [Vector2(40, -280)], 6.0, {"end": "turning", "radius": 40.0, "lead": 20.0})
-	var works_rd := RoadCreator.branch(land, main, Vector2(152, -470), -1.0, [Vector2(100, -470)], 6.0, {"end": "turning", "radius": 40.0, "lead": 15.0})
+	var works_rd := RoadCreator.branch(land, main, Vector2(152, -470), -1.0, [Vector2(100, -470)], 6.0, {"end": "entrance", "radius": 40.0, "lead": 15.0})
 	var works: Dictionary = IndustryCreator.plan(land, WORKS, Vector2(100, 130))
 	# --- the town: rows of houses behind pavements, gaps at the cross street ---
 	var town_lots: Array = []

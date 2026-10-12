@@ -21,6 +21,7 @@ func _ready() -> void:
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_root)
 
+	_build_key_guide()
 	_crosshair = Control.new()
 	_crosshair.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -236,9 +237,10 @@ func _process(delta: float) -> void:
 		Achievements.note_flight(MapCatalog.for_scene(cur.scene_file_path).get("id", "") if cur else "")
 	# No mouse cursor over the FPV view; it comes back in the pause menu
 	# (which pauses this node) and with the tuning panel open.
-	var want: Input.MouseMode = Input.MOUSE_MODE_VISIBLE if _panel_visible else Input.MOUSE_MODE_HIDDEN
+	var want: Input.MouseMode = _wanted_mouse_mode()
 	if Input.mouse_mode != want:
 		Input.mouse_mode = want
+	_update_key_guide()
 	_update_hud()
 	_update_los()
 	_update_osd(delta)
@@ -259,8 +261,64 @@ func _process(delta: float) -> void:
 # HIDDEN - then _process never hides it again. So hide it anew when the
 # window gets focus back or the mouse moves during a flight (at most twice
 # a second).
+## Flying on the keyboard (no radio): a small key guide on the left, H
+## shows / hides it (remembered: Settings.keyboard_help). 2026-10-12.
+var _key_guide: PanelContainer
+var _prev_h: bool = false
+func _build_key_guide() -> void:
+	_key_guide = PanelContainer.new()
+	_key_guide.name = "KeyGuide"
+	_key_guide.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_key_guide.add_theme_stylebox_override("panel", UIKit.box(Color(0.04, 0.06, 0.08, 0.72), Color(1, 1, 1, 0.1), 6, 1, Vector4(14, 10, 16, 10)))
+	_key_guide.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	_key_guide.offset_left = 18
+	_key_guide.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_root.add_child(_key_guide)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 2)
+	_key_guide.add_child(grid)
+	for row: Array in [["KEYBOARD", "H hides this"], ["Shift / Ctrl", "throttle up / down"], ["W / S", "pitch"], ["A / D", "roll"], ["Q / E", "yaw"],
+			["Enter", "arm / disarm"], ["L", "Angle / Acro"], ["R", "reset"], ["V", "line of sight"], ["P", "replay"], ["Esc", "menu"]]:
+		var k := Label.new()
+		k.text = row[0]
+		k.add_theme_font_override("font", UIKit.oswald())
+		k.add_theme_font_size_override("font_size", 17)
+		k.add_theme_color_override("font_color", Color("#9cc2ff") if row[0] != "KEYBOARD" else UIKit.MUTED_LIGHT)
+		grid.add_child(k)
+		var d := Label.new()
+		d.text = row[1]
+		d.add_theme_font_size_override("font_size", 15)
+		d.add_theme_color_override("font_color", UIKit.TEXT if row[0] != "KEYBOARD" else UIKit.MUTED_LIGHT)
+		grid.add_child(d)
+
+func _update_key_guide() -> void:
+	var h: bool = Input.is_key_pressed(KEY_H)
+	if h and not _prev_h:
+		Settings.keyboard_help = not Settings.keyboard_help # (saved with the other settings)
+	_prev_h = h
+	if _key_guide:
+		_key_guide.visible = Settings.keyboard_help and not InputManager._joy_connected() and not (replay != null and replay.active)
+
+## While flying: hidden AND confined to the window (2026-10-12: plain
+## HIDDEN let macOS show the cursor again now and then - after a menu, the
+## results card, a restart). With the window out of focus it's free and
+## visible, so switching apps works; the tuning panel and the pause menu
+## (which pauses this node) show it.
+var _window_focused: bool = true
+func _wanted_mouse_mode() -> Input.MouseMode:
+	if _panel_visible or not _window_focused:
+		return Input.MOUSE_MODE_VISIBLE
+	return Input.MOUSE_MODE_CONFINED_HIDDEN
+
 var _rehide_t: int = 0
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		_window_focused = false
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
+		_window_focused = true
 	if what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_WM_MOUSE_ENTER or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
 		_rehide_cursor()
 
@@ -269,11 +327,11 @@ func _input(event: InputEvent) -> void:
 		_rehide_cursor()
 
 func _rehide_cursor() -> void:
-	if not is_inside_tree() or _panel_visible or get_tree().paused or Input.mouse_mode != Input.MOUSE_MODE_HIDDEN:
+	if not is_inside_tree() or get_tree().paused or _wanted_mouse_mode() == Input.MOUSE_MODE_VISIBLE:
 		return
 	_rehide_t = Time.get_ticks_msec()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
+	Input.mouse_mode = _wanted_mouse_mode()
 
 func set_border_warning(active: bool) -> void:
 	_border_label.visible = active
