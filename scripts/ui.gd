@@ -22,6 +22,10 @@ func _ready() -> void:
 	add_child(_root)
 
 	_build_key_guide()
+	# Hide the cursor anew once the map is up (a few frames in, after the
+	# loading screen and the window's own settling) - 2026-10-13.
+	get_tree().create_timer(0.3).timeout.connect(_rehide_cursor)
+	get_tree().create_timer(1.2).timeout.connect(_rehide_cursor)
 	_crosshair = Control.new()
 	_crosshair.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -306,19 +310,18 @@ func _update_key_guide() -> void:
 ## results card, a restart). With the window out of focus it's free and
 ## visible, so switching apps works; the tuning panel and the pause menu
 ## (which pauses this node) show it.
-var _window_focused: bool = true
 func _wanted_mouse_mode() -> Input.MouseMode:
-	if _panel_visible or not _window_focused:
+	# (Asked every frame: a focus-out during a map load with no focus-in
+	# after it left the cursor showing for the whole flight, 2026-10-13.)
+	var focused: bool = DisplayServer.get_name() == "headless" or get_window().has_focus()
+	if _panel_visible or not focused:
 		return Input.MOUSE_MODE_VISIBLE
 	return Input.MOUSE_MODE_CONFINED_HIDDEN
 
 var _rehide_t: int = 0
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
-		_window_focused = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	if what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
-		_window_focused = true
 	if what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_WM_MOUSE_ENTER or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
 		_rehide_cursor()
 

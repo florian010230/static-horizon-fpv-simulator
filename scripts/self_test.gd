@@ -280,13 +280,21 @@ func _test_menu_flow() -> void:
 	# Every tab the same width, and the window one size whichever tab is
 	# open (each page scrolls instead of pushing it).
 	var sizes: Array = []
+	var empty_tabs: Array = []
 	if tab_ok:
 		for i in range(stabs.get_tab_count()):
 			stabs.current_tab = i
 			await get_tree().process_frame
 			await get_tree().process_frame
 			sizes.append(stabs.size)
+			var lit: int = settings._tab_buttons.filter(func(b: Button) -> bool: return b.button_pressed).size()
+			if lit != 1 or not settings._tab_buttons[i].button_pressed:
+				empty_tabs.append("lit:" + SettingsScreens.TAB_NAMES[i])
+			var pg: Control = stabs.get_child(i) as Control
+			if pg == null or not pg.is_visible_in_tree() or pg.size.y < 300.0 or (pg.get_child(0) as Control).size.y < 200.0:
+				empty_tabs.append(SettingsScreens.TAB_NAMES[i])
 		stabs.current_tab = 0
+	_check(tab_ok and empty_tabs.is_empty(), "settings: every tab shows its settings (a page with real height)", str(empty_tabs))
 	var widths: Array = settings._tab_buttons.map(func(b: Button) -> int: return roundi(b.size.x))
 	_check(not sizes.is_empty() and sizes.all(func(v: Vector2) -> bool: return v == sizes[0]) and widths.all(func(w: int) -> bool: return absi(w - widths[0]) <= 1),
 		"settings: tabs all one width, the window one size on every tab", "%s %s" % [str(widths), str(sizes)])

@@ -142,8 +142,12 @@ func _build_settings() -> Control:
 		tab_row.add_child(tb)
 		_tab_buttons.append(tb)
 	tabs.tab_changed.connect(func(t: int):
-		if t >= 0 and t < _tab_buttons.size():
-			_tab_buttons[t].set_pressed_no_signal(true))
+		# (no_signal skips the button group: clear the others by hand)
+		for k in range(_tab_buttons.size()):
+			_tab_buttons[k].set_pressed_no_signal(k == t))
+	# A scroll page has no height of its own: without this the pages
+	# collapsed to nothing and Settings showed only the tab row (2026-10-13).
+	tabs.custom_minimum_size = Vector2(0, 640)
 	parts[1].add_child(tabs)
 	var pages: Dictionary = {}
 	for title in TAB_NAMES:
