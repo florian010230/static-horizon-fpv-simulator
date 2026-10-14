@@ -564,7 +564,7 @@ func _edge(a: Vector3, b: Vector3, style: String, gaps: Array) -> void:
 				var k: float = 0.15
 				while k < len - 0.1:
 					var c: Vector3 = p0 + dir * k
-					_box(c + Vector3(0, tall * 0.5, 0), Vector3(0.025, tall, 0.08), mat, false, yaw)
+					_box(c + Vector3(0, tall * 0.5, 0), Vector3(0.025, tall, 0.08), mat, true, yaw) # (solid: 2026-10-14, drones flew through fences)
 					k += 0.24
 				geo.tint = Color.WHITE
 

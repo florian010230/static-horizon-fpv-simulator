@@ -14,6 +14,12 @@ extends Node3D
 ##   check_border() - for box-shaped (indoor) maps instead
 
 var geo := Geo.new()
+## Painted things on walls (graffiti made of boxes): [surface point,
+## outward normal, width, height] - TextCheck makes sure each lies on its
+## wall. Filled during build() (empty when the map came from the cache).
+var decal_spots: Array = []
+## ZFightCheck's findings when the faces were recorded (else empty).
+var zfight: Array = []
 var fleet: Fleet ## parked/moving cars as MultiMesh (see Fleet), committed after build()
 var sun: DirectionalLight3D
 @onready var drone: Drone = $Drone
@@ -50,6 +56,87 @@ func floating_pieces() -> Array:
 ## Layout sanity (Geo.layout_conflicts): buildings standing on a road or
 ## rail, or in each other. The self-test wants none - fix the map, never
 ## loosen the check (user, 2026-10-12).
+## Hollow things you can fly into but not out of (2026-10-14, user:
+## freestyle flow - no dead-end pipes, no chimney without an exit): each
+## end of a recorded hollow (Geo.hollows) is open when a ball fits just
+## outside it; exactly one open end = a dead end. [kind, open end, radius].
+## Needs the map's collision (after a physics frame).
+func dead_ends() -> Array:
+	var out: Array = []
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var q := PhysicsShapeQueryParameters3D.new()
+	var ball := SphereShape3D.new()
+	q.shape = ball
+	if drone:
+		q.exclude = [drone.get_rid()]
+	for h: Array in geo.hollows:
+		var rin: float = h[4]
+		ball.radius = minf(0.3, rin * 0.6)
+		var open: Array = []
+		for e in [[h[0], h[1]], [h[2], h[3]]]:
+			q.transform = Transform3D(Basis(), (e[0] as Vector3) + (e[1] as Vector3) * (ball.radius + 0.4))
+			if space.intersect_shape(q, 1).is_empty():
+				open.append(e[0])
+		if open.size() == 1:
+			out.append([h[5], open[0], rin])
+	return out
+
+## Water (Geo.water_tris): the surface height at p's x, z, or -INF where
+## there is no water. A grid of the triangles, built once (and kept in the
+## map cache). Drone splashes when it goes below it.
+const WATER_CELL: float = 16.0
+var _water := PackedVector3Array()
+var _water_grid: Dictionary = {}
+var _water_big := PackedInt32Array()
+
+func _index_water(tris: PackedVector3Array) -> void:
+	_water = tris
+	_water_grid.clear()
+	_water_big = PackedInt32Array()
+	for t in range(0, tris.size(), 3):
+		var lo: Vector3 = tris[t].min(tris[t + 1]).min(tris[t + 2])
+		var hi: Vector3 = tris[t].max(tris[t + 1]).max(tris[t + 2])
+		if (hi.x - lo.x) * (hi.z - lo.z) > 4096.0 * WATER_CELL * WATER_CELL:
+			_water_big.append(t) # (a sea in one face: checked everywhere)
+			continue
+		for cx in range(floori(lo.x / WATER_CELL), floori(hi.x / WATER_CELL) + 1):
+			for cz in range(floori(lo.z / WATER_CELL), floori(hi.z / WATER_CELL) + 1):
+				var k := Vector2i(cx, cz)
+				var cell_list: PackedInt32Array = _water_grid.get(k, PackedInt32Array())
+				cell_list.append(t)
+				_water_grid[k] = cell_list # (a packed array is a value: store it back)
+
+func water_level(p: Vector3) -> float:
+	var best: float = -INF
+	var q := Vector2(p.x, p.z)
+	var cand: PackedInt32Array = _water_big + (_water_grid.get(Vector2i(floori(p.x / WATER_CELL), floori(p.z / WATER_CELL)), PackedInt32Array()) as PackedInt32Array)
+	for t in cand:
+		var a: Vector3 = _water[t]
+		var b: Vector3 = _water[t + 1]
+		var c: Vector3 = _water[t + 2]
+		if not Geometry2D.point_is_inside_triangle(q, Vector2(a.x, a.z), Vector2(b.x, b.z), Vector2(c.x, c.z)):
+			continue
+		# Height on the triangle's plane at q.
+		var n: Vector3 = (b - a).cross(c - a)
+		if absf(n.y) < 1e-6:
+			continue
+		var y: float = a.y - (n.x * (p.x - a.x) + n.z * (p.z - a.z)) / n.y
+		if y <= p.y + 3.0: # (water far above you is not your surface - a tank on a tower)
+			best = maxf(best, y)
+	return best
+
+## Driveways whose street end meets no road or track (2026-10-14, user:
+## every drive leads somewhere): [street end, house end].
+func loose_driveways(reach: float = 1.5) -> Array:
+	var out: Array = []
+	for e: Array in geo.drive_ends:
+		var p: Vector3 = e[0]
+		if e.size() > 3: # carried on to the road (Geo.connect_drives)
+			continue
+		if not geo.on_lane(Vector2(p.x, p.z), reach):
+			out.append(e)
+	return out
+
 func layout_conflicts() -> Array:
 	if from_cache:
 		push_warning("layout_conflicts(): %s came from the map cache - Geo holds nothing to check" % name)
@@ -142,6 +229,7 @@ func _ready() -> void:
 		if state != null:
 			from_cache = true
 			_cached_views = (state as Dictionary).get("_views", [])
+			_index_water((state as Dictionary).get("_water", PackedVector3Array()))
 			_rebind_nodes()
 			restore_state(state)
 			lt.append(Time.get_ticks_usec())
@@ -150,8 +238,14 @@ func _ready() -> void:
 	var keep: Array = get_children()
 	fleet = Fleet.new(geo)
 	geo.pieces = pieces()
+	if OS.has_environment("SH_ZFIGHT"):
+		Geo.record_faces = true
+	if OS.has_environment("SH_THIN"):
+		Geo.record_thin = true
 	_building = true
 	build()
+	geo.connect_drives()
+	_index_water(geo.water_tris)
 	_building = false
 	lt.append(Time.get_ticks_usec())
 	# Scattered things go last, around whatever the map built: parked cars
@@ -171,6 +265,32 @@ func _ready() -> void:
 		print("  by kind: ", kinds)
 		for k in range(mini(f.size(), 60)):
 			print("  float ", f[k])
+	if Geo.record_thin:
+		var keys: Array = geo.thin_log.keys()
+		keys.sort_custom(func(x: String, y: String) -> bool: return geo.thin_log[x][0] > geo.thin_log[y][0])
+		print("THIN %s: %d kinds of rods without collision" % [name, keys.size()])
+		for k: String in keys:
+			var e: Array = geo.thin_log[k]
+			print("  thin %-22s x%-5d longest %.1f m at (%.1f, %.1f, %.1f)" % [k, e[0], e[2], e[1].x, e[1].y, e[1].z])
+	if Geo.record_faces:
+		var t0: int = Time.get_ticks_msec()
+		var zf: Array = ZFightCheck.run(geo)
+		zfight = zf
+		print("ZFIGHT %s: %d (%d faces, %d ms)" % [name, zf.size(), geo.face_n.size(), Time.get_ticks_msec() - t0])
+		# By material pair: how many, how much area, one example.
+		var by: Dictionary = {}
+		for e: Array in zf:
+			if not by.has(e[1]):
+				by[e[1]] = [0, 0.0, e]
+			by[e[1]][0] += 1
+			by[e[1]][1] += e[3]
+		var keys: Array = by.keys()
+		keys.sort_custom(func(x: String, y: String) -> bool: return by[x][1] > by[y][1])
+		for k in range(mini(keys.size(), int(OS.get_environment("SH_ZFIGHT_N")) if OS.has_environment("SH_ZFIGHT_N") else 25)):
+			var e: Array = by[keys[k]][2]
+			print("  zfight %-34s x%-5d %7.1f m2  e.g. (%.1f, %.1f, %.1f) gap %.3f" % [keys[k], by[keys[k]][0], by[keys[k]][1], e[0].x, e[0].y, e[0].z, e[2]])
+		geo.face_pts = PackedVector3Array()
+		geo.face_n = PackedVector3Array()
 	if OS.has_environment("SH_LAYOUT"):
 		var lc: Array = layout_conflicts()
 		print("LAYOUT %s: %d" % [name, lc.size()])
@@ -185,6 +305,7 @@ func _ready() -> void:
 	if use_cache:
 		var st: Dictionary = cache_state()
 		st["_views"] = preview_views()
+		st["_water"] = _water
 		var size: int = MapCache.save(self, keep, st)
 		lt.append(Time.get_ticks_usec())
 		if OS.has_environment("SH_LOADTIME"):

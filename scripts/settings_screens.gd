@@ -312,6 +312,7 @@ func _build_settings() -> Control:
 	_assign_row(r_other, "Assign Reset Button", "reset", Callable(InputManager, "reset_control_name"), Callable(InputManager, "clear_reset_control"))
 	_assign_row(r_other, "Assign Line-of-Sight Button", "los", Callable(InputManager, "los_control_name"), Callable(InputManager, "clear_los_control"))
 	_assign_row(r_other, "Assign Restart Switch", "restart", Callable(InputManager, "restart_control_name"), Callable(InputManager, "clear_restart_control"))
+	_assign_row(r_other, "Assign Rate Profile Switch", "rates", Callable(InputManager, "rates_control_name"), Callable(InputManager, "clear_rates_control"))
 	_hint(r_other, "For everyday flying, use Reset: it puts the drone back, starts the race fresh and fits a new pack and props, all in an instant. Restart reloads the whole map (a few seconds) - only needed if something gets stuck.")
 
 	UIKit.section(r_ctrl, "Controller")
@@ -493,6 +494,32 @@ func _build_rates(parent: VBoxContainer) -> void:
 
 	_hint(left, "Same numbers as Betaflight Configurator -> PID Tuning -> Rates: copy them from your own quad and it flies the same here.")
 	UIKit.gap(left, 4)
+	# Rate profiles 1-3 (each keeps its own rates and throttle MID/EXPO).
+	var prof_row := HBoxContainer.new()
+	prof_row.add_theme_constant_override("separation", 8)
+	left.add_child(prof_row)
+	var prof_l := Label.new()
+	prof_l.text = "Rate profile"
+	prof_l.custom_minimum_size = Vector2(150, 0)
+	prof_row.add_child(prof_l)
+	var pgroup := ButtonGroup.new()
+	_rate_profile_buttons.clear()
+	for i in range(Settings.RATE_PROFILES):
+		var b := UIKit.button(str(i + 1), "", 44)
+		b.toggle_mode = true
+		b.button_group = pgroup
+		b.button_pressed = i == Settings.rate_profile
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_stylebox_override("pressed", UIKit.box(UIKit.LOGO_SKY, UIKit.LOGO_SKY, 12))
+		b.add_theme_color_override("font_pressed_color", Color.WHITE)
+		var pidx: int = i
+		b.pressed.connect(func(): Settings.select_rate_profile(pidx))
+		prof_row.add_child(b)
+		_rate_profile_buttons.append(b)
+	if not Settings.rate_profile_changed.is_connected(_on_rate_profile):
+		Settings.rate_profile_changed.connect(_on_rate_profile)
+	_hint(left, "Three saved sets - say slow for practice, fast for freestyle. A radio switch can pick them in flight: Radio -> Rate Profile Switch.")
+	UIKit.gap(left, 4)
 	var type_label := Label.new()
 	type_label.text = "Rates type"
 	left.add_child(type_label)
@@ -592,7 +619,8 @@ func _build_rates(parent: VBoxContainer) -> void:
 		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		thr_row.add_child(col)
 		var field: String = spec[1]
-		UIKit.slider(col, spec[0], 0.0, 1.0, 0.01, Settings.get(field), func(v: float): Settings.set(field, v))
+		var vl: Label = UIKit.slider(col, spec[0], 0.0, 1.0, 0.01, Settings.get(field), func(v: float): Settings.set(field, v))
+		_thr_sliders[field] = vl.get_parent().get_parent().get_child(vl.get_parent().get_index() + 1)
 	_hint(left, "Betaflight's throttle curve: EXPO flattens the throttle around MID for smoother hovering. Defaults 0.50 / 0.00.")
 
 	var gl := Label.new()
@@ -606,6 +634,21 @@ func _build_rates(parent: VBoxContainer) -> void:
 	_refresh_rates()
 
 var _rate_link: CheckButton
+var _rate_profile_buttons: Array = []
+var _thr_sliders: Dictionary = {} # field -> HSlider
+
+## A profile was picked (here or by the radio switch): show its numbers.
+func _on_rate_profile(i: int) -> void:
+	for k in range(_rate_profile_buttons.size()):
+		if is_instance_valid(_rate_profile_buttons[k]):
+			(_rate_profile_buttons[k] as Button).set_pressed_no_signal(k == i)
+	for f: String in _thr_sliders:
+		if is_instance_valid(_thr_sliders[f]):
+			(_thr_sliders[f] as HSlider).value = Settings.get(f)
+	if _rate_link:
+		_rate_link.set_pressed_no_signal(Settings.rates_roll == Settings.rates_pitch)
+	if not _rate_rows.is_empty():
+		_refresh_rates()
 const AXIS_COLORS: Array[Color] = [Color("#e8551a"), Color("#3fae5a"), Color("#3ea6ff")]
 
 func _set_rates_type(t: int) -> void:
@@ -785,6 +828,7 @@ const CAPTURE_LABELS: Dictionary = {
 	"reset": "Reset",
 	"los": "Line-of-Sight",
 	"restart": "Restart Map",
+	"rates": "Rate Profile",
 }
 
 var _cal_title: Label
@@ -970,6 +1014,7 @@ func _current_capture_name() -> String:
 		"reset": return InputManager.reset_control_name()
 		"los": return InputManager.los_control_name()
 		"restart": return InputManager.restart_control_name()
+		"rates": return InputManager.rates_control_name()
 	return "not assigned"
 
 func _process_calibration(delta: float) -> void:

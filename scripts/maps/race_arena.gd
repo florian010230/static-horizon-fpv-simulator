@@ -129,7 +129,7 @@ func _gallery() -> void:
 	while x <= g.end.x + 0.1:
 		geo.box(Vector3(x, (y - 0.3) * 0.5, g.position.y + 0.3), Vector3(0.4, y - 0.3, 0.4), "truss")
 		x += 10.0
-	geo.box(Vector3(g.get_center().x, y + 0.55, g.position.y + 0.05), Vector3(g.size.x, 0.08, 0.08), "truss", 0.0, false)
+	geo.box(Vector3(g.get_center().x, y + 0.55, g.position.y + 0.05), Vector3(g.size.x, 0.08, 0.08), "truss")
 	x = g.position.x
 	while x <= g.end.x + 0.1:
 		geo.box(Vector3(x, y + 0.27, g.position.y + 0.05), Vector3(0.06, 0.55, 0.06), "truss", 0.0, false)

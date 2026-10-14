@@ -25,7 +25,7 @@ func preview_views() -> Array:
 		["overview", Vector3(0, 14, 26), Vector3(-2, 0, -4)],
 		["tower", Vector3(-6, 1.6, -3), Vector3(-15, 1.5, -9)],
 		["swings", Vector3(12, 1.2, -4), Vector3(12, 1.2, -10)],
-		["tube", Vector3(-19.5, 0.62, 6), Vector3(-12, 0.62, 6)],
+		["tube", Vector3(-20.5, 0.62, 6), Vector3(-12, 0.62, 6)],
 		["top", Vector3(0, 45, 0.1), Vector3(0, 0, 0)],
 		["trees", Vector3(4, 2.5, 12), Vector3(28, 4, 30)],
 	]
@@ -157,7 +157,9 @@ func _merry_go_round(o: Vector3) -> void:
 
 func _tubes_and_seesaw() -> void:
 	# Two crawl tubes - big enough for a whoop to fly straight through.
-	geo.pipe(Vector3(-17.5, 0.62, 6), Vector3(-13.5, 0.62, 6), 0.55, 0.06, "yellow", 20)
+	# (The yellow one ends 1.5 m short of the green one's side: out of it
+	# there is room to turn - 2026-10-14, it ended a hand's width short.)
+	geo.pipe(Vector3(-18.5, 0.62, 6), Vector3(-14.5, 0.62, 6), 0.55, 0.06, "yellow", 20)
 	geo.pipe(Vector3(-12, 0.62, 9.5), Vector3(-12, 0.62, 5.5), 0.55, 0.06, "green", 20)
 	# See-saw.
 	var c := Vector3(-16, 0, 10)

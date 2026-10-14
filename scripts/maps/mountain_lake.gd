@@ -399,7 +399,10 @@ func _materials() -> void:
 	falls.uv1_world_triplanar = true
 	falls.uv1_scale = Vector3(0.5, 0.05, 0.5)
 	falls.set_meta("keep_material", true)
-	geo.add_material("ml_falls", falls)
+	if Geo.unified_water:
+		geo.add_material("ml_falls", _falls_mat())
+	else:
+		geo.add_material("ml_falls", falls)
 	geo.add_material("ml_lot", Geo.ground_mat(MapTextures.get_tex("asphalt"), Color(0.95, 0.95, 0.95), 7.0, 1, 0.3))
 	geo.add_material("ml_foam", Geo.flat_mat(Color(0.9, 0.94, 0.96))) # (on water, not ground)
 
@@ -824,7 +827,7 @@ func _camp(rng: RandomNumberGenerator) -> void:
 			geo.tint = Color(0.95, 0.94, 0.9)
 			geo.box_on(Transform3D(Basis(Vector3.UP, yaw), q + Vector3(0, 1.3, 0)), Vector3(2.3, 2.6, 6.2), "ml_paint", q.y)
 			geo.tint = Color(0.3, 0.5, 0.7)
-			geo.box_xf(Transform3D(Basis(Vector3.UP, yaw), q + Vector3(0, 1.0, 0)), Vector3(2.32, 0.25, 6.22), "ml_paint", false)
+			geo.box_xf(Transform3D(Basis(Vector3.UP, yaw), q + Vector3(0, 1.0, 0)), Vector3(2.36, 0.25, 6.26), "ml_paint", false) # (2 cm proud: 1 cm flickered)
 			geo.tint = Color.WHITE
 		else:
 			var foot: float = geo.sunk([q + Vector3(1.8, 0, 0), q + Vector3(-1.8, 0, 0), q + Vector3(0, 0, 1.8), q + Vector3(0, 0, -1.8)], q.y)
@@ -917,6 +920,44 @@ func _cable_car() -> void:
 	geo.tint = Color(0.85, 0.7, 0.3)
 	geo.box(sc + Vector3(0, 5.0, 0.18), Vector3(0.5, 0.6, 0.08), "ml_paint", 0.0, false) # the summit book's box
 	geo.tint = Color.WHITE
+
+## The waterfall's water (SH_WATER_LOOK preview): the lake's colour,
+## breaking into white foam in streaks that run down it - so it reads as
+## falling water from far away too.
+func _falls_mat() -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode unshaded, blend_mix, cull_disabled, depth_draw_opaque;
+uniform vec3 water = vec3(%f, %f, %f);
+uniform sampler2D noise : filter_linear_mipmap, repeat_enable;
+varying vec3 wpos;
+void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void fragment() {
+	// Streaks: noise squeezed across the fall, stretched down it, running down.
+	float along = (wpos.x * 0.6 + wpos.z * 0.5);
+	float s1 = texture(noise, vec2(along * 0.35, wpos.y * 0.012 + TIME * 0.22)).r;
+	float s2 = texture(noise, vec2(along * 0.9 + 0.37, wpos.y * 0.03 + TIME * 0.45)).r;
+	float foam = smoothstep(0.45, 0.7, s1 * 0.55 + s2 * 0.55);
+	vec3 col = mix(water * 2.3, vec3(0.95, 0.97, 0.99), 0.12 + foam * 0.8);
+	ALBEDO = col;
+	ALPHA = clamp(0.78 + foam * 0.2, 0.0, 0.97);
+}
+""" % [Geo.WATER_DEEP.r, Geo.WATER_DEEP.g, Geo.WATER_DEEP.b]
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	var nt := NoiseTexture2D.new()
+	nt.seamless = true
+	nt.width = 256
+	nt.height = 256
+	var fn := FastNoiseLite.new()
+	fn.seed = 7
+	fn.frequency = 0.02
+	fn.fractal_octaves = 3
+	nt.noise = fn
+	m.set_shader_parameter("noise", nt)
+	m.set_meta("keep_material", true)
+	return m
 
 ## The waterfall: the creek from the tarn across the pasture, then down
 ## the gully in a white curtain, foam where it meets the lake.

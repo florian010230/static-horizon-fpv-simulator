@@ -22,6 +22,8 @@ func _ready() -> void:
 	add_child(_root)
 
 	_build_key_guide()
+	# A rate profile switched in flight (radio switch): say which.
+	Settings.rate_profile_changed.connect(func(i: int) -> void: flash_message("RATES %d" % (i + 1), 1.0))
 	# Hide the cursor anew once the map is up (a few frames in, after the
 	# loading screen and the window's own settling) - 2026-10-13.
 	get_tree().create_timer(0.3).timeout.connect(_rehide_cursor)

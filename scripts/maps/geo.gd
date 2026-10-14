@@ -121,7 +121,15 @@ static func flat_mat(color: Color, roughness: float = 0.85, metallic: float = 0.
 ## Water: a flat, slightly see-through surface with a sky sheen. Real
 ## reflections would need engine lighting (see the header) - a bright
 ## unshaded tint reads as water from a drone's height.
+## One water colour on every map (2026-10-14 preview, SH_WATER_LOOK=1:
+## the user saw lake, river and waterfall in different colours). The
+## shader adds ripples, sky sheen and the sun's glint everywhere.
+const WATER_DEEP := Color(0.08, 0.27, 0.32)
+static var unified_water: bool = OS.has_environment("SH_WATER_LOOK")
 static func water_mat(deep: Color = Color(0.12, 0.3, 0.38), alpha: float = 0.88) -> StandardMaterial3D:
+	if unified_water:
+		deep = WATER_DEEP
+		alpha = 0.9
 	var m := StandardMaterial3D.new()
 	m.albedo_color = Color(deep.r, deep.g, deep.b, alpha)
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -131,6 +139,7 @@ static func water_mat(deep: Color = Color(0.12, 0.3, 0.38), alpha: float = 0.88)
 	m.uv1_triplanar = true
 	m.uv1_world_triplanar = true
 	m.uv1_scale = Vector3.ONE / 30.0
+	m.set_meta("water", true) # (Geo records its surface; it never collides - see water_tris)
 	return m
 
 ## A ground layer (see shaders/geo_layer.gdshader): the same look as
@@ -183,6 +192,9 @@ static func glow_mat(color: Color, energy: float = 2.0) -> StandardMaterial3D:
 const OBS_CELL: float = 32.0
 var _obs: Array = [] # [centre: Vector2, axis: Vector2, half: Vector2, y0, y1]
 var _obs_grid: Dictionary = {}
+## Driveways' street ends [street end, house end] (HouseCreator): each
+## must meet a road (BuiltMap.loose_driveways, self-test).
+var drive_ends: Array = []
 var _lanes: Array = [] # [a: Vector2, b: Vector2, half width, surface y]
 var _lane_grid: Dictionary = {}
 
@@ -242,6 +254,99 @@ func blocked(p: Vector2, r: float, y0: float, y1: float) -> bool:
 		if absf(d.dot(ax)) <= o[2].x + r and absf(d.dot(Vector2(-ax.y, ax.x))) <= o[2].y + r:
 			return true
 	return false
+
+## Is p inside any drawn piece (its footprint box, solid or not)? For
+## ZFightCheck: a face with something solid right in front is hidden.
+func filled_at(p: Vector3, eps: float = 0.005) -> bool:
+	var q := Vector2(p.x, p.z)
+	for idx in _sup_grid.get(Vector2i(floori(q.x / OBS_CELL), floori(q.y / OBS_CELL)), []):
+		var o: Array = _support[idx]
+		if p.y <= o[3] + eps or p.y >= o[4] - eps:
+			continue
+		var d: Vector2 = q - o[0]
+		var ax: Vector2 = o[1]
+		if absf(d.dot(ax)) < o[2].x - eps and absf(d.dot(Vector2(-ax.y, ax.x))) < o[2].y - eps:
+			return true
+	return false
+
+## How far p (x, z) is from the nearest road or track edge (0 on it),
+## searching the lane cells within `reach` m; INF if none.
+func lane_gap(p: Vector2, reach: float = 40.0) -> float:
+	var best: float = INF
+	var c0 := Vector2i(floori((p.x - reach) / OBS_CELL), floori((p.y - reach) / OBS_CELL))
+	var c1 := Vector2i(floori((p.x + reach) / OBS_CELL), floori((p.y + reach) / OBS_CELL))
+	var seen: Dictionary = {}
+	for cx in range(c0.x, c1.x + 1):
+		for cz in range(c0.y, c1.y + 1):
+			for idx in _lane_grid.get(Vector2i(cx, cz), []):
+				if seen.has(idx):
+					continue
+				seen[idx] = true
+				var l: Array = _lanes[idx]
+				var a: Vector2 = l[0]
+				var ab: Vector2 = l[1] - a
+				var t: float = clampf((p - a).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+				var g: float = maxf((a + ab * t).distance_to(p) - l[2], 0.0)
+				if g < best:
+					best = g
+					lane_gap_y = l[3]
+					var on: Vector2 = a + ab * t
+					lane_gap_point = on + (p - on).normalized() * l[2] if p.distance_to(on) > 0.001 else on
+	return best
+var lane_gap_y: float = 0.0 ## the surface height of the lane lane_gap() found
+var lane_gap_point: Vector2 ## and the nearest point of its edge
+
+## Every driveway runs on to the road (2026-10-14: they stopped at the
+## plot's edge, a grass verge short of it): from its street end straight
+## on until it meets a lane, in pieces that follow the ground and ramp to
+## the road's height; at most `reach` m. Before commit (HouseCreator's
+## "hc_paving" exists wherever a drive was made).
+func connect_drives(reach: float = 8.0) -> void:
+	for e: Array in drive_ends:
+		var s: Vector3 = e[0]
+		var dir: Vector3 = (s - (e[1] as Vector3)) * Vector3(1, 0, 1)
+		if dir.length() < 0.1:
+			continue
+		dir = dir.normalized()
+		# Straight on if the road is ahead; else to its nearest point (a
+		# road running off at an angle).
+		var L: float = -1.0
+		var t: float = 0.0
+		while t <= reach:
+			if lane_gap(Vector2(s.x + dir.x * t, s.z + dir.z * t), 12.0) <= 0.0:
+				L = t
+				break
+			t += 0.1
+		if L < 0.0:
+			var g0: float = lane_gap(Vector2(s.x, s.z), 12.0)
+			if g0 > reach:
+				continue
+			var to: Vector3 = Vector3(lane_gap_point.x - s.x, 0, lane_gap_point.y - s.z)
+			if to.length() < 0.05 or to.normalized().dot(dir) < 0.2:
+				continue
+			dir = to.normalized()
+			L = to.length()
+		if L <= 0.05:
+			continue
+		lane_gap(Vector2(s.x + dir.x * L, s.z + dir.z * L), 12.0)
+		var road_y: float = lane_gap_y
+		var w: float = e[2] if e.size() > 2 else 3.0
+		var n: int = maxi(1, ceili(L / 0.6))
+		var piece: float = L / n
+		var yaw: float = atan2(dir.x, dir.z)
+		for k in range(n):
+			var f: float = (k + 0.5) / n
+			var c: Vector3 = s + dir * (L * f)
+			var top: float = lerpf(s.y + 0.06, road_y + 0.02, f)
+			if floor_fn.is_valid():
+				for u in [-0.45, 0.0, 0.45]:
+					var q: Vector3 = c + Vector3(dir.z, 0, -dir.x) * (w * u)
+					var gy: float = floor_fn.call(q.x, q.z)
+					if gy > -1e5:
+						top = maxf(top, gy + 0.04)
+			var bottom: float = top - 0.4
+			box(Vector3(c.x, (top + bottom) * 0.5, c.z), Vector3(w, top - bottom, piece + 0.01), "hc_paving", yaw, false, false)
+		e.append(L) # (how far it was carried on, for the check)
 
 ## Is p (x, z) on a road or track (within `margin` of its edge)?
 func on_lane(p: Vector2, margin: float) -> bool:
@@ -608,7 +713,26 @@ func box(center: Vector3, size: Vector3, mat: String, yaw: float = 0.0, collide:
 	box_xf(Transform3D(Basis(Vector3.UP, yaw), center), size, mat, collide, shadow)
 
 ## Box with any orientation. Faces are emitted in world space.
+## Dev aid (SH_THIN=1): rods drawn without collision - ladders' rungs,
+## rails, cables, poles a drone could fly through - counted by material.
+static var record_thin: bool = false
+var thin_log: Dictionary = {} # mat -> [count, example position, longest]
+
+func _thin(mat: String, p: Vector3, length: float) -> void:
+	if not thin_log.has(mat):
+		thin_log[mat] = [0, p, 0.0]
+	thin_log[mat][0] += 1
+	if length > thin_log[mat][2]:
+		thin_log[mat][1] = p
+		thin_log[mat][2] = length
+
 func box_xf(xf: Transform3D, size: Vector3, mat: String, collide: bool = true, shadow: bool = true) -> void:
+	if record_thin and not collide:
+		var sz: Vector3 = (xf.basis.get_scale() * size).abs()
+		var dims: Array = [sz.x, sz.y, sz.z]
+		dims.sort()
+		if dims[1] < 0.15 and dims[2] >= 0.4:
+			_thin(mat, xf.origin, dims[2])
 	var h: Vector3 = size * 0.5
 	var c: Array[Vector3] = []
 	for i in range(8):
@@ -628,6 +752,26 @@ func box_xf(xf: Transform3D, size: Vector3, mat: String, collide: bool = true, s
 	_quad(c[0], c[2], c[3], c[1], -b.z, collide)
 	if shadow:
 		_shadow(PackedVector3Array(c))
+
+## Collision only, nothing drawn: a box a drone hits but nobody sees -
+## the fine mesh of a net, a fence's slats, a lattice's web (drawn as a
+## few rods, solid as a whole). Also counts as support (floating check).
+func collider_box(xf: Transform3D, size: Vector3) -> void:
+	var h: Vector3 = size * 0.5
+	var c: Array[Vector3] = []
+	for i in range(8):
+		c.append(xf * Vector3(h.x if i & 1 else -h.x, h.y if i & 2 else -h.y, h.z if i & 4 else -h.z))
+	var ck: String = "%d|%d|%d" % [floori(xf.origin.x / cell), floori(xf.origin.z / cell), int(cell)]
+	if not _col.has(ck):
+		_col[ck] = []
+	var col: Array = _col[ck]
+	for f in [[1, 3, 7, 5], [0, 4, 6, 2], [2, 6, 7, 3], [0, 1, 5, 4], [4, 5, 7, 6], [0, 2, 3, 1]]:
+		col.append_array([c[f[0]], c[f[1]], c[f[2]], c[f[0]], c[f[2]], c[f[3]]])
+	var b: Basis = xf.basis
+	if absf(b.y.normalized().y) > 0.9:
+		_obstacle_box(xf.origin, b.x * h.x, b.z * h.z, c, true)
+	else:
+		_obstacle_points(c, true)
 
 ## Any convex 8-corner solid ("hexahedron"): corners in the same order
 ## as box_xf's (bit 0 = +x, bit 1 = +y, bit 2 = +z), each placed freely -
@@ -682,7 +826,16 @@ func cylinder(a: Vector3, b: Vector3, r: float, mat: String, sides: int = 14, co
 	_tube(a, b, r, r, 0.0, mat, sides, collide, caps, shadow)
 
 ## Hollow tube you can fly through: outer wall, inner wall, end rings.
+## Hollow things a drone can fly into (BuiltMap.dead_ends): [end a,
+## outward direction at a, end b, outward at b, inner radius, kind].
+var hollows: Array = []
+func _hollow(a: Vector3, da: Vector3, b: Vector3, db: Vector3, rin: float, length: float, kind: String) -> void:
+	if rin >= 0.35 and length >= 2.0:
+		hollows.append([a, da.normalized(), b, db.normalized(), rin, kind])
+
 func pipe(a: Vector3, b: Vector3, r: float, wall: float, mat: String, sides: int = 18, collide: bool = true, shadow: bool = true) -> void:
+	if wall > 0.0 and collide:
+		_hollow(a, a - b, b, b - a, r - wall, a.distance_to(b), "pipe")
 	_tube(a, b, r, r, wall, mat, sides, collide, false, shadow)
 
 ## Cone / tapered cylinder (r0 at a, r1 at b).
@@ -693,6 +846,13 @@ func cone(a: Vector3, b: Vector3, r0: float, r1: float, mat: String, sides: int 
 ## profile: Vector2(radius, height) from bottom to top. `wall` > 0 makes
 ## it a shell with an inside surface too (cooling tower, open hopper).
 func lathe(base: Vector3, profile: Array, mat: String, sides: int = 24, wall: float = 0.0, collide: bool = true, shadow: bool = true) -> void:
+	if wall > 0.0 and collide and profile.size() > 1:
+		var rin: float = INF
+		for q: Vector2 in profile:
+			rin = minf(rin, q.x - wall)
+		var y0: float = (profile[0] as Vector2).y
+		var y1: float = (profile[profile.size() - 1] as Vector2).y
+		_hollow(base + Vector3(0, y0, 0), Vector3.DOWN, base + Vector3(0, y1, 0), Vector3.UP, rin, y1 - y0, "tower")
 	_begin(mat, base, collide)
 	if profile.size() > 1:
 		var rmax: float = 0.0
@@ -1036,6 +1196,12 @@ static func circle(r: float, sides: int = 12) -> Array:
 ## in, so you can fly through), open ends.
 func pipe_path(path: Array[Vector3], r: float, mat: String, hollow_wall: float = 0.0, sides: int = 14, collide: bool = true, shadow: bool = true) -> void:
 	sweep(path, circle(r, sides), mat, true, collide, shadow, 0.0, true)
+	if hollow_wall > 0.0 and collide and path.size() > 1:
+		var n: int = path.size()
+		var length: float = 0.0
+		for i in range(n - 1):
+			length += path[i].distance_to(path[i + 1])
+		_hollow(path[0], path[0] - path[1], path[n - 1], path[n - 1] - path[n - 2], r - hollow_wall, length, "pipe")
 	if hollow_wall > 0.0:
 		sweep(path, circle(r - hollow_wall, sides), mat, true, collide, false, 0.0, true, true)
 
@@ -1054,6 +1220,42 @@ func disc(c: Vector3, n: Vector3, r: float, mat: String, sides: int = 12) -> voi
 		var a0: float = TAU * s / sides
 		var a1: float = TAU * (s + 1) / sides
 		_tri(c, c + u * cos(a0) + v * sin(a0), c + u * cos(a1) + v * sin(a1), n, false)
+
+## Part of a flat disc: the slice from angle a0 to a1 (radians, 0 =
+## the disc's "right", PI/2 = its "up" - for a vertical disc, up is up).
+## Logos, dials. Not solid.
+func fan(c: Vector3, n: Vector3, r: float, a0: float, a1: float, mat: String, sides: int = 12) -> void:
+	n = n.normalized()
+	var v: Vector3 = (Vector3.UP - n * n.y).normalized() if absf(n.y) < 0.99 else Vector3.FORWARD
+	var u: Vector3 = v.cross(n)
+	_begin(mat, c, false)
+	for s in range(sides):
+		var b0: float = lerpf(a0, a1, float(s) / sides)
+		var b1: float = lerpf(a0, a1, float(s + 1) / sides)
+		_tri(c, c + (u * cos(b0) + v * sin(b0)) * r, c + (u * cos(b1) + v * sin(b1)) * r, n, false)
+
+## A flat convex plate in xf's XY plane, facing +Z (`pts` round it in
+## xf's units): sign faces, panels. Not solid. `back` != "" also draws
+## the back (facing -Z) `back_off` behind, in that material.
+func plate(xf: Transform3D, pts: Array, mat: String, back: String = "", back_off: float = 0.003) -> void:
+	var n: Vector3 = xf.basis.z.normalized()
+	var c := Vector2.ZERO
+	for q: Vector2 in pts:
+		c += q
+	c /= pts.size()
+	_begin(mat, xf.origin, false)
+	var cw: Vector3 = xf * Vector3(c.x, c.y, 0)
+	for k in range(pts.size()):
+		var a2: Vector2 = pts[k]
+		var b2: Vector2 = pts[(k + 1) % pts.size()]
+		_tri(cw, xf * Vector3(a2.x, a2.y, 0), xf * Vector3(b2.x, b2.y, 0), n, false)
+	if back != "":
+		_begin(back, xf.origin, false)
+		var cb: Vector3 = xf * Vector3(c.x, c.y, -back_off)
+		for k in range(pts.size()):
+			var a3: Vector2 = pts[k]
+			var b3: Vector2 = pts[(k + 1) % pts.size()]
+			_tri(cb, xf * Vector3(a3.x, a3.y, -back_off), xf * Vector3(b3.x, b3.y, -back_off), -n, false)
 
 ## Drops what only the build needs (footprints, lanes, support records
 ## - tens of MB on a big map) once the map stands. Not when a floating
@@ -1074,6 +1276,8 @@ func release_records() -> void:
 var cap_mask: int = 3
 
 func _tube(a: Vector3, b: Vector3, r0: float, r1: float, wall: float, mat: String, sides: int, collide: bool, caps: bool, shadow: bool) -> void:
+	if record_thin and not collide and maxf(r0, r1) < 0.08 and a.distance_to(b) >= 0.4:
+		_thin(mat, (a + b) * 0.5, a.distance_to(b))
 	var d: Vector3 = b - a
 	var length: float = d.length()
 	if length < 0.001:
@@ -1132,7 +1336,48 @@ func _tube(a: Vector3, b: Vector3, r0: float, r1: float, wall: float, mat: Strin
 	if shadow:
 		_shadow(pts)
 
+## Z-fight check (ZFightCheck, SH_ZFIGHT=1): every drawn face is kept -
+## corners (4 per face, a triangle repeats its last), normal, piece
+## number, material and tint. Off unless asked: it costs memory.
+static var record_faces: bool = false
+var face_pts := PackedVector3Array()
+var face_n := PackedVector3Array()
+var face_piece := PackedInt32Array()
+var face_mat := PackedInt32Array()
+var face_tint := PackedColorArray()
+var face_mat_names: Array[String] = []
+var _piece_no: int = 0
+var _rec_mat: int = -1 # -1: not recorded (ground layers: SurfaceCheck's job)
+
+func _rec(a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3) -> void:
+	face_pts.append(a); face_pts.append(b); face_pts.append(c); face_pts.append(d)
+	face_n.append(n)
+	face_piece.append(_piece_no)
+	face_mat.append(_rec_mat)
+	face_tint.append(tint)
+
+## Water: every up-facing face drawn in a water material (water_mat) -
+## lakes, rivers, the sea, ponds - as triangles, for BuiltMap.water_level
+## (a drone that goes in splashes: 2026-10-14, one behaviour on every map;
+## before, some maps' water was solid and others' not). Water never
+## collides.
+var water_tris := PackedVector3Array()
+var _in_water: bool = false
+var _water_of: Dictionary = {}
+
 func _begin(mat: String, pos: Vector3, collide: bool) -> void:
+	if not _water_of.has(mat):
+		_water_of[mat] = (_mats[mat] as Material).has_meta("water")
+	_in_water = _water_of[mat]
+	if record_faces:
+		_piece_no += 1
+		if layer_of(_mats[mat]) >= 0:
+			_rec_mat = -1
+		else:
+			_rec_mat = face_mat_names.find(mat)
+			if _rec_mat < 0:
+				face_mat_names.append(mat)
+				_rec_mat = face_mat_names.size() - 1
 	# Fast path: most pieces land in the same batch as the one before
 	# (a house is hundreds of boxes in one or two cells) - skip building
 	# the string keys and the dictionary lookups.
@@ -1182,6 +1427,12 @@ func _quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, collide: 
 	var lb: Color = _light(n, b) * tint
 	var lc: Color = _light(n, c) * tint
 	var ld: Color = _light(n, d) * tint
+	if record_faces and _rec_mat >= 0:
+		_rec(a, b, c, d, n)
+	if _in_water:
+		collide = false
+		if n.y > 0.5:
+			water_tris.append_array([a, b, c, a, c, d])
 	var st: SurfaceTool = _cur_st
 	var flip1: bool = (b - a).cross(c - a).dot(n) > 0.0
 	var flip2: bool = (c - a).cross(d - a).dot(n) > 0.0
@@ -1209,6 +1460,12 @@ func _v(st: SurfaceTool, n: Vector3, p: Vector3, col: Color) -> void:
 	st.add_vertex(p)
 
 func _tri(a: Vector3, b: Vector3, c: Vector3, n: Vector3, collide: bool) -> void:
+	if record_faces and _rec_mat >= 0:
+		_rec(a, b, c, c, n)
+	if _in_water:
+		collide = false
+		if n.y > 0.5:
+			water_tris.append_array([a, b, c])
 	var st: SurfaceTool = _cur_st
 	if (b - a).cross(c - a).dot(n) > 0.0:
 		var sw: Vector3 = b

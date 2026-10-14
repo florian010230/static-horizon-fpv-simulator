@@ -192,7 +192,10 @@ var gate_at: Vector3 = Vector3.INF
 var path_end: float = 0.0
 var drive_at: Vector3 = Vector3.INF
 
+var yard: bool = false ## a farmhouse: its path and drive end in the yard (opts "yard")
+
 func _run(g: Geo, pos: Vector3, yaw: float, seed_value: int, opts: Dictionary) -> void:
+	yard = opts.get("yard", false)
 	geo = g
 	ensure_materials(geo)
 	rng.seed = seed_value
@@ -734,11 +737,11 @@ func _ext_opening(o: Dictionary) -> void:
 	if not door:
 		# Sill outside, window board inside.
 		_tint(Color(0.82, 0.82, 0.8))
-		_fb(t, Vector3(0, -0.02, 0.05), Vector3(w + 0.1, 0.04, 0.2), "hc_trim")
+		_fb(t, Vector3(0, 0.0, 0.05), Vector3(w + 0.1, 0.04, 0.2), "hc_trim") # (top 2 cm above the reveal: flush, it flickered)
 		_tint(Color.WHITE)
 		if interior:
 			_tint(Color(0.95, 0.94, 0.92))
-			_fb(t, Vector3(0, -0.015, -T - 0.07), Vector3(w + 0.08, 0.03, 0.2), "hcd_paint_furn")
+			_fb(t, Vector3(0, 0.005, -T - 0.07), Vector3(w + 0.08, 0.03, 0.2), "hcd_paint_furn")
 			_tint(Color.WHITE)
 	if plaster and o.kind != "patio" and not (brick_ground and o.s == 0):
 		# Stucco surround, a shade lighter than the wall.
@@ -992,6 +995,8 @@ func _front_door_extras(path_to: float) -> void:
 	gate_at = xf * Vector3(p0.x, 0, path_to)
 	if path_to > p0.z + 0.3:
 		_paving(p0.x, p0.z, path_to, 1.3)
+		if not yard: # (a farmhouse's path ends in its yard)
+			geo.drive_ends.append([gate_at, xf * Vector3(p0.x, 0, p0.z), 1.3]) # (the path, too, runs on to the road)
 	# Mailbox.
 	_tint(door_tint.lightened(0.2))
 	_box(Vector3(p0.x + 1.0, 0.55, path_to - 0.6), Vector3(0.06, 1.1, 0.06), "hc_trim")
@@ -1076,6 +1081,8 @@ func _garage() -> void:
 	var drive_end: float = maxf(D * 0.5 + 5.3, path_end)
 	_paving(x, D * 0.5 + 0.3, drive_end, gw)
 	drive_at = xf * Vector3(x, 0, drive_end)
+	if not yard:
+		geo.drive_ends.append([drive_at, xf * Vector3(x, 0, D * 0.5), gw])
 
 # --- inside ------------------------------------------------------------------------
 

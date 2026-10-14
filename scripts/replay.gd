@@ -20,6 +20,7 @@ var ui: Node
 var active: bool = false
 var _pos := PackedVector3Array()
 var _rot: Array[Quaternion] = []
+var _rpm := PackedFloat32Array() # motor speed (Drone.rpm_fraction, 0 disarmed) - the replay's props spin
 var _acc: float = 0.0
 var _t: float = 0.0          # playback time, seconds from the start of the recording
 var _speed: int = 2
@@ -44,10 +45,12 @@ func _physics_process(delta: float) -> void:
 	_acc = 0.0
 	_pos.append(drone.global_position)
 	_rot.append(drone.global_transform.basis.get_rotation_quaternion())
+	_rpm.append(drone.rpm_fraction if InputManager.armed else 0.0)
 	var maxn: int = int(HZ * SECONDS)
 	if _pos.size() > maxn:
 		_pos = _pos.slice(_pos.size() - maxn)
 		_rot = _rot.slice(_rot.size() - maxn)
+		_rpm = _rpm.slice(_rpm.size() - maxn)
 
 func _process(delta: float) -> void:
 	if drone == null:
@@ -146,6 +149,8 @@ func _place() -> void:
 	var q: Quaternion = _rot[i].slerp(_rot[i + 1], k)
 	var b := Basis(q)
 	_ghost.global_transform = Transform3D(b, p)
+	if i < _rpm.size():
+		DroneFrameBuilder.spin_props(_ghost, 0.0 if _paused else _rpm[i], get_process_delta_time() * SPEEDS[_speed])
 	match _cam_mode:
 		0: # chase: behind and above, heading-aligned, smoothed
 			var fwd: Vector3 = -b.z

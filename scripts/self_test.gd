@@ -79,6 +79,42 @@ func _run() -> void:
 	var te: float = Settings.throttle_curve(0.75)
 	Settings.throttle_expo = 0.0
 	_check(absf(te - 0.5625) < 0.001, "throttle: Betaflight EXPO curve", "%.4f" % te)
+	# Rate profiles: each keeps its own rates and throttle MID; a 3-position
+	# radio switch picks them (virtual radio, nothing saved).
+	var keep: Array = [Settings.rates_roll.duplicate(), Settings.throttle_mid, Settings.rate_profile, Settings.rate_profiles.duplicate(true)]
+	Settings.rate_profiles = []
+	Settings.rate_profile = 0
+	Settings.rates_roll = [70.0, 500.0, 0.5]
+	Settings.throttle_mid = 0.5
+	Settings.select_rate_profile(1)
+	Settings.rates_roll = [70.0, 900.0, 0.6]
+	Settings.throttle_mid = 0.4
+	Settings.select_rate_profile(0)
+	var p1: bool = Settings.rates_roll[1] == 500.0 and is_equal_approx(Settings.throttle_mid, 0.5)
+	Settings.select_rate_profile(1)
+	var p2: bool = Settings.rates_roll[1] == 900.0 and is_equal_approx(Settings.throttle_mid, 0.4)
+	_check(p1 and p2, "rates: profiles keep their own rates and throttle MID", "%s %s" % [p1, p2])
+	var saved_joy = InputManager.test_joy
+	var sw_axes: Array = [0.0, 0.0, -1.0, 0.0, 0.0, 0.0, -1.0, 0.0]
+	InputManager.test_joy = {"axes": sw_axes, "buttons": []}
+	InputManager._axis_seen[6] = 1
+	InputManager.rates_source = "axis"
+	InputManager.rates_axis = 6
+	InputManager.rates_axis_off_value = -1.0
+	InputManager.rates_axis_on_value = 1.0
+	var picks: Array = []
+	for v in [-1.0, 0.0, 1.0]:
+		sw_axes[6] = v
+		picks.append(InputManager.rate_switch_profile())
+	_check(picks == [0, 1, 2], "rates: a 3-position switch picks profile 1/2/3", str(picks))
+	InputManager.rates_source = ""
+	InputManager.rates_axis = -1
+	InputManager.test_joy = saved_joy
+	InputManager._axis_seen[6] = 0
+	Settings.rate_profiles = keep[3]
+	Settings.rate_profile = keep[2]
+	Settings.rates_roll = keep[0]
+	Settings.throttle_mid = keep[1]
 	# Dev aid: SH_SELFTEST_ONLY=menu,reset,realism,race,gnomes runs just those parts.
 	if OS.has_environment("SH_SELFTEST_ONLY"):
 		var only: PackedStringArray = OS.get_environment("SH_SELFTEST_ONLY").split(",")
@@ -106,6 +142,14 @@ func _run() -> void:
 			_test_save_keeps_unknown_keys()
 		if only.has("cache"):
 			await _test_map_cache()
+		if only.has("text"):
+			await _test_text_all()
+		if only.has("zfight"):
+			await _test_zfight_all()
+		if only.has("flow"):
+			await _test_flow_all()
+		if only.has("water"):
+			await _test_water()
 		_check_race_saves()
 		print("SELFTEST DONE: %d checks, %d failed" % [_checks, _failures])
 		get_tree().quit(1 if _failures > 0 else 0)
@@ -147,6 +191,7 @@ func _run() -> void:
 	await _test_tracks()
 	await _test_realism()
 	await _test_video_link()
+	await _test_water()
 	await _test_reset_switch()
 	Settings.performance_mode = true
 	await _test_map("res://scenes/maps/Factory.tscn", "seeker3", true)
@@ -658,6 +703,106 @@ func _test_collectibles() -> void:
 	Collectibles.reset()
 
 var _float_checked: Dictionary = {}
+## Thin things a drone must not slip through (2026-10-14: ladders,
+## cables, nets, fences had no hitboxes): per map, [what, from, to] - a
+## ray through a gap in the drawn rods that must hit.
+const THIN_PROBES: Dictionary = {
+	"res://scenes/maps/RaceField.tscn": [["the safety net between its strands", Vector3(0, 1.65, 50), Vector3(0, 1.65, 54)]],
+}
+
+## SH_SELFTEST_ONLY=text: every map's text check, each problem listed
+## (SH_TEXT_MAPS=Village,Factory for some maps only).
+func _test_text_all() -> void:
+	var names: PackedStringArray = ["Village", "Factory", "Main3", "Playground", "RaceField", "SteelMill", "RaceArena", "Office", "ParkingGarage", "ConstructionSite", "Harbour", "MountainLake", "TestValley"]
+	if OS.has_environment("SH_TEXT_MAPS"):
+		names = OS.get_environment("SH_TEXT_MAPS").split(",")
+	for nm in names:
+		var path: String = "res://scenes/Main3.tscn" if nm == "Main3" else "res://scenes/maps/%s.tscn" % nm
+		get_tree().change_scene_to_file(path)
+		await _wait(2.0)
+		var tc: Array = TextCheck.run(get_tree().current_scene)
+		for e: Array in tc:
+			print("  TEXT %s: \"%s\" at (%.1f, %.1f, %.1f): %s" % [nm, e[0], e[1].x, e[1].y, e[1].z, e[2]])
+		var sc2: Node = get_tree().current_scene
+		_check(tc.is_empty(), nm + ": text lies flat on its wall or sign", "%d problems, %d labels, %d graffiti" % [tc.size(), sc2.find_children("*", "Label3D", true, false).size(), (sc2 as BuiltMap).decal_spots.size() if sc2 is BuiltMap else 0])
+
+## Water behaves the same everywhere (2026-10-14): dropped onto it, the
+## drone splashes, can't fly, and is back at its spawn after a moment -
+## on Mountain Lake (its lake used to be solid) and the Harbour (its sea
+## used to let you through).
+func _test_water() -> void:
+	for nm in ["MountainLake", "Harbour"]:
+		Settings.selected_drone = "seeker3"
+		get_tree().change_scene_to_file("res://scenes/maps/%s.tscn" % nm)
+		await _wait(2.0)
+		var sc: BuiltMap = get_tree().current_scene as BuiltMap
+		var d: Drone = _drone()
+		_check(sc._water.size() >= 3, nm + ": its water is known (surface triangles)", str(sc._water.size() / 3))
+		if sc._water.size() < 3:
+			continue
+		# The water nearest the spawn: rings outward until one is over water.
+		var spot := Vector3.INF
+		var sp: Vector3 = d._spawn_transform.origin
+		for r in range(4, 600, 4):
+			for k in range(24):
+				var q: Vector3 = sp + Vector3(cos(TAU * k / 24.0), 0, sin(TAU * k / 24.0)) * float(r)
+				var lvl: float = sc.water_level(Vector3(q.x, sp.y + 200.0, q.z))
+				if lvl != -INF:
+					spot = Vector3(q.x, lvl, q.z)
+					break
+			if spot != Vector3.INF:
+				break
+		print("  WATER %s: spot %s, level there %.2f" % [nm, str(spot), sc.water_level(spot + Vector3(0, 1, 0)) if spot != Vector3.INF else -1.0])
+		_check(spot != Vector3.INF, nm + ": a water spot to drop the drone on")
+		if spot == Vector3.INF:
+			continue
+		var hit: Array = [false]
+		var cb := func() -> void: hit[0] = true
+		d.splashed.connect(cb)
+		d.freeze = false
+		d.global_position = spot + Vector3(0, 1.2, 0)
+		d.linear_velocity = Vector3(0, -3, 0)
+		d.reset_physics_interpolation()
+		await _wait(0.8)
+		_check(hit[0] and not InputManager.armed, nm + ": a drone that goes into the water splashes", "at %s, level %.2f" % [str(spot), sc.water_level(spot + Vector3(0, 1, 0))])
+		await _wait(1.6)
+		_check(d.global_position.distance_to(sp) < 1.5, nm + ": ...and is back at its spawn soon after", str(d.global_position))
+		d.splashed.disconnect(cb)
+
+## SH_SELFTEST_ONLY=flow: every generated map's dead ends listed
+## (BuiltMap.dead_ends; SH_TEXT_MAPS picks maps).
+func _test_flow_all() -> void:
+	var names: PackedStringArray = ["Village", "Factory", "Playground", "RaceField", "SteelMill", "RaceArena", "Office", "ParkingGarage", "ConstructionSite", "Harbour", "MountainLake", "TestValley"]
+	if OS.has_environment("SH_TEXT_MAPS"):
+		names = OS.get_environment("SH_TEXT_MAPS").split(",")
+	for nm in names:
+		get_tree().change_scene_to_file("res://scenes/maps/%s.tscn" % nm)
+		await _wait(2.0)
+		var sc: BuiltMap = get_tree().current_scene as BuiltMap
+		var de: Array = sc.dead_ends()
+		for e: Array in de:
+			print("  DEADEND %s: %s, open only at (%.1f, %.1f, %.1f), inner radius %.1f m" % [nm, e[0], e[1].x, e[1].y, e[1].z, e[2]])
+		_check(de.is_empty(), nm + ": no dead ends (every hollow you can fly into has a way out)", "%d of %d hollows" % [de.size(), sc.geo.hollows.size()])
+
+## SH_SELFTEST_ONLY=zfight: every generated map built with its faces
+## recorded, the z-fight list printed (SH_TEXT_MAPS picks maps too).
+func _test_zfight_all() -> void:
+	var names: PackedStringArray = ["Village", "Factory", "Playground", "RaceField", "SteelMill", "RaceArena", "Office", "ParkingGarage", "ConstructionSite", "Harbour", "MountainLake", "TestValley"]
+	if OS.has_environment("SH_TEXT_MAPS"):
+		names = OS.get_environment("SH_TEXT_MAPS").split(",")
+	Geo.record_faces = true
+	for nm in names:
+		get_tree().change_scene_to_file("res://scenes/maps/%s.tscn" % nm)
+		await _wait(2.0)
+		var sc: Node = get_tree().current_scene
+		var zf: Array = (sc as BuiltMap).zfight if sc is BuiltMap else []
+		_check(zf.is_empty(), nm + ": no flickering faces (z-fighting)", "%d spots" % zf.size())
+		if sc is BuiltMap:
+			var ld: Array = (sc as BuiltMap).loose_driveways()
+			for e: Array in ld:
+				print("  DRIVE %s: street end (%.1f, %.1f) is %.1f m from a road (house end %.1f, %.1f)" % [nm, e[0].x, e[0].z, (sc as BuiltMap).geo.lane_gap(Vector2(e[0].x, e[0].z)), e[1].x, e[1].z])
+			_check(ld.is_empty(), nm + ": every driveway meets a road", "%d of %d" % [ld.size(), (sc as BuiltMap).geo.drive_ends.size()])
+	Geo.record_faces = false
 
 func _test_map(map: String, drone_id: String, perf: bool) -> void:
 	var tag: String = "%s/%s%s" % [map.get_file().get_basename(), drone_id, " [performance]" if perf else ""]
@@ -677,6 +822,10 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		_check(fl.is_empty(), tag + ": nothing floats in the air", str(fl.slice(0, 3)))
 		var lc: Array = (sc as BuiltMap).layout_conflicts()
 		_check(lc.is_empty(), tag + ": layout makes sense (no building on a road or rail, none in another)", "%d: %s" % [lc.size(), str(lc.slice(0, 4))])
+		var de: Array = (sc as BuiltMap).dead_ends()
+		_check(de.is_empty(), tag + ": no dead ends (every hollow you can fly into has a way out)", "%d: %s" % [de.size(), str(de.slice(0, 3))])
+		var ld: Array = (sc as BuiltMap).loose_driveways()
+		_check(ld.is_empty(), tag + ": every driveway meets a road", "%d of %d: %s" % [ld.size(), (sc as BuiltMap).geo.drive_ends.size(), str(ld.slice(0, 3).map(func(e: Array) -> String: return "(%.0f, %.0f)" % [e[0].x, e[0].z]))])
 		if sc.has_method("surface_glitches"):
 			var sg: Array = sc.surface_glitches()
 			_check(sg.is_empty(), tag + ": no terrain through roads or rails", "%d spots: %s" % [sg.size(), str(sg.slice(0, 3))])
@@ -685,6 +834,17 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		var sr: Dictionary = SurfaceCheck.run(sc as BuiltMap)
 		var sv: String = SurfaceCheck.verdict(sc.name, sr)
 		_check(sv == "", tag + ": ground surfaces clean (no poke-through, hanging road edge or flicker)", sv if sv != "" else "%d faces, %d ms" % [sr.tris, sr.ms])
+	if THIN_PROBES.has(map) and not _float_checked.has("thin " + map):
+		_float_checked["thin " + map] = true
+		var sp: PhysicsDirectSpaceState3D = (sc as Node3D).get_world_3d().direct_space_state
+		for pr: Array in THIN_PROBES[map]:
+			var rq := PhysicsRayQueryParameters3D.create(pr[1], pr[2])
+			rq.exclude = [d.get_rid()]
+			_check(not sp.intersect_ray(rq).is_empty(), tag + ": thin things are solid - " + pr[0])
+	if not _float_checked.has("text " + map):
+		_float_checked["text " + map] = true
+		var tc: Array = TextCheck.run(sc)
+		_check(tc.is_empty(), tag + ": text lies flat on its wall or sign", "%d: %s" % [tc.size(), str(tc.slice(0, 4))])
 	var hud: Node = sc.find_child("UI", true, false)
 	if hud and hud.has_method("_wanted_mouse_mode") and not _float_checked.has("cursor"):
 		_float_checked["cursor"] = true
@@ -842,6 +1002,23 @@ func _test_video_link() -> void:
 	var cam: Camera3D = d.get_node("CameraMount/Camera3D")
 	var vp_cam: Camera3D = get_viewport().get_camera_3d()
 	_check(vp_cam != cam and vp_cam != null and vp_cam.name == "FpvHoldCam", "video: digital camera shows the delayed picture", str(vp_cam))
+	# A lost link freezes the LAST frame, never the start picture (2026-10-14:
+	# HDZero showed the spawn view). Both digital looks, a fresh spot each.
+	for look in [3, 2]:
+		Settings.camera_look = look
+		d.global_position += Vector3(-25, 6, 0)
+		await _wait(0.8)
+		v._freeze_t = 0.5
+		await _wait(0.1)
+		var hc: Camera3D = get_viewport().get_camera_3d()
+		var off: float = hc.global_position.distance_to(cam.global_position) if hc else 999.0
+		_check(hc != null and hc.name == "FpvHoldCam" and off < 1.0, "video: %s link loss holds the last frame" % FpvVideo.LOOK_NAMES[look], "%s, %.1f m from the drone camera" % [str(hc), off])
+		await _wait(0.6)
+	# LQ falls off over a range of margins, not 100-or-0.
+	var lq_steps: Dictionary = {}
+	for m in range(-12, 30):
+		lq_steps[int(FpvVideo.lq_for(3, float(m)))] = true
+	_check(lq_steps.size() > 15, "video: HDZero LQ falls off gradually", "%d distinct values" % lq_steps.size())
 	Settings.camera_look = 0
 	await _wait(0.2)
 	_check(get_viewport().get_camera_3d() == cam and v.link_quality == -1, "video: Clean is the drone camera, no link model")
@@ -1550,6 +1727,8 @@ func _test_tracks() -> void:
 	for m in MapCatalog.MAPS:
 		if not m.get("race", false):
 			continue
+		if OS.has_environment("SH_TRACK_MAPS") and not OS.get_environment("SH_TRACK_MAPS").split(",").has(m.id):
+			continue
 		for t in range(1, 7):
 			Settings.race_track = t
 			InputManager.armed = false
@@ -1578,6 +1757,16 @@ func _test_tracks() -> void:
 				if not space.intersect_ray(q).is_empty():
 					blocked.append(i + 1)
 			_check(blocked.is_empty(), "tracks: %s track %d - every gate opening is clear" % [m.id, t], "blocked: %s" % str(blocked))
+			# The racing line runs through nothing (2026-10-14): every point
+			# away from the gates has 10 cm of air round it.
+			if course._line:
+				var near := PackedByteArray()
+				near.resize(course._line_pts.size())
+				for sb in course._line_seg:
+					for k in range(-RaceCourse.LINE_KEEP, RaceCourse.LINE_KEEP + 1):
+						near[clampi(sb + k, 0, near.size() - 1)] = 1
+				var lb: PackedInt32Array = RaceCourse.blocked_points(space, course._line_pts, 0.1, [dr.get_rid()], near)
+				_check(lb.is_empty(), "tracks: %s track %d - the racing line runs through nothing" % [m.id, t], "%d points, first at %s" % [lb.size(), str(course._line_pts[lb[0]]) if not lb.is_empty() else ""])
 			var pos: Vector3 = dr.global_position
 			for g: Dictionary in course._gates + [course._gates[0]]:
 				for p: Vector3 in [g.xf * Vector3(0, 0, 2.0), g.xf * Vector3(0, 0, -2.0)]:

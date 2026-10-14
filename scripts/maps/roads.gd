@@ -158,7 +158,7 @@ func junction(c: Vector3, size: Vector2, zebra: Array = [], walk: float = 0.0, o
 func lamp(p: Vector3, toward: Vector3) -> void:
 	geo.cylinder(p, p + Vector3(0, 8.0, 0), 0.09, "rd_steel", 6, true, true, false)
 	var arm: Vector3 = p + Vector3(0, 8.0, 0) + toward.normalized() * 1.6
-	geo.beam(p + Vector3(0, 7.6, 0), arm, Vector2(0.07, 0.07), "rd_steel", false, false)
+	geo.beam(p + Vector3(0, 7.6, 0), arm, Vector2(0.07, 0.07), "rd_steel", true, false) # (solid: a drone hits the arm, 2026-10-14)
 	geo.box(arm + Vector3(0, -0.08, 0), Vector3(0.35, 0.12, 0.7), "rd_lamp", atan2(-toward.x, -toward.z), false, false)
 
 ## Parked cars along `o` metres right of the route (facing along it).

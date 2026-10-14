@@ -164,13 +164,13 @@ func catenary(route: Route, side: float = 1.0, from_d: float = 0.0, to_d: float 
 		var right := Vector3(-t.z, 0.0, t.x) * side
 		var foot: Vector3 = s[0] + right * 3.4
 		geo.box(foot + Vector3(0, 3.8, 0), Vector3(0.35, 7.6, 0.35), "rw_mast", atan2(-t.x, -t.z))
-		geo.beam(foot + Vector3(0, 6.9, 0), s[0] + Vector3(0, 6.9, 0) - right * 0.4, Vector2(0.1, 0.1), "rw_steel", false)
-		geo.beam(foot + Vector3(0, 7.5, 0), s[0] + Vector3(0, 6.9, 0) - right * 0.4, Vector2(0.06, 0.06), "rw_steel", false, false)
+		geo.beam(foot + Vector3(0, 6.9, 0), s[0] + Vector3(0, 6.9, 0) - right * 0.4, Vector2(0.1, 0.1), "rw_steel")
+		geo.beam(foot + Vector3(0, 7.5, 0), s[0] + Vector3(0, 6.9, 0) - right * 0.4, Vector2(0.06, 0.06), "rw_steel", true, false)
 		d += 55.0
 	var wire: Array[Vector3] = []
 	for p in (route.pts if from_d <= 0.0 and to_d < 0.0 else route.slice(from_d, L)):
 		wire.append(p + Vector3(0, 6.1, 0))
-	geo.sweep(wire, [Vector2(0.03, 0.0), Vector2(0.0, 0.04), Vector2(-0.03, 0.0)], "rw_black", true, false, false)
+	geo.sweep(wire, [Vector2(0.03, 0.0), Vector2(0.0, 0.04), Vector2(-0.03, 0.0)], "rw_black", true, true, false) # (solid: a drone hits the wire)
 	var messenger: Array[Vector3] = []
 	for p in wire:
 		messenger.append(p + Vector3(0, 0.8, 0))

@@ -55,6 +55,7 @@ var badness: float = 0.0
 ## 0..100 for the OSD ("LQ"), or -1 on Clean.
 var link_quality: int = -1
 
+var _lq: float = 100.0
 var _mat: ShaderMaterial
 var _obstruction_db: float = 0.0
 var _obstruction_target: float = 0.0
@@ -181,7 +182,14 @@ func _process(delta: float) -> void:
 		_update_link(cam, delta, look)
 	else:
 		badness = 0.0
-	link_quality = -1 if look == 0 or cam == null else int(round(100.0 * (1.0 - badness)))
+	if look == 0 or cam == null:
+		link_quality = -1
+	elif force_quality >= 0.0:
+		link_quality = int(round(100.0 * force_quality))
+	else:
+		# Smoothed, so a wall edge or the fading doesn't make it flicker.
+		_lq = lerpf(_lq, lq_for(look, margin_db), 1.0 - exp(-delta / 0.3))
+		link_quality = int(round(_lq))
 	_update_events(delta, look)
 	var flying_cam: bool = cam != null and not replaying
 	_update_hold(flying_cam, delta, look)
@@ -231,6 +239,15 @@ static func bad_for(look: int, m: float) -> float:
 		3: return clampf((3.0 - m) / 6.0, 0.0, 1.0)         # HDZero: late and sudden
 	return 0.0
 
+## The OSD's LQ (0..100) at a link margin: falls off steadily over the
+## LQ_SPAN_DB above the point where the picture is lost, so it warns
+## before the picture goes (2026-10-14: it was 1 - badness, and the
+## digital systems' cliff made it read 100 or 0 almost always).
+const LQ_SPAN_DB: float = 25.0
+static func lq_for(look: int, m: float) -> float:
+	var lost: float = [0.0, -4.0, -9.0, -3.0][clampi(look, 0, 3)]
+	return 100.0 * clampf((m - lost) / LQ_SPAN_DB, 0.0, 1.0)
+
 ## dB lost to what stands between pilot and drone: every surface the
 ## line crosses (rays stepped through each hit), plus how thick the thing
 ## behind each hit is (a ray back from up to 40 m further on finds its
@@ -271,6 +288,8 @@ func _obstruction(a: Vector3, b: Vector3) -> float:
 # --- per-system events -----------------------------------------------------------
 
 func _update_events(delta: float, look: int) -> void:
+	if look < 2:
+		_freeze_t = 0.0 # (only the digital looks freeze; switching away ends a freeze)
 	var frozen: bool = _freeze_t > 0.0
 	if not frozen:
 		_seed = _t
@@ -335,7 +354,11 @@ func _update_hold(flying_cam: bool, delta: float, look: int) -> void:
 	_hold_cam.far = cam.far
 	_hold_cam.cull_mask = cam.cull_mask
 	_hold_cam.keep_aspect = cam.keep_aspect
-	if _freeze_t <= 0.0:
+	# A freeze holds the frame from when it began: a hold camera that has
+	# just taken over starts there too (2026-10-14: HDZero, which has no
+	# latency, only switched to it inside a freeze - and showed the frame
+	# from where the camera was made, the start, or from the last freeze).
+	if _freeze_t <= 0.0 or not _hold_cam.current:
 		_hold_cam.global_transform = _delayed(_t - lat)
 	if not _hold_cam.current:
 		_hold_cam.current = true

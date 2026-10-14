@@ -235,9 +235,9 @@ func _gate(geo: Geo, pts: Array[Vector3]) -> void:
 	var hinge: Vector3 = e - n * half
 	var L: float = minf(width + 0.4, 4.2)
 	for k in range(5):
-		geo.box(hinge + t * (L * 0.5 + 0.15) + n * 0.12 + Vector3(0, 0.25 + k * 0.24, 0), Vector3(0.05, 0.06, L), "rd_gate", yaw, false)
+		geo.box(hinge + t * (L * 0.5 + 0.15) + n * 0.12 + Vector3(0, 0.25 + k * 0.24, 0), Vector3(0.05, 0.06, L), "rd_gate", yaw)
 	for f in [0.15, L + 0.1]:
-		geo.box(hinge + t * f + n * 0.12 + Vector3(0, 0.72, 0), Vector3(0.06, 1.08, 0.06), "rd_gate", yaw, false)
+		geo.box(hinge + t * f + n * 0.12 + Vector3(0, 0.72, 0), Vector3(0.06, 1.08, 0.06), "rd_gate", yaw)
 	geo.end_object()
 
 ## Carriageway, markings and verges along the whole road (on into the

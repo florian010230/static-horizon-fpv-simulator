@@ -100,7 +100,7 @@ static func build(g: Geo, land: TerrainCreator, farm: Dictionary, seed_value: in
 	var shed: Vector3 = o + Vector3(ex * (hx - 14.0), 0, hz - 5.0)
 	_machine_shed(g, shed, rng)
 	# The farmhouse in the south-west corner, door to the yard (north).
-	var house: Dictionary = HouseCreator.build(g, o + Vector3(ex * (-hx + 11.0), 0, hz - 8.0), PI, rng.randi(), {"interior": false, "garage": "none", "storeys": 2})
+	var house: Dictionary = HouseCreator.build(g, o + Vector3(ex * (-hx + 11.0), 0, hz - 8.0), PI, rng.randi(), {"interior": false, "garage": "none", "storeys": 2, "yard": true})
 	views.append_array(house.views.slice(0, 1))
 	# The tractor in the yard with a trailer of bales.
 	var tp: Vector3 = o + Vector3(ex * -4.0, 0.0, 4.0)
@@ -254,7 +254,7 @@ static func _barn(g: Geo, c: Vector3, rng: RandomNumberGenerator) -> void:
 	for s in [-1.0, 1.0]:
 		g.box(c + Vector3(0, 0.5 + (E - 0.5) * 0.5, s * (B * 0.5 - T * 0.5)), Vector3(L, E - 0.5, T), "fm_boards")
 		g.light_fn = inside
-		g.quad_grid(c + Vector3(-L * 0.5 + T, 0.5, s * (B * 0.5 - T - 0.01)), Vector3(L - 2.0 * T, 0, 0), Vector3(0, E - 0.5, 0), Vector3(0, 0, -s), "fm_bin", 1.0)
+		g.quad_grid(c + Vector3(-L * 0.5 + T, 0.5, s * (B * 0.5 - T - 0.03)), Vector3(L - 2.0 * T, 0, 0), Vector3(0, E - 0.5, 0), Vector3(0, 0, -s), "fm_bin", 1.0)
 		g.light_fn = saved
 	for s in [-1.0, 1.0]:
 		# Small dark windows high up, every 5 m.
@@ -269,8 +269,8 @@ static func _barn(g: Geo, c: Vector3, rng: RandomNumberGenerator) -> void:
 			g.box(c + Vector3(x, 0.5 + (E - 0.5) * 0.5, k * (DOOR_W * 0.5 + side_w * 0.5)), Vector3(T, E - 0.5, side_w), "fm_boards")
 		g.box(c + Vector3(x, (DOOR_H + 0.5 + E) * 0.5, 0), Vector3(T, E - DOOR_H - 0.5, DOOR_W), "fm_boards")
 		g.prism(Transform3D(Basis(), c + Vector3(x, 0, 0)), [Vector2(-B * 0.5, E), Vector2(B * 0.5, E), Vector2(0, R)], T, "fm_boards")
-		# The inside of the gable.
-		var xi: float = s * (L * 0.5 - T - 0.01)
+		# The inside of the gable (3 cm proud of the boards: at 1 cm it flickered).
+		var xi: float = s * (L * 0.5 - T - 0.03)
 		var nin := Vector3(-s, 0, 0)
 		g.light_fn = inside
 		for k in [-1.0, 1.0]:

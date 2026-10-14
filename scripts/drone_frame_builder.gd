@@ -52,14 +52,47 @@ static func build(parent: Node3D, profile: Dictionary) -> void:
 		"duct": [accent.lerp(Color.WHITE, 0.06), 0.0, 0.55, false],
 		"prop": [profile.get("prop_color", Color(accent.lerp(Color.WHITE, 0.25), 0.78)), 0.0, 0.7, false],
 	}
-	for key in b:
+	mats["blur"] = [Color(mats["prop"][0].r, mats["prop"][0].g, mats["prop"][0].b, 0.22), 0.0, 0.3, false]
+	for key: String in b:
+		if key.begins_with("#"):
+			continue
 		var st: SurfaceTool = b[key]
 		var mi := MeshInstance3D.new()
 		mi.name = key.capitalize()
 		mi.mesh = st.commit()
-		var m: Array = mats[key]
+		# Each prop (and its blur disc) is its own node round its motor's
+		# axis, so it can spin (Drone.spin_props) - 2026-10-14.
+		var base_key: String = key.rstrip("0123456789")
+		var m: Array = mats[base_key]
 		mi.material_override = _material(m[0], m[1], m[2], m[3])
+		if base_key != key:
+			var idx: int = int(key.substr(base_key.length()))
+			mi.name = "%s%d" % [base_key.capitalize(), idx]
+			mi.position = b["#hub%d" % idx][0]
+			mi.set_meta("spin", b["#hub%d" % idx][1])
+			if base_key == "blur":
+				mi.visible = false
 		parent.add_child(mi)
+
+## Turns the props of a model made by build() (2026-10-14: they were
+## part of the frame and never moved - in the replay and the line-of-
+## sight view the quad looked switched off). `rpm` 0..1 (Drone.
+## rpm_fraction). The blades turn at a speed the eye can follow - real
+## ones at 20 000+ rpm would only alias on a 60 Hz screen - and over
+## ~45% the blur disc takes over, as props look in a video.
+const BLADE_REV_S: float = 5.0
+static func spin_props(root: Node, rpm: float, delta: float) -> void:
+	var fast: bool = rpm > 0.45
+	for c in root.get_children():
+		if not c.has_meta("spin"):
+			continue
+		var n: Node3D = c
+		if String(n.name).begins_with("Blur"):
+			n.visible = fast
+		else:
+			n.visible = not fast
+			if rpm > 0.0:
+				n.rotation.y += float(n.get_meta("spin")) * TAU * BLADE_REV_S * clampf(rpm / 0.45, 0.2, 1.0) * delta
 
 static func _material(c: Color, metallic: float, gloss: float, weave: bool) -> ShaderMaterial:
 	if _shader == null:
@@ -123,9 +156,7 @@ static func _freestyle(b: Dictionary, p: Dictionary) -> void:
 	_extrude(_st(b, "carbon"), Transform3D(), _rounded_rect(0.021 * s, 0.042 * s, 0.006 * s), y_top, y_top + 0.002 * s)
 	for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
 		_cyl(_st(b, "anodised"), Transform3D(Basis(), Vector3(c.x * 0.017 * s, t_bot, c.y * 0.034 * s)), 0.0025 * s, 0.0025 * s, y_top - t_bot, 8)
-	for k in range(2):
-		_box(_st(b, "board"), Transform3D(Basis(), Vector3(0, t_bot + 0.006 * s + k * 0.009 * s, 0.006 * s)), Vector3(0.03 * s, 0.0016 * s, 0.03 * s))
-	_cyl(_st(b, "dark"), Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, t_bot + 0.012 * s, 0.034 * s)), 0.004 * s, 0.004 * s, 0.014 * s, 10)
+	_stack(b, s, t_bot, y_top, motors, mr)
 	# FPV camera between TPU side plates at the front, tilted up.
 	# Racers fly a steeper camera (40-50 deg) than freestyle (25-35).
 	var cam := Transform3D(Basis(Vector3.RIGHT, deg_to_rad(45.0 if race else 25.0)), Vector3(0, t_bot + 0.011 * s, -0.04 * s))
@@ -166,11 +197,11 @@ static func _freestyle(b: Dictionary, p: Dictionary) -> void:
 		var v := Basis(Vector3.FORWARD, sx * deg_to_rad(40.0)) * Basis(Vector3.RIGHT, deg_to_rad(60.0))
 		_cyl(_st(b, "dark"), Transform3D(v, Vector3(sx * 0.008 * s, t_bot + 0.004 * s, 0.045 * s)), 0.0007 * s, 0.0007 * s, 0.035 * s, 4)
 	for i in range(4):
-		_motor(b, motors[i] + Vector3(0, t_bot, 0), mr, p.motor_height * 0.85, p.prop_radius, 3, -1.0 if i == 0 or i == 3 else 1.0)
+		_motor(b, motors[i] + Vector3(0, t_bot, 0), mr, p.motor_height * 0.85, p.prop_radius, 3, -1.0 if i == 0 or i == 3 else 1.0, i)
 
 ## Motor on its pad: base, stator gap, anodised bell, shaft and prop nut;
 ## then the prop with `blades` blades, spinning direction `dir`.
-static func _motor(b: Dictionary, pos: Vector3, r: float, h: float, prop_r: float, blades: int, dir: float) -> void:
+static func _motor(b: Dictionary, pos: Vector3, r: float, h: float, prop_r: float, blades: int, dir: float, idx: int = 0) -> void:
 	_cyl(_st(b, "dark"), Transform3D(Basis(), pos), r, r, h * 0.3, 16)
 	# The stator's copper windings show in the gap under the bell.
 	_cyl(_st(b, "copper"), Transform3D(Basis(), pos + Vector3(0, h * 0.3, 0)), r * 0.9, r * 0.9, h * 0.08, 16)
@@ -183,8 +214,12 @@ static func _motor(b: Dictionary, pos: Vector3, r: float, h: float, prop_r: floa
 		_box(_st(b, "anodised"), Transform3D(Basis(Vector3.UP, a5), pos + Vector3(0, h * 0.93, 0) + Vector3(cos(a5), 0, -sin(a5)) * r * 0.45), Vector3(r * 0.8, h * 0.06, r * 0.2))
 	_cyl(_st(b, "metal"), Transform3D(Basis(), pos + Vector3(0, h, 0)), r * 0.16, r * 0.16, h * 0.55, 8)
 	var hub := pos + Vector3(0, h * 1.04, 0)
-	_cyl(_st(b, "prop"), Transform3D(Basis(), hub), prop_r * 0.12, prop_r * 0.1, h * 0.28, 12)
+	b["#hub%d" % idx] = [hub, dir]
+	var pk: String = "prop%d" % idx
+	_cyl(_st(b, pk), Transform3D(), prop_r * 0.12, prop_r * 0.1, h * 0.28, 12)
 	_cyl(_st(b, "metal"), Transform3D(Basis(), hub + Vector3(0, h * 0.28, 0)), r * 0.3, r * 0.22, h * 0.22, 6)
+	# The blur disc shown instead of single blades at speed (Drone.spin_props).
+	_cyl(_st(b, "blur%d" % idx), Transform3D(Basis(), Vector3(0, h * 0.12, 0)), prop_r * 0.98, prop_r * 0.98, h * 0.04, 28)
 	for k in range(blades):
 		var a: float = TAU * k / blades + (0.3 if dir > 0.0 else 0.9)
 		# A blade outline in its own plane, pitched about its long axis.
@@ -199,7 +234,83 @@ static func _motor(b: Dictionary, pos: Vector3, r: float, h: float, prop_r: floa
 			var w2: float = prop_r * (0.2 - 0.09 * u2) * (1.0 if j < n else 0.6)
 			blade.append(Vector2(prop_r * (0.1 + 0.88 * u2), -w2 * 0.55))
 		var bx := Basis(Vector3.UP, a) * Basis(Vector3.RIGHT, dir * deg_to_rad(14.0))
-		_extrude(_st(b, "prop"), Transform3D(bx, hub + Vector3(0, h * 0.14, 0)), blade, -prop_r * 0.006, prop_r * 0.006)
+		_extrude(_st(b, pk), Transform3D(bx, Vector3(0, h * 0.14, 0)), blade, -prop_r * 0.006, prop_r * 0.006)
+
+## The electronics between the plates, as on a current 5" build
+## (30.5 mm stack): ESC board at the bottom (four MOSFET pairs, the motor
+## pads, a low-ESR capacitor on its battery leads), the flight controller
+## (MCU, USB-C port, a status LED), the digital VTX on top (heatsink
+## fins, the MMCX pigtail to the antenna mount), four M3 stack bolts in
+## soft-mount grommets; motor wires along the arms, the camera's cable
+## to the FC, the receiver at the back, a buzzer.
+static func _stack(b: Dictionary, s: float, t_bot: float, y_top: float, motors: Array[Vector3], mr: float) -> void:
+	var gap: float = y_top - t_bot
+	var zc: float = 0.006 * s
+	var esc_y: float = t_bot + gap * 0.2
+	var fc_y: float = t_bot + gap * 0.48
+	var vtx_y: float = t_bot + gap * 0.76
+	var bw: float = 0.03 * s
+	for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+		var q := Vector3(c.x * 0.0122 * s, 0, zc + c.y * 0.0122 * s)
+		_cyl(_st(b, "metal"), Transform3D(Basis(), q + Vector3(0, t_bot, 0)), 0.0013 * s, 0.0013 * s, vtx_y - t_bot + 0.0025 * s, 6)
+		for gy in [esc_y, fc_y]:
+			_cyl(_st(b, "dark"), Transform3D(Basis(), q + Vector3(0, gy - 0.0014 * s, 0)), 0.0024 * s, 0.0024 * s, 0.0012 * s, 8)
+	# ESC
+	_box(_st(b, "board"), Transform3D(Basis(), Vector3(0, esc_y, zc)), Vector3(bw, 0.0016 * s, bw))
+	for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+		for k in range(2):
+			_box(_st(b, "dark"), Transform3D(Basis(), Vector3(c.x * 0.0085 * s + k * c.x * 0.0035 * s, esc_y + 0.0011 * s, zc + c.y * 0.006 * s)), Vector3(0.003 * s, 0.0008 * s, 0.0035 * s))
+		_box(_st(b, "copper"), Transform3D(Basis(), Vector3(c.x * 0.0135 * s, esc_y + 0.0009 * s, zc + c.y * 0.0125 * s)), Vector3(0.003 * s, 0.0004 * s, 0.003 * s))
+	# FC
+	_box(_st(b, "board"), Transform3D(Basis(), Vector3(0, fc_y, zc)), Vector3(bw, 0.0016 * s, bw))
+	_box(_st(b, "dark"), Transform3D(Basis(Vector3.UP, PI * 0.25), Vector3(0, fc_y + 0.0012 * s, zc)), Vector3(0.007 * s, 0.001 * s, 0.007 * s))
+	_box(_st(b, "metal"), Transform3D(Basis(), Vector3(-bw * 0.5 + 0.0012 * s, fc_y - 0.0004 * s, zc + 0.004 * s)), Vector3(0.0028 * s, 0.0016 * s, 0.0045 * s))
+	_box(_st(b, "led"), Transform3D(Basis(), Vector3(0.008 * s, fc_y + 0.001 * s, zc - 0.009 * s)), Vector3(0.0015 * s, 0.0008 * s, 0.0015 * s))
+	# VTX: a smaller board, heatsink fins on top
+	var vw: float = 0.024 * s
+	_box(_st(b, "board"), Transform3D(Basis(), Vector3(0, vtx_y, zc)), Vector3(vw, 0.0016 * s, vw))
+	for k in range(6):
+		_box(_st(b, "metal"), Transform3D(Basis(), Vector3(-vw * 0.38 + k * vw * 0.152, vtx_y + 0.0026 * s, zc)), Vector3(0.0009 * s, 0.0036 * s, vw * 0.8))
+	# MMCX pigtail from the VTX's back edge to the antenna mount
+	var mm := Vector3(0.005 * s, vtx_y, zc + vw * 0.5)
+	var ant := Vector3(0, y_top + 0.004 * s, 0.05 * s)
+	_cyl(_st(b, "metal"), Transform3D(Basis(Vector3.RIGHT, PI * 0.5), mm), 0.0012 * s, 0.0012 * s, 0.003 * s, 6)
+	_wire(b, "dark", [mm + Vector3(0, 0, 0.003 * s), mm + Vector3(0, 0.002 * s, 0.012 * s), ant - Vector3(0, 0.003 * s, 0.004 * s), ant], 0.0009 * s)
+	# Low-ESR capacitor on the battery leads, hanging out at the back
+	var cap := Vector3(-0.009 * s, t_bot + 0.006 * s, 0.038 * s)
+	_cyl(_st(b, "dark"), Transform3D(Basis(Vector3.RIGHT, PI * 0.5), cap), 0.004 * s, 0.004 * s, 0.014 * s, 10)
+	_cyl(_st(b, "metal"), Transform3D(Basis(Vector3.RIGHT, PI * 0.5), cap + Vector3(0, 0, 0.004 * s)), 0.0041 * s, 0.0041 * s, 0.002 * s, 10)
+	_wire(b, "dark", [Vector3(-0.009 * s, esc_y, zc + bw * 0.5), cap], 0.0011 * s)
+	# Motor wires: three per motor along the arm, ESC pad to motor base
+	for i in range(motors.size()):
+		var m: Vector3 = motors[i]
+		var dir := Vector3(m.x, 0, m.z).normalized()
+		var across := Vector3(-dir.z, 0, dir.x)
+		var pad := Vector3(signf(m.x) * 0.0135 * s, esc_y + 0.0009 * s, zc + signf(m.z) * 0.0125 * s)
+		for k in range(3):
+			var o: Vector3 = across * (k - 1) * 0.0013 * s
+			var arm_top: float = t_bot + 0.0006 * s
+			_wire(b, "dark", [pad + o, Vector3(pad.x, arm_top, pad.z) + dir * 0.006 * s + o, m - dir * (mr * 1.05) + Vector3(0, arm_top, 0) + o, m - dir * (mr * 0.8) + Vector3(0, t_bot + 0.002 * s, 0) + o], 0.0006 * s)
+	# Camera cable to the FC
+	_wire(b, "dark", [Vector3(0, t_bot + 0.011 * s, -0.032 * s), Vector3(0, fc_y + 0.002 * s, -0.022 * s), Vector3(0, fc_y + 0.001 * s, zc - bw * 0.4)], 0.0012 * s)
+	# Receiver board where the whips come out, and the buzzer
+	_box(_st(b, "board"), Transform3D(Basis(), Vector3(0, t_bot + 0.0025 * s, 0.043 * s)), Vector3(0.012 * s, 0.002 * s, 0.009 * s))
+	_box(_st(b, "led"), Transform3D(Basis(), Vector3(0.003 * s, t_bot + 0.0037 * s, 0.043 * s)), Vector3(0.0015 * s, 0.0006 * s, 0.0015 * s))
+	_cyl(_st(b, "dark"), Transform3D(Basis(), Vector3(0.008 * s, t_bot, 0.03 * s)), 0.0045 * s, 0.0045 * s, 0.006 * s, 10)
+
+## A round wire through `pts` (each piece a thin cylinder).
+static func _wire(b: Dictionary, mat: String, pts: Array, r: float) -> void:
+	for k in range(pts.size() - 1):
+		var a: Vector3 = pts[k]
+		var c: Vector3 = pts[k + 1]
+		var d: Vector3 = c - a
+		if d.length() < 1e-5:
+			continue
+		var n: Vector3 = d.normalized()
+		# looking_at points -Z along the wire; the quarter turn about X
+		# brings _cyl's +Y there.
+		var basis: Basis = Basis.looking_at(n, Vector3.UP if absf(n.y) < 0.99 else Vector3.FORWARD) * Basis(Vector3.RIGHT, -PI * 0.5)
+		_cyl(_st(b, mat), Transform3D(basis, a), r, r, d.length(), 6)
 
 # --- the whoop ------------------------------------------------------------------------
 
@@ -253,7 +364,7 @@ static func _whoop(b: Dictionary, p: Dictionary) -> void:
 	# Copper-pipe antenna standing at the back.
 	_cyl(_st(b, "copper"), Transform3D(Basis(Vector3.RIGHT, deg_to_rad(15.0)), Vector3(0, 0.0, 0.0165)), 0.0011, 0.0011, 0.016, 8)
 	for i in range(4):
-		_motor(b, motors[i] + Vector3(0, -0.0005, 0), mr, p.motor_height, pr * 0.97, 3, -1.0 if i == 0 or i == 3 else 1.0)
+		_motor(b, motors[i] + Vector3(0, -0.0005, 0), mr, p.motor_height, pr * 0.97, 3, -1.0 if i == 0 or i == 3 else 1.0, i)
 
 ## A side-on outline (z, y) given thickness `width` across x - a shell
 ## like the whoop's canopy. Built straight from the points: no rotation

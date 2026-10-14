@@ -83,7 +83,7 @@ static func hall(g: Geo, xf: Transform3D, L: float, B: float, H: float, rng: Ran
 	var T: float = 0.25
 	# Floor slab and a concrete plinth wall 1 m high all round.
 	g.tint = Color(0.8, 0.8, 0.78)
-	_hb(g, xf, level, Vector3(0, 0.08, 0), Vector3(B, 0.16, L), "in_floor")
+	_hb(g, xf, level, Vector3(0, 0.08, 0), Vector3(B - 0.16, 0.16, L - 0.16), "in_floor") # (2 cm in from the walls' outer faces: flush, it flickered)
 	# Long walls (x = +-B/2): cladding over a plinth, a light band under
 	# the eaves; docks on the +x side.
 	var n_docks: int = opts.get("docks", 3)
@@ -92,17 +92,17 @@ static func hall(g: Geo, xf: Transform3D, L: float, B: float, H: float, rng: Ran
 		dock_z.append(-L * 0.5 + L * (k + 1) / (n_docks + 1))
 	for s in [-1.0, 1.0]:
 		g.tint = Color(0.7, 0.7, 0.68)
-		_hb(g, xf, level, Vector3(s * (B * 0.5 - T * 0.5), 0.5, 0), Vector3(T, 1.0, L), "in_concrete")
+		_hb(g, xf, level, Vector3(s * (B * 0.5 - T * 0.5), 0.5, 0), Vector3(T, 1.0, L - 0.04), "in_concrete") # (side walls 2 cm shorter than the gable walls: flush ends flickered)
 		g.tint = clad_col
-		_hb(g, xf, level, Vector3(s * (B * 0.5 - T * 0.5), 1.0 + (H - 2.6) * 0.5, 0), Vector3(T, H - 2.6, L), "in_clad")
+		_hb(g, xf, level, Vector3(s * (B * 0.5 - T * 0.5), 1.0 + (H - 2.6) * 0.5, 0), Vector3(T, H - 2.6, L - 0.04), "in_clad")
 		g.tint = Color.WHITE
-		_hb(g, xf, level, Vector3(s * (B * 0.5 - T * 0.5), H - 0.8, 0), Vector3(T + 0.02, 1.6, L), "in_light")
+		_hb(g, xf, level, Vector3(s * (B * 0.5 - T * 0.5), H - 0.8, 0), Vector3(T + 0.06, 1.6, L - 0.04), "in_light") # (3 cm proud each side; 1 cm flickered)
 		g.tint = trim_col
-		_hb(g, xf, level, Vector3(s * (B * 0.5 + 0.05), H + 0.1, 0), Vector3(0.3, 0.3, L + 0.6), "in_paint", false)
+		_hb(g, xf, level, Vector3(s * (B * 0.5 + 0.05), H + 0.1, 0), Vector3(0.3, 0.3, L + 0.64), "in_paint", false) # (2 cm longer than the roof boxes: flush ends flickered)
 	# Docks: a raised platform outside, dock shelters, roller doors.
 	for z: float in dock_z:
 		g.tint = Color(0.65, 0.65, 0.63)
-		_hb(g, xf, level, Vector3(B * 0.5 + 1.2, 0.6, z), Vector3(2.4, 1.2, 3.6), "in_concrete")
+		_hb(g, xf, level, Vector3(B * 0.5 + 1.2, 0.6, z), Vector3(2.4, 1.2, 3.56), "in_concrete") # (2 cm narrower than the shelter: flush, it flickered)
 		g.tint = Color(0.12, 0.12, 0.13)
 		_hb(g, xf, level, Vector3(B * 0.5 + 0.35, 2.7, z), Vector3(0.7, 3.4, 3.6), "ind_paint")
 		g.tint = trim_col * 1.2
@@ -116,7 +116,7 @@ static func hall(g: Geo, xf: Transform3D, L: float, B: float, H: float, rng: Ran
 		var xs: Array = [-B * 0.25, B * 0.25]
 		# Wall pieces round the two openings.
 		g.tint = clad_col
-		var edges: Array = [-B * 0.5, xs[0] - dw * 0.5, xs[0] + dw * 0.5, xs[1] - dw * 0.5, xs[1] + dw * 0.5, B * 0.5]
+		var edges: Array = [-B * 0.5 + 0.02, xs[0] - dw * 0.5, xs[0] + dw * 0.5, xs[1] - dw * 0.5, xs[1] + dw * 0.5, B * 0.5 - 0.02] # (ends 2 cm inside the side walls' outer faces)
 		for k in range(0, 6, 2):
 			var a: float = edges[k]
 			var b: float = edges[k + 1]
@@ -128,11 +128,11 @@ static func hall(g: Geo, xf: Transform3D, L: float, B: float, H: float, rng: Ran
 			var open: bool = xd == xs[0] and (s < 0.0 or opts.get("open_both", false))
 			g.tint = trim_col
 			for e in [-1.0, 1.0]:
-				_hb(g, xf, level, Vector3(xd + e * (dw * 0.5 + 0.1), dh * 0.5, z + s * 0.12), Vector3(0.2, dh, 0.2), "in_paint", false)
+				_hb(g, xf, level, Vector3(xd + e * (dw * 0.5 + 0.12), dh * 0.5, z + s * 0.12), Vector3(0.2, dh, 0.2), "in_paint", false)
 			_hb(g, xf, level, Vector3(xd, dh + 0.3, z + s * 0.2), Vector3(dw + 0.4, 0.6, 0.6), "in_paint", false) # the door's coil box
 			if not open:
 				g.tint = Color(0.82, 0.83, 0.85)
-				_hb(g, xf, level, Vector3(xd, dh * 0.5, z), Vector3(dw, dh, 0.12), "in_clad")
+				_hb(g, xf, level, Vector3(xd, dh * 0.5, z), Vector3(dw - 0.04, dh, 0.12), "in_clad")
 				g.tint = Color(0.6, 0.6, 0.62)
 				for k in range(1, 6):
 					_hb(g, xf, level, Vector3(xd, k * dh / 6.0, z + s * 0.07), Vector3(dw, 0.05, 0.03), "ind_paint", false)
@@ -207,7 +207,7 @@ static func hall(g: Geo, xf: Transform3D, L: float, B: float, H: float, rng: Ran
 		g.tint = Color(0.3, 0.32, 0.35)
 		_hb(g, xf, level, oc + Vector3(ow * 0.3, 1.2, od * 0.5 + 0.04), Vector3(1.8, 2.4, 0.08), "in_glass", false)
 		var nm: String = ["Talbach Metallbau", "Hofmann Kunststoff", "Werk 2", "Brenner & Sohn"][rng.randi() % 4]
-		StreetKit._label(g, nm, xf * Transform3D(Basis(), oc + Vector3(-ow * 0.15, 6.2, od * 0.5 + 0.05)), 0.012, Color(0.15, 0.15, 0.16))
+		StreetKit._label(g, nm, xf * Transform3D(Basis(), oc + Vector3(-ow * 0.15, 6.2, od * 0.5 + 0.012)), 0.012, Color(0.15, 0.15, 0.16), ow * 0.6)
 	g.tint = Color.WHITE
 	views.append(["hall", xf * Vector3(B * 0.5 + 25.0, 14.0, -L * 0.5 - 20.0), xf * Vector3(0, H * 0.5, 0)])
 	views.append(["hall_door", xf * Vector3(-B * 0.25, 3.0, -L * 0.5 - 14.0), xf * Vector3(-B * 0.25, 3.0, 0)])
@@ -250,7 +250,7 @@ static func _inside(g: Geo, xf: Transform3D, level: float, L: float, B: float, H
 		var y: float = fy + 0.15 + lv * 1.6
 		g.tint = Color(0.95, 0.45, 0.1) # beams
 		for e in [-0.5, 0.5]:
-			g.box_xf(xf * Transform3D(Basis(), Vector3(rx + e * 1.0, y, (z0 + z0 + n_bays * bay) * 0.5)), Vector3(0.06, 0.12, n_bays * bay), "ind_paint", false)
+			g.box_xf(xf * Transform3D(Basis(), Vector3(rx + e * 1.0, y, (z0 + z0 + n_bays * bay) * 0.5)), Vector3(0.06, 0.12, n_bays * bay), "ind_paint")
 		for k in range(n_bays):
 			# Three pallet places a bay: a run of pallets (one box), goods
 			# on 1-3 of them (one box per run of the same goods).

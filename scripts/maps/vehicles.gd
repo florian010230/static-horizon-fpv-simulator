@@ -81,6 +81,13 @@ static func _wheel(geo: Geo, xf: Transform3D, local: Vector3, r: float, w: float
 	# Rim and hub stand ~1 cm proud: discs at their outer faces.
 	geo.disc(c + ax * side * 1.08, ax * side, r * 0.62, "veh_rim", 12)
 	geo.disc(c + ax * side * 1.16, ax * side, r * 0.2, "veh_steel", 8)
+	if detail_v2: # five spokes, darker between (SH_CARS preview)
+		var n: Vector3 = ax.normalized() * side
+		var up: Vector3 = xf.basis.y.normalized()
+		for k in range(5):
+			var a: float = TAU * k / 5.0
+			var d: Vector3 = up.rotated(n, a)
+			geo.box_xf(Transform3D(Basis.looking_at(d, n), c + ax * side * 1.12 + d * r * 0.38), Vector3(r * 0.13, 0.012, r * 0.36), "veh_chrome", false, false)
 
 ## Dimensions per kind: L, W, roof, belt, bonnet front height, bonnet
 ## length, windscreen run, roof length, rear window run, wheel radius,
@@ -94,6 +101,51 @@ const CAR_SPECS := {
 	"van": [5.3, 2.0, 2.4, 1.05, 1.0, 0.72, 0.78, 3.7, 0.0, 0.33, 0.82, 1.05],
 	"pickup": [5.3, 1.92, 1.82, 1.12, 1.0, 1.42, 0.72, 1.15, 0.2, 0.38, 0.95, 1.25],
 }
+
+## Preview (2026-10-14, SH_CARS=1): the extra detail of _car_detail.
+static var detail_v2: bool = OS.has_environment("SH_CARS")
+
+## The things that make a car read as a car up close, each touching the
+## body: black sills and arch liners, door seams and handles, a
+## daytime-running strip in each headlight, tail lights wrapping round
+## the corners, roof rails (estate, SUV), a shark-fin antenna, the
+## exhaust; the rims get five spokes. Cheap boxes - Fleet instances them.
+static func _car_detail(geo: Geo, xf: Transform3D, kind: String, s: Array, mat: String, zf: float, zr: float, zws: float, zrf: float, zrr: float, fa: float, ra: float, R: float, clear: float) -> void:
+	var W: float = s[1]
+	var H: float = s[2]
+	var belt: float = s[3]
+	var hw: float = W * 0.5
+	for sx in [-1.0, 1.0]:
+		# Sill between the arches.
+		_bx(geo, xf, Vector3(sx * (hw - 0.01), clear + 0.07, (fa + ra) * 0.5), Vector3(0.04, 0.12, ra - fa - 2.0 * R), "veh_black")
+		# Arch liners: a dark lip round each wheel arch.
+		for axle in [fa, ra]:
+			for k in range(7):
+				var a: float = PI * (k + 0.5) / 7.0
+				var q := Vector3(sx * (hw - 0.005), (s[9] - 0.01) + (R + 0.02) * sin(a), axle + (R + 0.02) * cos(a))
+				var bx := Basis(Vector3.RIGHT, -a + PI * 0.5)
+				geo.box_xf(xf * Transform3D(bx, q), Vector3(0.03, 0.05, R * PI / 7.0 + 0.02), "veh_black", false, false)
+		if kind != "van":
+			# Door seams (front door's back edge, rear door's) and handles.
+			var doors: Array = [zrf + (zrr - zrf) * 0.45] if kind in ["sedan", "taxi", "estate", "suv", "hatch"] else [zrf + (zrr - zrf) * 0.95]
+			doors.push_front(zws + 0.05)
+			for dz in doors:
+				_bx(geo, xf, Vector3(sx * (hw + 0.004), (belt + clear) * 0.5 + 0.08, dz), Vector3(0.01, belt - clear - 0.1, 0.012), "veh_black")
+			for dz in doors.slice(1):
+				_bx(geo, xf, Vector3(sx * (hw + 0.012), belt - 0.1, dz - 0.25), Vector3(0.02, 0.03, 0.14), "veh_chrome")
+	# Headlights: a DRL strip under each; tail lights round the corners.
+	for sx in [-1.0, 1.0]:
+		_bx(geo, xf, Vector3(sx * (hw - 0.3), s[4] - 0.17, zf + 0.05), Vector3(0.34, 0.025, 0.05), "veh_head")
+		_bx(geo, xf, Vector3(sx * (hw - 0.025), belt - 0.14, zr - 0.12), Vector3(0.06, 0.12, 0.22), "veh_tail")
+	if kind in ["estate", "suv"]:
+		for sx in [-1.0, 1.0]:
+			_bx(geo, xf, Vector3(sx * (W * 0.5 - 0.22), H + 0.08, (zrf + zrr) * 0.5), Vector3(0.04, 0.04, zrr - zrf - 0.1), "veh_black")
+			for dz in [zrf + 0.1, zrr - 0.1]:
+				_bx(geo, xf, Vector3(sx * (W * 0.5 - 0.22), H + 0.04, dz), Vector3(0.04, 0.06, 0.05), "veh_black")
+	if kind != "van":
+		var fin: Vector3 = Vector3(0, H + 0.04, zrr - 0.15)
+		geo.frustum(xf * Transform3D(Basis(), fin), Vector3(0.06, 0.07, 0.16), 0.02, 0.06, 0.04, "veh_black", false, false)
+	geo.cylinder(xf * Vector3(-W * 0.3, clear + 0.08, zr - 0.05), xf * Vector3(-W * 0.3, clear + 0.08, zr + 0.05), 0.035, "veh_chrome", 8, false)
 
 ## A car at p (ground), heading along local -z (yaw). kind: "sedan",
 ## "hatch", "estate", "suv", "van", "pickup", "taxi"; wreck = rusted,
@@ -166,8 +218,10 @@ static func car(geo: Geo, p: Vector3, yaw: float, paint: String, kind: String = 
 			geo.beam(xf * Vector3(sx * px, belt, zb), xf * Vector3(sx * (px - 0.02), H - 0.02, zb - 0.04), Vector2(0.1, 0.08), mat, false, false)
 		if kind != "van" and kind != "pickup":
 			geo.beam(xf * Vector3(sx * px, belt, zrb - 0.08), xf * Vector3(sx * (px - 0.03), H - 0.02, zrr - 0.04), Vector2(0.14 if kind != "sedan" and kind != "taxi" else 0.08, 0.07), mat, false, false)
-		# Door mirror.
-		_bx(geo, xf, Vector3(sx * (W * 0.5 + 0.09), belt + 0.13, zws + 0.2), Vector3(0.16, 0.13, 0.1), mat)
+		# Door mirror on its arm out of the door's front corner (2026-10-14:
+		# the housing stood a centimetre off the door, nothing holding it).
+		_bx(geo, xf, Vector3(sx * (W * 0.5 + 0.04), belt + 0.06, zws + 0.22), Vector3(0.1, 0.04, 0.06), "veh_black")
+		_bx(geo, xf, Vector3(sx * (W * 0.5 + 0.13), belt + 0.13, zws + 0.2), Vector3(0.16, 0.13, 0.1), mat)
 	# Front and rear: bumpers, grille, lights, number plates.
 	_bx(geo, xf, Vector3(0, 0.42, zf + 0.03), Vector3(W - 0.04, 0.17, 0.12), "veh_black")
 	_bx(geo, xf, Vector3(0, 0.44, zr - 0.03), Vector3(W - 0.04, 0.17, 0.12), "veh_black")
@@ -180,6 +234,8 @@ static func car(geo: Geo, p: Vector3, yaw: float, paint: String, kind: String = 
 			_bx(geo, xf, Vector3(sx * (W * 0.5 - 0.22), belt - 0.14, zr - 0.0), Vector3(0.34, 0.12, 0.05), "veh_tail")
 	if kind == "taxi":
 		_bx(geo, xf, Vector3(0, H + 0.12, (zrf + zrr) * 0.5), Vector3(0.62, 0.17, 0.22), "veh_amber")
+	if detail_v2 and not wreck:
+		_car_detail(geo, xf, kind, s, mat, zf, zr, zws, zrf, zrr, fa, ra, R, clear)
 	for sx in [-1.0, 1.0]:
 		for az in [fa, ra]:
 			_wheel(geo, xf, Vector3(sx * (W * 0.5 - 0.13), wr * (0.85 if wreck else 1.0), az), wr, 0.22)
@@ -399,7 +455,7 @@ static func rail_xf(geo: Geo, b: Transform3D, kind: String, rng: RandomNumberGen
 			_long(geo, b, lo, hi, [Vector2(-1.47, 1.15), Vector2(1.47, 1.15), Vector2(1.47, 2.45), Vector2(-1.47, 2.45)], "train_white")
 			_windows(geo, b, lo + 0.6, hi - 0.6, 2.45, 3.3, 1.8, 0.45, "train_white")
 			_long(geo, b, lo, hi, ROOF_SEC, "train_white")
-			_bx(geo, b, Vector3(0, 1.75, (lo + hi) * 0.5), Vector3(2.96, 0.28, hi - lo), "train_red", false, false)
+			_bx(geo, b, Vector3(0, 1.75, (lo + hi) * 0.5), Vector3(3.0, 0.28, hi - lo - 0.04), "train_red", false, false) # (3 cm proud of the body, 2 cm short at the ends: flush, it flickered)
 			# The nose: a wedge from the full body section to a low tip.
 			var zt: float = sn * (L * 0.5)
 			var pts: Array = []
@@ -419,12 +475,12 @@ static func rail_xf(geo: Geo, b: Transform3D, kind: String, rng: RandomNumberGen
 			var h: float = L * 0.5
 			var body: String = "train_white" if kind == "ice" else "train_blue"
 			_long(geo, b, -h, h, [Vector2(-1.47, 1.15), Vector2(1.47, 1.15), Vector2(1.47, 2.45), Vector2(-1.47, 2.45)], body)
-			_bx(geo, b, Vector3(0, 1.75, 0), Vector3(2.96, 0.28, L), "train_red" if kind == "ice" else "train_white", false, false)
+			_bx(geo, b, Vector3(0, 1.75, 0), Vector3(3.0, 0.28, L - 0.04), "train_red" if kind == "ice" else "train_white", false, false)
 			_windows(geo, b, -h + 2.6, h - 2.6, 2.45, 3.3, 1.9, 0.5, body)
 			for ez in [-1.0, 1.0]:
 				_bx(geo, b, Vector3(0, 2.875, ez * (h - 1.3)), Vector3(2.95, 0.85, 2.6), body, true, false)
 				for sx in [-1.0, 1.0]:
-					_bx(geo, b, Vector3(sx * 1.48, 2.2, ez * (h - 1.5)), Vector3(0.03, 2.0, 1.2), "train_grey")
+					_bx(geo, b, Vector3(sx * 1.495, 2.2, ez * (h - 1.5)), Vector3(0.07, 2.0, 1.2), "train_grey")
 			_long(geo, b, -h, h, ROOF_SEC, "train_roof" if kind == "coach" else "train_white")
 			_bx(geo, b, Vector3(0, 0.95, 0), Vector3(2.2, 0.5, L - 9.0), "veh_black")
 			for ez in [-1.0, 1.0]:
@@ -447,7 +503,7 @@ static func rail_xf(geo: Geo, b: Transform3D, kind: String, rng: RandomNumberGen
 				for sx in [-1.0, 1.0]:
 					_bx(geo, b, Vector3(sx * 1.47, 2.95, -L * 0.5 + 1.5 + k * (L - 3.0) / 5.0), Vector3(0.05, 3.2, 0.12), "veh_black")
 			for sx in [-1.0, 1.0]:
-				_bx(geo, b, Vector3(sx * 1.47, 2.9, 0), Vector3(0.04, 2.8, 4.0), "train_grey") # sliding door
+				_bx(geo, b, Vector3(sx * 1.49, 2.9, 0), Vector3(0.08, 2.8, 4.0), "train_grey") # sliding door
 			_long(geo, b, -L * 0.5, L * 0.5, [Vector2(-1.45, 4.55), Vector2(1.45, 4.55), Vector2(1.0, 4.85), Vector2(-1.0, 4.85)], "train_brown")
 		"hopper":
 			_bx(geo, b, Vector3(0, 1.2, 0), Vector3(2.6, 0.3, L), "veh_black", true)
@@ -460,7 +516,7 @@ static func rail_xf(geo: Geo, b: Transform3D, kind: String, rng: RandomNumberGen
 		"flat", "flat_empty":
 			_bx(geo, b, Vector3(0, 1.25, 0), Vector3(2.8, 0.3, L), "veh_black", true, true)
 			for sx in [-1.0, 1.0]:
-				_bx(geo, b, Vector3(sx * 1.3, 1.0, 0), Vector3(0.2, 0.3, L - 1.0), "train_grey")
+				_bx(geo, b, Vector3(sx * 1.28, 1.0, 0), Vector3(0.2, 0.3, L - 1.0), "train_grey") # (2 cm in from the frame's side: flush, it flickered)
 			if kind == "flat" and not container_mats.is_empty():
 				var n: int = rng.randi_range(1, 2)
 				for i in range(n):

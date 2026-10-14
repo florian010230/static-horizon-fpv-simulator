@@ -404,8 +404,8 @@ func _office(c: Vector3, y: float) -> Array:
 		geo.box(Vector3(fp.x + 1.0, y + 8.2, fp.z), Vector3(1.9, 1.2, 0.03), "fc_paint", 0.0, false)
 	geo.box_on(Transform3D(Basis(), c + Vector3(W * 0.5 + 2.0, (H + 2.0) * 0.5, 0)), Vector3(4.0, H + 2.0, 5.0), "fc_glass", y)
 	geo.tint = Color.WHITE
-	StreetKit._label(geo, "LINDNER", Transform3D(Basis(), c + Vector3(-6.0, H - 1.0, D * 0.5 + 0.08)), 0.03, Color(0.12, 0.35, 0.6))
-	StreetKit._label(geo, "Beschichtungen", Transform3D(Basis(), c + Vector3(8.0, H - 1.2, D * 0.5 + 0.08)), 0.014, Color(0.25, 0.27, 0.3))
+	StreetKit._label(geo, "LINDNER", Transform3D(Basis(), c + Vector3(-6.0, H - 1.0, D * 0.5 + 0.012)), 0.03, Color(0.12, 0.35, 0.6))
+	StreetKit._label(geo, "Beschichtungen", Transform3D(Basis(), c + Vector3(8.0, H - 1.2, D * 0.5 + 0.012)), 0.014, Color(0.25, 0.27, 0.3))
 	geo.tint = Color(0.75, 0.77, 0.8)
 	for ax in [-10.0, -4.0, 6.0]:
 		geo.box(c + Vector3(ax, H + 0.9, -1.0), Vector3(3.0, 1.6, 2.2), "fc_paint")

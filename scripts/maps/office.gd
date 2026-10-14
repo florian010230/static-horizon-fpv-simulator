@@ -221,7 +221,7 @@ func _server_room() -> void:
 		for k in range(6):
 			var q := Vector3(x0 + 1.6 + k * 0.62, 0, rz)
 			geo.box(q + Vector3(0, 1.0, 0), Vector3(0.6, 2.0, 1.0), "screen")
-			geo.box(q + Vector3(0, 1.0, 0.505 * signf(8.0 - rz)), Vector3(0.5, 1.8, 0.01), "lamp" if k % 3 == 1 else "metal", 0.0, false, false)
+			geo.box(q + Vector3(0, 1.0, 0.52 * signf(8.0 - rz)), Vector3(0.5, 1.8, 0.04), "lamp" if k % 3 == 1 else "metal", 0.0, false, false) # (4 cm proud of the rack front: 1 cm flickered)
 	# Cable tray over the racks, a cooling unit on the east wall.
 	geo.box(Vector3(x0 + 3.2, 2.7, 8.0), Vector3(4.0, 0.08, 0.4), "metal", 0.0, false)
 	for sx in [-1.8, 1.8]:

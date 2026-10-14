@@ -81,6 +81,16 @@ extends Node
 @export var restart_button_index: int = -1
 @export var restart_button_on_when_pressed: bool = true
 
+@export_group("Rate profile switch (optional)")
+## rate_switch_profile(): a 3-position switch picks rate profile 1/2/3
+## by position (off end, middle, on end); a button steps 1 -> 2 -> 3.
+@export var rates_source: String = ""
+@export var rates_axis: int = -1
+@export var rates_axis_off_value: float = -1.0
+@export var rates_axis_on_value: float = 1.0
+@export var rates_button_index: int = -1
+@export var rates_button_on_when_pressed: bool = true
+
 @export_group("Calibration")
 @export var invert_roll: bool = false
 @export var invert_pitch: bool = false
@@ -130,7 +140,7 @@ const CALIBRATION_PATH: String = "user://input_calibration.cfg"
 ## per-control field suffixes, used to save/load/read/clear all three
 ## with one small loop instead of three near-identical blocks (see
 ## save_calibration(), load_calibration(), _control_on()).
-const OPTIONAL_CONTROLS: Array[String] = ["mode", "reset", "los", "restart"]
+const OPTIONAL_CONTROLS: Array[String] = ["mode", "reset", "los", "restart", "rates"]
 const CONTROL_FIELDS: Array[String] = ["_source", "_axis", "_axis_off_value", "_axis_on_value", "_button_index", "_button_on_when_pressed"]
 
 var armed: bool = false
@@ -206,6 +216,9 @@ func _process(delta: float) -> void:
 	_detect_joy_activity()
 	_handle_arm_toggle()
 	_handle_level_toggle()
+	var rp: int = rate_switch_profile()
+	if rp >= 0 and rp != Settings.rate_profile:
+		Settings.select_rate_profile(rp)
 	if not _joy_connected():
 		_update_keyboard_throttle(delta)
 		update_keyboard_axes(delta)
@@ -578,6 +591,34 @@ func los_control_name() -> String:
 
 func clear_los_control() -> void:
 	_clear_control("los")
+
+func rates_control_name() -> String:
+	return _control_name("rates")
+
+func clear_rates_control() -> void:
+	_clear_control("rates")
+
+## The rate profile (0..2) the assigned switch asks for, or -1 (none
+## assigned, no radio, or a button not pressed this frame).
+var _prev_rates_on: bool = false
+var _rates_step: int = -1
+func rate_switch_profile() -> int:
+	if rates_source == "" or not _joy_present():
+		return -1
+	if rates_source == "axis" and rates_axis >= 0:
+		if not _axis_known(rates_axis):
+			return -1
+		var span: float = rates_axis_on_value - rates_axis_off_value
+		if absf(span) < 0.1:
+			return -1
+		var f: float = (joy_axis(rates_axis) - rates_axis_off_value) / span
+		return 0 if f < 0.33 else (2 if f > 0.67 else 1)
+	var on: bool = _control_on("rates")
+	var edge: bool = on and not _prev_rates_on
+	_prev_rates_on = on
+	if edge:
+		return (Settings.rate_profile + 1) % Settings.RATE_PROFILES
+	return -1
 
 func restart_control_name() -> String:
 	return _control_name("restart")

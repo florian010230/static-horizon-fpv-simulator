@@ -583,7 +583,7 @@ func _ship(o: Vector3) -> void:
 	var L: float = 280.0
 	var B: float = 40.0
 	geo.box(o + Vector3(0, 2, 0), Vector3(L, 12, B), "hull")
-	geo.box(o + Vector3(0, -3.5, 0), Vector3(L, 1.5, B + 0.2), "hull_red", 0.0, false, false)
+	geo.box(o + Vector3(0, -3.5, 0), Vector3(L + 0.1, 1.5, B + 0.2), "hull_red", 0.0, false, false) # (5 cm longer than the hull: flush ends flickered)
 	geo.cone(o + Vector3(L * 0.5, 2, 0), o + Vector3(L * 0.5 + 18, 5, 0), B * 0.5, 2, "hull", 4)
 	var bridge := o + Vector3(-L * 0.5 + 34, 8, 0)
 	geo.box(bridge + Vector3(0, 12, 0), Vector3(14, 24, B - 4), "white")
@@ -612,7 +612,11 @@ func _bulk_berth() -> void:
 	geo.box(o + Vector3(-28, 6, 0), Vector3(20, 12, 40), "warehouse")
 	var a := o + Vector3(0, 52, 32)
 	var b := Vector3(-150, 24, -3)
-	geo.pipe(a, b, 1.8, 0.2, "white", 12)
+	# The gallery ends open over the loader, on a short frame - fly out of
+	# it there (2026-10-14: it ran into the loader's top, a dead end).
+	var b_end: Vector3 = b + (a - b).normalized() * 2.5
+	geo.pipe(a, b_end, 1.8, 0.2, "white", 12)
+	geo.beam(Vector3(b.x, 24, b.z), b_end - Vector3(0, 1.7, 0), Vector2(0.4, 0.4), "yellow")
 	geo.box(Vector3(-150, 12, -3), Vector3(6, 24, 6), "yellow")
 	geo.beam(Vector3(-150, 24, -3), Vector3(-150, 20, 22), Vector2(2.2, 2.2), "yellow")
 	# Bulk carrier.

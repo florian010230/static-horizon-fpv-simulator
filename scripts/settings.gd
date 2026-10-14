@@ -60,6 +60,46 @@ var rates_roll: Array = [70.0, 670.0, 0.54]
 var rates_pitch: Array = [70.0, 670.0, 0.54]
 var rates_yaw: Array = [70.0, 670.0, 0.54]
 
+## Rate profiles (2026-10-14, user: "two or more rate profiles, saved and
+## switchable"): like Betaflight's rateprofiles, each holds the rate type,
+## the three axes and throttle MID/EXPO. The fields above are always the
+## active profile's; switching stores them into their slot and loads the
+## other. Switched in Settings -> Rates or by an assigned radio switch
+## (InputManager "rates" control: a 3-position switch picks 1/2/3, a
+## button steps through them).
+const RATE_PROFILES: int = 3
+var rate_profile: int = 0
+var rate_profiles: Array = []
+
+func _rate_snapshot() -> Dictionary:
+	return {"type": rates_type, "roll": rates_roll.duplicate(), "pitch": rates_pitch.duplicate(), "yaw": rates_yaw.duplicate(),
+		"mid": throttle_mid, "expo": throttle_expo}
+
+## Fills missing slots with copies of the active rates (first start, or a
+## settings file from before profiles).
+func _ensure_rate_profiles() -> void:
+	while rate_profiles.size() < RATE_PROFILES:
+		rate_profiles.append(_rate_snapshot())
+	rate_profile = clampi(rate_profile, 0, RATE_PROFILES - 1)
+
+func select_rate_profile(i: int) -> void:
+	_ensure_rate_profiles()
+	i = clampi(i, 0, RATE_PROFILES - 1)
+	if i == rate_profile:
+		return
+	rate_profiles[rate_profile] = _rate_snapshot()
+	var p: Dictionary = rate_profiles[i]
+	rates_type = int(p.get("type", Rates.ACTUAL))
+	rates_roll = (p.get("roll", rates_roll) as Array).duplicate()
+	rates_pitch = (p.get("pitch", rates_pitch) as Array).duplicate()
+	rates_yaw = (p.get("yaw", rates_yaw) as Array).duplicate()
+	throttle_mid = float(p.get("mid", 0.5))
+	throttle_expo = float(p.get("expo", 0.0))
+	rate_profile = i
+	rate_profile_changed.emit(i)
+
+signal rate_profile_changed(i: int)
+
 func rate_values(axis: int) -> Array:
 	return [rates_roll, rates_pitch, rates_yaw][axis]
 
@@ -190,7 +230,7 @@ const SAVED_FIELDS: Array[String] = ["crosshair_enabled", "shadows_enabled", "gr
 	"max_fps", "vsync", "camera_angle_deg", "camera_fov_deg", "view_distance", "rates_type", "rates_roll", "rates_pitch", "rates_yaw",
 	"selected_drone", "game_mode", "osd_enabled", "battery_enabled", "video_effect", "wind_level", "units",
 	"stick_overlay", "prop_wash", "throttle_mid", "throttle_expo", "lens_fisheye",
-	"prop_damage", "race_ghost", "race_strict", "keyboard_strength", "keyboard_help", "race_line_hue", "race_line_length", "check_updates", "camera_look"]
+	"prop_damage", "race_ghost", "race_strict", "keyboard_strength", "keyboard_help", "race_line_hue", "race_line_length", "check_updates", "camera_look", "rate_profile", "rate_profiles"]
 var _persist: bool = true
 var _last_saved: String = ""
 var _save_timer: float = 0.0
@@ -218,6 +258,8 @@ func _process(delta: float) -> void:
 		_last_saved = snap
 
 func _snapshot() -> String:
+	if not rate_profiles.is_empty():
+		rate_profiles[rate_profile] = _rate_snapshot() # (the active slot follows edits)
 	var parts: Array[String] = [str(is_fullscreen())]
 	for f in SAVED_FIELDS:
 		parts.append(str(get(f)))
@@ -258,6 +300,7 @@ func _load() -> void:
 			set_rate_values(axis, Rates.DEFAULTS[Rates.ACTUAL].duplicate())
 	if not cfg.has_section_key("settings", "camera_look") and video_effect > 0:
 		camera_look = 1 # the old analog look -> the Analog camera
+	_ensure_rate_profiles()
 	if not Drone.PROFILES.has(selected_drone):
 		selected_drone = "seeker3"
 	if cfg.get_value("settings", "fullscreen", false):

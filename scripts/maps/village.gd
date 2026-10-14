@@ -630,7 +630,7 @@ func _club(trees: Array) -> Array:
 		for sz in [-0.3, 0.3]:
 			geo.box(ch + Vector3(0.5 + sx, 0.67, 3.2 + sz), Vector3(0.06, 0.7, 0.06), "vg_wood")
 	geo.tint = Color(0.95, 0.95, 0.93)
-	StreetKit._label(geo, "FPV CLUB HOLDERBACH", Transform3D(Basis(), ch + Vector3(0, 2.25, 1.26)), 0.01, Color(0.95, 0.95, 0.9))
+	StreetKit._label(geo, "FPV CLUB HOLDERBACH", Transform3D(Basis(), ch + Vector3(0, 2.25, 1.23)), 0.01, Color(0.95, 0.95, 0.9))
 	geo.tint = Color.WHITE
 	var ws := ch + Vector3(-5.0, 0, 3.0)
 	geo.cylinder(Vector3(ws.x, y - 0.3, ws.z), ws + Vector3(0, 6.0, 0), 0.06, "vg_paint", 8)
@@ -688,7 +688,7 @@ func _bando(o: Vector3, r: RandomNumberGenerator) -> Array:
 	var y0: float = o.y
 	# Floors: ground slab; the upper floor with a hole by the stairs' place.
 	geo.light_fn = _inside_light(y0, 0.75)
-	geo.box_on(xf * Transform3D(Basis(), Vector3(0, 0.1, 0)), Vector3(L, 0.2, B), "vgi_floor", y0)
+	geo.box_on(xf * Transform3D(Basis(), Vector3(0, 0.1, 0)), Vector3(L - 0.04, 0.2, B - 0.04), "vgi_floor", y0) # (2 cm in from the walls' outer faces: flush, it flickered)
 	var fy: float = H1 + 0.12
 	# Upper floor in pieces round a 3 x 3 m hole.
 	geo.box_xf(xf * Transform3D(Basis(), Vector3(-L * 0.25 - 0.75, fy, 0)), Vector3(L * 0.5 - 1.5 - T, 0.24, B - T * 2.0), "vgi_wood")
@@ -764,10 +764,12 @@ func _bando(o: Vector3, r: RandomNumberGenerator) -> Array:
 	geo.tint = Color(0.45, 0.32, 0.22)
 	geo.box_xf(xf * Transform3D(Basis(Vector3.UP, 0.4), Vector3(1.4, 0.06 + 0.0, B * 0.5 + 1.6)), Vector3(1.0, 0.06, 2.1), "vg_paint")
 	geo.tint = Color.WHITE
-	# Graffiti on the walls (Label3D, sprayed colours).
-	StreetKit._label(geo, "NO SIGNAL", front * Transform3D(Basis(), Vector3(-2.0, 2.4, T * 0.5 + 0.02)), 0.012, Color(0.85, 0.2, 0.6))
-	StreetKit._label(geo, "BANDO", left * Transform3D(Basis(Vector3.UP, PI), Vector3(1.0, 1.6, -T * 0.5 - 0.02)), 0.02, Color(0.2, 0.75, 0.95))
-	StreetKit._label(geo, "FAILSAFE", back * Transform3D(Basis(Vector3.UP, PI), Vector3(0.5, 1.8, -T * 0.5 - 0.02)), 0.014, Color(0.95, 0.75, 0.15))
+	# Graffiti on the walls (Label3D, sprayed colours), flat on solid
+	# brick between the openings (2026-10-14: BANDO ran over the broken
+	# corner, NO SIGNAL over a window, all stood 2 cm off the wall).
+	StreetKit._label(geo, "NO SIGNAL", front * Transform3D(Basis(), Vector3(-1.8, 1.7, T * 0.5 + 0.008)), 0.012, Color(0.85, 0.2, 0.6), 2.0)
+	StreetKit._label(geo, "BANDO", left * Transform3D(Basis(Vector3.UP, PI), Vector3(-1.4, 1.6, -T * 0.5 - 0.008)), 0.02, Color(0.2, 0.75, 0.95), 3.2)
+	StreetKit._label(geo, "FAILSAFE", back * Transform3D(Basis(Vector3.UP, PI), Vector3(0.0, 1.8, -T * 0.5 - 0.008)), 0.014, Color(0.95, 0.75, 0.15), 2.6)
 	# The gnome: in the corner behind the rubble.
 	var gp: Vector3 = xf * Vector3(-L * 0.5 + 0.8, 0.2, -B * 0.5 + 0.8)
 	_gnomes.append([gp, yaw + 0.8])

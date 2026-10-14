@@ -428,7 +428,7 @@ func _stair_tower(o: Vector3, h: float) -> void:
 		for dz in [-1.5, 1.5]:
 			geo.box(o + Vector3(dx, h * 0.5, dz), Vector3(0.3, h, 0.3), "paint")
 	for y in range(4, int(h), 4):
-		geo.box(o + Vector3(0, y, 0), Vector3(3.3, 0.15, 3.3), "rust_dark", 0.0, true, false)
+		geo.box(o + Vector3(0, y, 0), Vector3(3.36, 0.15, 3.36), "rust_dark", 0.0, true, false) # (3 cm past the posts: flush, it flickered)
 
 # --- gas and blast ------------------------------------------------------------------
 
@@ -477,7 +477,11 @@ func _stoves() -> void:
 			geo.lathe(s, [Vector2(4.2, 0), Vector2(4.2, 28), Vector2(3.6, 31), Vector2(2.2, 33), Vector2(0.1, 33.8)], "paint", 20)
 			geo.lathe(s + Vector3(0, 28, 0), [Vector2(5.0, 0), Vector2(5.0, 0.3)], "rust_dark", 20, 1.0)
 			geo.cylinder(s + Vector3(0, 15, -4.0), s + Vector3(0, 15, -6.0), 0.8, "rust", 10)
-		geo.pipe(Vector3(FX[i] - 13.0, 15, STOVE_Z - 6.4), Vector3(FX[i] + 13.0, 15, STOVE_Z - 6.4), 1.1, 0.12, "rust", 14)
+		# The main in two sections with an open joint where the pipe to the
+		# furnace leaves it - fly from the furnace down the pipe and out
+		# (2026-10-14: the branch ended against the main's wall).
+		geo.pipe(Vector3(FX[i] - 13.0, 15, STOVE_Z - 6.4), Vector3(FX[i] + 6.0 - 1.2, 15, STOVE_Z - 6.4), 1.1, 0.12, "rust", 14)
+		geo.pipe(Vector3(FX[i] + 6.0 + 1.2, 15, STOVE_Z - 6.4), Vector3(FX[i] + 13.0, 15, STOVE_Z - 6.4), 1.1, 0.12, "rust", 14)
 		var hb := Route.new()
 		hb.pts = Route.rounded([Vector3(FX[i] + 6.0, 15, STOVE_Z - 6.4), Vector3(FX[i] + 6.0, 15, FZ + 11.5), Vector3(FX[i] + 4.0, 14.0, FZ + 8.6)], 3.0, 6)
 		geo.pipe_path(hb.pts, 1.1, "rust", 0.12, 14)
@@ -495,7 +499,9 @@ func _stoves() -> void:
 ## blowers - huge flywheels in a row - big windows, many broken.
 func _blower_hall() -> void:
 	var c := Vector3(-200, 0, 10)
-	_hall(c, Vector3(70, 18, 30), "brick", {"e": [[0.0, 10.0, 9.0]], "w": [[0.0, 8.0, 8.0]], "s": [[0.0, 6.0, 6.0]]}, 0.35)
+	# (The south door is 11 m tall: the cold-blast main leaves the hall
+	# through it - fly in along the pipe. 2026-10-14: it ended at the wall.)
+	_hall(c, Vector3(70, 18, 30), "brick", {"e": [[0.0, 10.0, 9.0]], "w": [[0.0, 8.0, 8.0]], "s": [[0.0, 6.0, 11.0]]}, 0.35)
 	for k in range(5):
 		var x: float = c.x - 26.0 + k * 13.0
 		geo.box(Vector3(x, 1.5, c.z + 4.0), Vector3(9.0, 3.0, 4.0), "concrete")
@@ -710,7 +716,22 @@ func _open_tower(c: Vector3, fp: Vector2, h: float, mat: String) -> void:
 			geo.box(c + side[0] + Vector3(0, h * 0.5, 0), side[1] + Vector3(0, h, 0), mat)
 
 func _chimney(base: Vector3, h: float, r: float, mat: String) -> void:
-	var prof: Array[Vector2] = [Vector2(r, 0), Vector2(r * 0.62, h)]
+	# The foot: a ring of wall with the flue inlet left open (two of its
+	# 18 sides, ~3 m wide, 5 m high) - dive in at the top, out at the
+	# bottom (2026-10-14: the shaft was open only at the top, a dead end).
+	var foot: float = 5.0
+	var rf: float = lerpf(r, r * 0.62, foot / h)
+	var n: int = 18
+	for k in range(n):
+		if k == 0 or k == 1:
+			continue
+		var a: float = TAU * (k + 0.5) / n
+		var out := Vector3(cos(a), 0, sin(a))
+		var rm: float = (r + rf) * 0.5 - 0.3
+		var chord: float = 2.0 * (r - 0.0) * sin(PI / n) + 0.05
+		geo.box_xf(Transform3D(Basis.looking_at(out, Vector3.UP), base + out * rm + Vector3(0, foot * 0.5, 0)), Vector3(chord, foot, 0.6), mat)
+	geo.box_xf(Transform3D(Basis.looking_at(Vector3(cos(TAU / n), 0, sin(TAU / n)), Vector3.UP), base + Vector3(cos(TAU / n), 0, sin(TAU / n)) * ((r + rf) * 0.5 - 0.3) + Vector3(0, foot - 0.4, 0)), Vector3(2.0 * r * sin(2.0 * PI / n) + 0.3, 0.8, 0.7), "rust_dark") # (the lintel over the inlet)
+	var prof: Array[Vector2] = [Vector2(rf, foot), Vector2(r * 0.62, h)]
 	geo.lathe(base, prof, mat, 18, 0.6)
 	for y in [h * 0.4, h * 0.7, h - 1.0]:
 		var rr: float = lerpf(r, r * 0.62, y / h) + 0.15
@@ -845,11 +866,39 @@ func after_build() -> void:
 		Collectibles.gnome(self, "steelmill", i, GNOMES[i])
 
 ## Graffiti: a few overlapping blobs of colour on a wall (bubble letters
-## seen from a drone), at p on a wall facing n (horizontal), w x h metres.
+## seen from a drone), near p on a wall facing n (horizontal), w x h
+## metres. It finds the wall's surface itself (Geo's solids, within half
+## a metre of p) and lies flat on it; narrower where the wall panel is,
+## left out over a hole (2026-10-14: tags stood inside walls, off them
+## and over broken panels). TextCheck checks every one.
 func _tag(p: Vector3, n: Vector3, w: float, h: float, r: RandomNumberGenerator) -> void:
+	var solid := func(q: Vector3) -> bool: return geo.blocked(Vector2(q.x, q.z), 0.0, q.y - 0.02, q.y + 0.02)
+	var surf: float = NAN
+	for k in range(50):
+		var d: float = 0.5 - k * 0.02
+		if solid.call(p + n * (d - 0.02)) and not solid.call(p + n * d):
+			surf = d - 0.01
+			break
+	if is_nan(surf):
+		return
+	p += n * surf
+	var side: Vector3 = Vector3.UP.cross(n).normalized()
+	var fits := func(ww: float) -> bool:
+		var steps: int = ceili(ww / 0.25)
+		for i in range(steps + 1):
+			for j in range(3):
+				var q: Vector3 = p + side * ww * (-0.5 + float(i) / steps) + Vector3.UP * h * (-0.5 + j / 2.0)
+				if not solid.call(q - n * 0.03) or solid.call(q + n * 0.03):
+					return false
+		return true
+	while not fits.call(w):
+		w *= 0.75
+		if w < 1.0:
+			return
+	decal_spots.append([p, n, w, h])
 	var cols: Array = [Color(0.95, 0.3, 0.6), Color(0.2, 0.75, 0.9), Color(0.95, 0.85, 0.2), Color(0.35, 0.85, 0.35), Color(0.6, 0.35, 0.85), Color(0.95, 0.5, 0.15)]
 	var yaw: float = atan2(n.x, n.z)
-	var xf := Transform3D(Basis(Vector3.UP, yaw), p + n * 0.04)
+	var xf := Transform3D(Basis(Vector3.UP, yaw), p + n * 0.011)
 	var c1: Color = cols[r.randi() % cols.size()]
 	var c2: Color = cols[r.randi() % cols.size()]
 	var letters: int = r.randi_range(3, 5)

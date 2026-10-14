@@ -28,7 +28,13 @@ static func ensure_materials(g: Geo) -> void:
 	g.detail_prefixes.append("sk_")
 
 ## Labels to add when the geo commits: [text, transform, pixel size, colour].
-static func _label(g: Geo, text: String, xf: Transform3D, px: float, col: Color) -> void:
+## max_w > 0: the text is made smaller to fit that width (m) - a long
+## place name must not run past its sign (TextCheck in the self-test).
+static func _label(g: Geo, text: String, xf: Transform3D, px: float, col: Color, max_w: float = 0.0) -> void:
+	if max_w > 0.0:
+		var w: float = UIKit.oswald_font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 64).x * px
+		if w > max_w:
+			px *= max_w / w
 	if not g.has_meta("sk_labels"):
 		var list: Array = []
 		g.set_meta("sk_labels", list)
@@ -111,9 +117,9 @@ static func town_sign(g: Geo, road: RoadCreator, d: float, dir: float, town: Str
 			[Vector3(-0.73, 0, 0.025), Vector3(0.03, 0.69, 0.01)], [Vector3(0.73, 0, 0.025), Vector3(0.03, 0.69, 0.01)]]:
 		g.box_xf(b * Transform3D(Basis(), e[0]), e[1], "sk_paint", false)
 	g.tint = Color.WHITE
-	_label(g, town, b * Transform3D(Basis(), Vector3(0, 0.06 if district != "" else 0.0, 0.035)), 0.0075, Color(0.05, 0.05, 0.05))
+	_label(g, town, b * Transform3D(Basis(), Vector3(0, 0.06 if district != "" else 0.0, 0.035)), 0.0075, Color(0.05, 0.05, 0.05), 1.3)
 	if district != "":
-		_label(g, district, b * Transform3D(Basis(), Vector3(0, -0.2, 0.035)), 0.0032, Color(0.05, 0.05, 0.05))
+		_label(g, district, b * Transform3D(Basis(), Vector3(0, -0.2, 0.035)), 0.0032, Color(0.05, 0.05, 0.05), 1.3)
 	return [["town_sign", b * Vector3(-1.5, 0.0, 9.0), b.origin]]
 
 ## A bus stop at d along the road on `side`: a lay-by of paving, a glass
@@ -160,7 +166,7 @@ static func bus_stop(g: Geo, road: RoadCreator, d: float, side: float, stop_name
 		_label(g, "H", face * Transform3D(Basis(), Vector3(0, 0, 0.035)), 0.006, Color(0.1, 0.45, 0.22))
 	g.tint = Color.WHITE
 	g.box(sp + Vector3(0, 2.1, 0), Vector3(0.6, 0.22, 0.04), "sk_paint", yaw + PI * 0.5, false)
-	_label(g, stop_name, Transform3D(Basis(Vector3.UP, yaw + PI * 0.5), sp + Vector3(0, 2.1, 0)) * Transform3D(Basis(), Vector3(0, 0, 0.025)), 0.0022, Color(0.1, 0.1, 0.1))
+	_label(g, stop_name, Transform3D(Basis(Vector3.UP, yaw + PI * 0.5), sp + Vector3(0, 2.1, 0)) * Transform3D(Basis(), Vector3(0, 0, 0.025)), 0.0022, Color(0.1, 0.1, 0.1), 0.54)
 	bin(g, xf * Vector3(-2.3, 0, 0.9), yaw)
 	return [["bus_stop", xf * Vector3(-1.0, 1.7, 5.0), xf * Vector3(0, 1.2, 0)]]
 

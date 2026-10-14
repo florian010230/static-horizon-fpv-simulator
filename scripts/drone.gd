@@ -637,7 +637,10 @@ func _physics_process(delta: float) -> void:
 	var reset_edge: bool = reset_on and not _reset_was_on
 	_reset_was_on = reset_on
 	if reset_edge:
+		_splash_t = -1.0
 		reset_to_spawn()
+		return
+	if _update_water(delta):
 		return
 
 	if not InputManager.armed:
@@ -790,7 +793,8 @@ func _damaged_props(delta: float, up: Vector3) -> void:
 
 ## Camera shake from damaged props ("jello" in the FPV feed): a small,
 ## fast wobble of the camera on its mount, with the rpm.
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	DroneFrameBuilder.spin_props(self, rpm_fraction if InputManager.armed else 0.0, delta)
 	if _camera == null:
 		return
 	var loss: float = 0.0
@@ -1077,6 +1081,102 @@ signal was_reset
 func set_spawn(xf: Transform3D) -> void:
 	_spawn_transform = xf
 	reset_to_spawn()
+
+## Water (2026-10-14, the user: one behaviour on every map - before, the
+## lake on one map was solid and the sea on another let you through): a
+## drone whose body goes below a water surface (BuiltMap.water_level)
+## splashes - spray and a ring on the water, motors off, it bobs at the
+## surface - and is reset to the spawn after SPLASH_RESET seconds, like a
+## real quad you'd have to fish out. Returns true while in the water.
+const SPLASH_RESET: float = 1.5
+var _splash_t: float = -1.0
+var _splash_y: float = 0.0
+func _update_water(delta: float) -> bool:
+	if _splash_t >= 0.0:
+		_splash_t += delta
+		var k: float = 1.0 - exp(-delta / 0.25)
+		linear_velocity = linear_velocity.lerp(Vector3(0, (_splash_y - 0.03 - global_position.y) * 4.0, 0), k)
+		angular_velocity = angular_velocity.lerp(Vector3.ZERO, k)
+		if _splash_t > SPLASH_RESET:
+			_splash_t = -1.0
+			reset_to_spawn()
+		return true
+	var map := get_parent() as BuiltMap
+	if map == null:
+		return false
+	var lvl: float = map.water_level(global_position)
+	if lvl == -INF or global_position.y > lvl - 0.02:
+		return false
+	_splash_t = 0.0
+	_splash_y = lvl
+	InputManager.armed = false
+	_motor_cmd = [0.0, 0.0, 0.0, 0.0]
+	rpm_fraction = 0.0
+	_splash(Vector3(global_position.x, lvl, global_position.z), linear_velocity.length())
+	var ui: Node = get_parent().get_node_or_null("UI")
+	if ui and ui.has_method("flash_message"):
+		ui.flash_message("SPLASH - drone in the water", 1.4)
+	splashed.emit()
+	return true
+
+signal splashed
+
+## Spray thrown up (more, the faster it went in) and a ring spreading on
+## the water. Not in the shadow capture, gone after a second.
+func _splash(at: Vector3, speed: float) -> void:
+	var fx := Node3D.new()
+	fx.name = "Splash"
+	fx.set_meta("dynamic", true)
+	get_parent().add_child(fx)
+	fx.global_position = at
+	var white := StandardMaterial3D.new()
+	white.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	white.albedo_color = Color(0.92, 0.96, 1.0, 0.85)
+	white.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	white.vertex_color_use_as_albedo = true
+	white.set_meta("keep_material", true)
+	var drop := SphereMesh.new()
+	drop.radius = 0.045
+	drop.height = 0.09
+	drop.radial_segments = 6
+	drop.rings = 3
+	drop.material = white
+	var p := CPUParticles3D.new()
+	p.mesh = drop
+	p.amount = int(clampf(30.0 + speed * 4.0, 30.0, 140.0))
+	p.one_shot = true
+	p.explosiveness = 0.95
+	p.lifetime = 1.0
+	p.direction = Vector3.UP
+	p.spread = 30.0
+	p.initial_velocity_min = 2.5 + speed * 0.15
+	p.initial_velocity_max = 4.5 + speed * 0.3
+	p.gravity = Vector3(0, -9.8, 0)
+	p.scale_amount_min = 0.6
+	p.scale_amount_max = 1.6
+	var fade := Gradient.new()
+	fade.set_color(0, Color(1, 1, 1, 1))
+	fade.set_color(1, Color(1, 1, 1, 0))
+	p.color_ramp = fade
+	fx.add_child(p)
+	p.emitting = true
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.42
+	tm.outer_radius = 0.5
+	tm.rings = 24
+	tm.ring_segments = 6
+	ring.mesh = tm
+	var rmat: StandardMaterial3D = white.duplicate()
+	rmat.set_meta("keep_material", true)
+	ring.material_override = rmat
+	ring.position = Vector3(0, 0.02, 0)
+	ring.scale = Vector3(0.6, 0.15, 0.6)
+	fx.add_child(ring)
+	var tw := fx.create_tween().set_parallel(true)
+	tw.tween_property(ring, "scale", Vector3(4.0, 0.15, 4.0), 1.2).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(rmat, "albedo_color:a", 0.0, 1.2)
+	tw.chain().tween_callback(fx.queue_free)
 
 func reset_to_spawn() -> void:
 	battery.reset()

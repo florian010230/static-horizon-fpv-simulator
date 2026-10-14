@@ -256,7 +256,7 @@ func _tower() -> void:
 				for r in range(nr + 1):
 					var t: float = -span * 0.5 + r * span / nr
 					var rp: Vector3 = pos + (Vector3(t, 0, s * 0.14) if along_x else Vector3(s * 0.14, 0, t))
-					geo.box(rp, Vector3(0.12, FLOOR_H, 0.08) if along_x else Vector3(0.08, FLOOR_H, 0.12), "screen_rib", 0.0, false)
+					geo.box(rp, Vector3(0.12, FLOOR_H, 0.08) if along_x else Vector3(0.08, FLOOR_H, 0.12), "screen_rib", 0.0, true)
 				# The steel brackets that hang it from the slab edge.
 				for k in [-0.3, 0.3]:
 					var bpos: Vector3 = o + (Vector3(k * w, y + 0.55, s * (d * 0.5 + 0.55)) if along_x else Vector3(s * (w * 0.5 + 0.55), y + 0.55, k * d))
@@ -286,7 +286,7 @@ func _tower() -> void:
 			var cz: float = -d * 0.5 + 0.4 + iz * (d - 0.8) / 4.0
 			for k in range(4):
 				var q: Vector3 = o + Vector3(cx + (k % 2) * 0.4 - 0.2, top, cz + (k / 2) * 0.4 - 0.2)
-				geo.cylinder(q, q + Vector3(0, 1.4, 0), 0.03, "rebar", 4, false, false, false)
+				geo.cylinder(q, q + Vector3(0, 1.4, 0), 0.03, "rebar", 4, true, false, false)
 	# Formwork tables and props on the top deck.
 	for k in range(6):
 		geo.box(o + Vector3(-12 + k * 4.5, top + 0.1, 9), Vector3(4.0, 0.2, 2.5), "wood")
@@ -337,8 +337,8 @@ func _tower_crane(base: Vector3, height: float, jib: float, yaw_deg: float) -> v
 			var c1: Vector3 = corners[(k + 1) % 4]
 			var y0: float = y if not flip else y + step
 			var y1: float = y + step if not flip else y
-			geo.beam(base + c0 + Vector3(0, y0, 0), base + c1 + Vector3(0, y1, 0), Vector2(0.08, 0.08), "crane", false, false)
-			geo.beam(base + c0 + Vector3(0, y, 0), base + c1 + Vector3(0, y, 0), Vector2(0.08, 0.08), "crane", false, false)
+			geo.beam(base + c0 + Vector3(0, y0, 0), base + c1 + Vector3(0, y1, 0), Vector2(0.08, 0.08), "crane", true, false)
+			geo.beam(base + c0 + Vector3(0, y, 0), base + c1 + Vector3(0, y, 0), Vector2(0.08, 0.08), "crane", true, false)
 		flip = not flip
 		y += step
 	var top: Vector3 = base + Vector3(0, height, 0)
@@ -354,14 +354,14 @@ func _tower_crane(base: Vector3, height: float, jib: float, yaw_deg: float) -> v
 	var x: float = 0.0
 	while x < jib - 2.0:
 		for side in [-0.8, 0.8]:
-			geo.beam(top + b * Vector3(x, jy, side), top + b * Vector3(x + 1.5, jy + 1.8, 0), Vector2(0.06, 0.06), "crane", false, false)
-			geo.beam(top + b * Vector3(x + 1.5, jy + 1.8, 0), top + b * Vector3(x + 3.0, jy, side), Vector2(0.06, 0.06), "crane", false, false)
+			geo.beam(top + b * Vector3(x, jy, side), top + b * Vector3(x + 1.5, jy + 1.8, 0), Vector2(0.06, 0.06), "crane", true, false)
+			geo.beam(top + b * Vector3(x + 1.5, jy + 1.8, 0), top + b * Vector3(x + 3.0, jy, side), Vector2(0.06, 0.06), "crane", true, false)
 		x += 3.0
 	# Counter-jib with ballast.
 	var cj: float = jib * 0.33
 	for side in [-1.0, 1.0]:
 		geo.beam(top + b * Vector3(0, jy, side), top + b * Vector3(-cj, jy, side), Vector2(0.2, 0.3), "crane")
-	geo.box_xf(Transform3D(b, top + b * Vector3(-cj * 0.5, jy + 0.1, 0)), Vector3(cj, 0.1, 2.0), "steel", false, false)
+	geo.box_xf(Transform3D(b, top + b * Vector3(-cj * 0.5, jy + 0.1, 0)), Vector3(cj, 0.1, 1.8), "steel", false, false) # (between the beams: flush tops flickered)
 	for k in range(4):
 		geo.box_xf(Transform3D(b, top + b * Vector3(-cj + 1.2 + k * 0.9, jy - 1.0, 0)), Vector3(0.8, 2.4, 2.4), "concrete_old")
 	geo.box_xf(Transform3D(b, top + b * Vector3(-cj * 0.4, jy + 0.7, 0)), Vector3(2.5, 1.2, 1.6), "steel")
@@ -429,7 +429,7 @@ func _pit() -> void:
 		var along_x: bool = side < 2
 		var s: float = 1.0 if side % 2 == 0 else -1.0
 		var c := Vector3(p.get_center().x, 1.0, p.get_center().y) + (Vector3(0, 0, s * (p.size.y * 0.5 + 0.8)) if along_x else Vector3(s * (p.size.x * 0.5 + 0.8), 0, 0))
-		geo.box(c, Vector3(p.size.x, 0.08, 0.08) if along_x else Vector3(0.08, 0.08, p.size.y), "hoarding_w", 0.0, false, false)
+		geo.box(c, Vector3(p.size.x, 0.08, 0.08) if along_x else Vector3(0.08, 0.08, p.size.y), "hoarding_w", 0.0, true, false)
 
 # --- steel frame ---------------------------------------------------------------------
 

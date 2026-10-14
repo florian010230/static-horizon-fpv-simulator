@@ -179,7 +179,39 @@ func _frame(geo: Geo, xf: Transform3D, w: float, h: float, mat: String) -> void:
 			[Vector3(-w * 0.5 - p, 0, 0), Vector3(0.05, h + 2 * p, 0.05)], [Vector3(w * 0.5 + p, 0, 0), Vector3(0.05, h + 2 * p, 0.05)]]:
 		geo.box_xf(xf * Transform3D(Basis(), e[0]), e[1], "gate_pole", false, false)
 	if not led and w > 1.0:
-		geo.box_xf(xf * Transform3D(Basis(), Vector3(0, h * 0.5 + p * 0.5, 0)), Vector3(w * 0.45, p * 0.6, d * 1.7), "gate_dark", false, false)
+		if OS.has_environment("SH_GATE_BRAND"): # (2026-10-14 preview: the brand on the top panel)
+			_brand(geo, xf * Transform3D(Basis(), Vector3(0, h * 0.5 + p * 0.5, 0)), w + 2 * p, p, d * 1.7)
+		else:
+			geo.box_xf(xf * Transform3D(Basis(), Vector3(0, h * 0.5 + p * 0.5, 0)), Vector3(w * 0.45, p * 0.6, d * 1.7), "gate_dark", false, false)
+
+## The Static Horizon FPV banner on a gate's top panel (centre `xf`,
+## panel `pw` wide, `ph` high, `th` thick): a dark band, on each face the
+## round horizon mark (white ring, blue sky over orange ground, the white
+## horizon bar - as icon.png) and the name beside it.
+const BRAND_BLUE := Color(0.13, 0.45, 0.88)
+const BRAND_ORANGE := Color(0.91, 0.34, 0.11)
+func _brand(geo: Geo, xf: Transform3D, pw: float, ph: float, th: float) -> void:
+	var bw: float = pw * 0.88
+	var bh: float = ph * 0.78
+	geo.box_xf(xf, Vector3(bw, bh, th), "gate_dark", false, false)
+	var r: float = bh * 0.42
+	for side in [1.0, -1.0]:
+		var face := xf * Transform3D(Basis(Vector3.UP, 0.0 if side > 0.0 else PI), Vector3(0, 0, side * th * 0.5))
+		var n: Vector3 = face.basis.z.normalized()
+		var lc: Vector3 = face * Vector3(-bw * 0.5 + r + bh * 0.12, 0, 0)
+		geo.tint = Color(0.97, 0.97, 0.97)
+		geo.fan(lc + n * 0.004, n, r, 0.0, TAU, "gate_trim", 20)
+		geo.tint = BRAND_BLUE
+		geo.fan(lc + n * 0.008, n, r * 0.84, 0.0, PI, "gate_trim", 12)
+		geo.tint = BRAND_ORANGE
+		geo.fan(lc + n * 0.008, n, r * 0.84, PI, TAU, "gate_trim", 12)
+		geo.tint = Color(0.97, 0.97, 0.97)
+		geo.box_xf(Transform3D(face.basis, lc + n * 0.012), Vector3(r * 1.7, r * 0.16, 0.004), "gate_trim", false, false)
+		geo.tint = Color.WHITE
+		# The name in the rest of the band, as big as fits.
+		var x0: float = -bw * 0.5 + 2.0 * r + bh * 0.24
+		var x1: float = bw * 0.5 - bh * 0.12
+		StreetKit._label(geo, "STATIC HORIZON FPV", face * Transform3D(Basis(), Vector3((x0 + x1) * 0.5, 0, 0.006)), bh * 0.62 / 64.0 * 1.3, Color(0.97, 0.97, 0.97), x1 - x0)
 
 func _register(xf: Transform3D, w: float, h: float) -> void:
 	_gates.append({"xf": xf, "w": w, "h": h})
@@ -1036,9 +1068,119 @@ static func line_path(gates: Array) -> Dictionary:
 	seg.append(pts.size() - 1)
 	return {"pts": pts, "seg": seg}
 
+## The racing line must not run through anything (2026-10-14): a ball of
+## LINE_CLEAR round every point; where it touches something, the line is
+## pushed the shortest way out (sideways or up, in rings round the line)
+## and the push blended in over a few metres either side, the gate
+## openings themselves staying put. A few rounds, as one push can meet
+## something else.
+const LINE_CLEAR: float = 0.3
+const LINE_KEEP: int = 4 ## points next to each gate that never move
+const LINE_BLEND: int = 14 ## points over which a push fades out (~5.6 m)
+static func clear_path(pts: PackedVector3Array, seg: PackedInt32Array, space: PhysicsDirectSpaceState3D, exclude: Array, clear: float = LINE_CLEAR) -> PackedVector3Array:
+	var n: int = pts.size()
+	var fixed := PackedByteArray()
+	fixed.resize(n)
+	for b in seg:
+		for k in range(-LINE_KEEP, LINE_KEEP + 1):
+			fixed[clampi(b + k, 0, n - 1)] = 1
+	var out: PackedVector3Array = pts.duplicate()
+	for round_no in range(12):
+		var bad: PackedInt32Array = blocked_points(space, out, clear, exclude, fixed)
+		if bad.is_empty():
+			break
+		# Each blocked point's way out, then the strongest push near each point.
+		var push: Dictionary = {}
+		for i in bad:
+			var t: Vector3 = (out[mini(i + 1, n - 1)] - out[maxi(i - 1, 0)]).normalized()
+			var o: Vector3 = _way_out(space, out[i], t, exclude, clear)
+			if o != Vector3.ZERO:
+				push[i] = o
+		if push.is_empty():
+			break
+		var add := PackedVector3Array()
+		add.resize(n)
+		var wbest := PackedFloat32Array()
+		wbest.resize(n)
+		# (Later rounds: shorter blends - a tight spot between two things
+		# settles locally instead of the push swinging into the other.)
+		var blend: int = LINE_BLEND if round_no < 6 else 5
+		for i: int in push:
+			for k in range(-blend, blend + 1):
+				var j: int = i + k
+				if j < 0 or j >= n or fixed[j] == 1:
+					continue
+				var w: float = 0.5 + 0.5 * cos(PI * absf(k) / (blend + 1))
+				# (fading in from the fixed points by the gates too)
+				var gate_d: int = LINE_BLEND
+				for b in seg:
+					gate_d = mini(gate_d, absi(j - b) - LINE_KEEP)
+				w *= clampf(float(gate_d) / 6.0, 0.0, 1.0)
+				if w > wbest[j]:
+					wbest[j] = w
+					add[j] = push[i] * w
+		# Smoothed, so the line bends round things instead of stepping.
+		for _pass in range(4 if round_no < 6 else 1):
+			var sm: PackedVector3Array = add.duplicate()
+			for j in range(1, n - 1):
+				if fixed[j] == 0:
+					sm[j] = (add[j - 1] + add[j] * 2.0 + add[j + 1]) * 0.25
+			add = sm
+		for j in range(n):
+			out[j] += add[j] * 1.15 # (a little extra: the smoothing takes some off the peak)
+	return out
+
+## Points of `pts` (not marked in `skip`) whose ball of radius r touches
+## a solid.
+static func blocked_points(space: PhysicsDirectSpaceState3D, pts: PackedVector3Array, r: float, exclude: Array, skip: PackedByteArray = PackedByteArray()) -> PackedInt32Array:
+	var q := PhysicsShapeQueryParameters3D.new()
+	var ball := SphereShape3D.new()
+	ball.radius = r
+	q.shape = ball
+	q.exclude = exclude
+	var out := PackedInt32Array()
+	for i in range(pts.size()):
+		if i < skip.size() and skip[i] == 1:
+			continue
+		q.transform = Transform3D(Basis(), pts[i])
+		if not space.intersect_shape(q, 1).is_empty():
+			out.append(i)
+	return out
+
+## The cheapest free offset from p across the line's direction t: rings
+## of growing radius round the line; going over costs half as much again
+## as going round (a line climbing over every bale of a chicane is not
+## how anyone flies it).
+static func _way_out(space: PhysicsDirectSpaceState3D, p: Vector3, t: Vector3, exclude: Array, clear: float) -> Vector3:
+	var q := PhysicsShapeQueryParameters3D.new()
+	var ball := SphereShape3D.new()
+	ball.radius = clear + 0.1
+	q.shape = ball
+	q.exclude = exclude
+	var up: Vector3 = (Vector3.UP - t * t.y)
+	if up.length() < 0.1:
+		up = Vector3.FORWARD - t * t.z
+	up = up.normalized()
+	var side: Vector3 = t.cross(up).normalized()
+	var cands: Array = [] # [cost, offset]
+	for rad in [0.4, 0.8, 1.2, 1.8, 2.5, 3.5, 5.0, 7.0]:
+		for k in range(16):
+			var a: float = TAU * k / 16.0 # 0 = straight up
+			var o: Vector3 = (up * cos(a) + side * sin(a)) * rad
+			cands.append([rad * (1.0 + 0.5 * absf(cos(a))), o]) # (under: the floor is close)
+	cands.sort_custom(func(x: Array, y: Array) -> bool: return x[0] < y[0])
+	for c: Array in cands:
+		q.transform = Transform3D(Basis(), p + (c[1] as Vector3))
+		if space.intersect_shape(q, 1).is_empty():
+			return c[1]
+	return Vector3.ZERO
+
 func _build_line() -> void:
 	var lp: Dictionary = line_path(_gates)
-	var pts: PackedVector3Array = lp.pts
+	var small: bool = _gates.any(func(g: Dictionary) -> bool: return g.w < 1.0) # whoop gates indoors: a tighter ball
+	var pts: PackedVector3Array = clear_path(lp.pts, lp.seg, get_world_3d().direct_space_state, [drone.get_rid()] if drone else [], 0.15 if small else LINE_CLEAR)
+	if OS.has_environment("SH_LINE_RAW"): # dev: the line as it was before clear_path
+		pts = lp.pts
 	_line_seg = lp.seg
 	_line_pts = pts
 	_line_arc.resize(pts.size())

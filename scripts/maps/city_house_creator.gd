@@ -324,7 +324,7 @@ func _lod() -> void:
 		geo.tint = [Color(0.85, 0.42, 0.3), Color(0.55, 0.3, 0.25), Color(0.4, 0.42, 0.46)][rng.randi() % 3]
 		# (Its base 0.3 m down inside the box: on the box top, the two hidden
 		# faces lay flush - a flicker stack for the surface check.)
-		geo.prism(f * Transform3D(Basis(), Vector3(0, H - 0.3, -D * 0.5)), [Vector2(-e, 0.0), Vector2(e, 0.0), Vector2(0.0, 0.3 + D * 0.5 * tan(pitch))], W + 0.02, "ch_roof", false)
+		geo.prism(f * Transform3D(Basis(), Vector3(0, H - 0.3, -D * 0.5)), [Vector2(-e, 0.0), Vector2(e, 0.0), Vector2(0.0, 0.3 + D * 0.5 * tan(pitch))], W + 0.12, "ch_roof", false) # (6 cm wider than the box: at +1 cm the gable ends flickered)
 	geo.tint = Color.WHITE
 
 ## Walls: one box per part; with an archway the ground floor leaves a
@@ -544,13 +544,13 @@ func _balconies(bays: int, bay: float) -> void:
 func _railing(c: Vector3, length: float, along_x: bool) -> void:
 	_tint(Color(0.15, 0.15, 0.16))
 	if along_x:
-		_box(c + Vector3(0, 1.0, 0), Vector3(length, 0.05, 0.05), "chd_metal", false)
+		_box(c + Vector3(0, 1.0, 0), Vector3(length, 0.05, 0.05), "chd_metal")
 		var n: int = int(length / 0.12)
 		for k in range(0, n + 1, 2):
-			_box(c + Vector3(-length * 0.5 + k * length / n, 0.5, 0), Vector3(0.025, 1.0, 0.025), "chd_metal", false)
+			_box(c + Vector3(-length * 0.5 + k * length / n, 0.5, 0), Vector3(0.025, 1.0, 0.025), "chd_metal")
 	else:
-		_box(c + Vector3(0, 1.0, 0), Vector3(0.05, 0.05, length), "chd_metal", false)
-		_box(c + Vector3(0, 0.5, 0), Vector3(0.03, 1.0, length), "chd_metal", false)
+		_box(c + Vector3(0, 1.0, 0), Vector3(0.05, 0.05, length), "chd_metal")
+		_box(c + Vector3(0, 0.5, 0), Vector3(0.03, 1.0, length), "chd_metal")
 
 ## Pitched roof, ridge along the street: two tiled planes, gable walls
 ## at both ends (the neighbour's may stand taller - a fire wall), a
@@ -603,7 +603,7 @@ func _pitched_roof(bays: int, bay: float) -> void:
 ## glass railing, a lift housing and vents.
 func _flat_roof() -> void:
 	_tint(Color(0.5, 0.5, 0.5))
-	_box(Vector3(0, H + 0.05, -D * 0.5), Vector3(W, 0.1, D), "ch_flat")
+	_box(Vector3(0, H + 0.05, -D * 0.5), Vector3(W - 0.04, 0.1, D - 0.04), "ch_flat") # (2 cm in from the parapet's faces: flush, it flickered)
 	_tint(col)
 	for z in [-0.15, -D + 0.15]:
 		_box(Vector3(0, H + 0.45, z), Vector3(W, 0.8, 0.3), "ch_plaster")
@@ -676,7 +676,7 @@ func _yard(Y: float, door_x: float, arch: bool, arch_x: float) -> void:
 	var z1: float = -D - Y
 	var zm: float = (z0 + z1) * 0.5
 	_tint(Color(0.92, 0.92, 0.9))
-	_box(Vector3(0, -0.05, zm), Vector3(W, 0.1, Y), "ch_yard")
+	_box(Vector3(0, -0.05, zm), Vector3(W - 0.04, 0.1, Y - 0.04), "ch_yard") # (2 cm in from the walls' outer faces: flush, it flickered)
 	if Y >= 7.0 and rng2.randf() < 0.4:
 		# A patch of lawn in the middle, edged with kerb stones.
 		_tint(Color(0.7, 0.7, 0.68))

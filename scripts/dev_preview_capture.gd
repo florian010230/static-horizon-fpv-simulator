@@ -172,11 +172,15 @@ func _drone_shots() -> void:
 		var used: Rect2i = img.get_used_rect()
 		var c: Vector2 = Vector2(used.get_center())
 		var w: float = maxf(used.size.x, used.size.y * 680.0 / 450.0) * 1.18
+		if OS.has_environment("SH_DRONE_ZOOM"): # a close-up of the body
+			w /= float(OS.get_environment("SH_DRONE_ZOOM"))
 		var h: float = w * 450.0 / 680.0
 		var rect := Rect2i(int(c.x - w / 2.0), int(c.y - h / 2.0), int(w), int(h)).intersection(Rect2i(Vector2i.ZERO, out.get_size()))
 		out = out.get_region(rect)
 		out.resize(680, 450, Image.INTERPOLATE_LANCZOS)
-		out.save_png(ProjectSettings.globalize_path("res://previews/drone_%s.png" % id))
+		var ddir: String = OS.get_environment("SH_SHOT_DIR") if OS.has_environment("SH_SHOT_DIR") else ProjectSettings.globalize_path("res://previews")
+		DirAccess.make_dir_recursive_absolute(ddir)
+		out.save_png(ddir.path_join("drone_%s.png" % id))
 		print("DRONE ", id)
 	Settings.selected_drone = before
 
@@ -368,6 +372,14 @@ func _go() -> void:
 		return
 	if OS.get_cmdline_user_args().has("tracks"):
 		await _tracks_shots()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("splash"):
+		await _splash_shots()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("linefix"):
+		await _linefix_shots()
 		get_tree().quit()
 		return
 	if OS.get_cmdline_user_args().has("racelook"):
@@ -650,6 +662,13 @@ func _map_shots(scene: String, prefix: String, views: Array, pause_shots: bool =
 	if views.is_empty() and get_tree().current_scene.has_method("preview_views"):
 		var sc: Node = get_tree().current_scene
 		views = sc.views() if sc is BuiltMap else sc.preview_views()
+	if OS.has_environment("SH_VIEW"): # any camera: "name:ex,ey,ez:tx,ty,tz;name2:..."
+		views = []
+		for v in OS.get_environment("SH_VIEW").split(";"):
+			var f: PackedStringArray = v.split(":")
+			var e: PackedFloat64Array = f[1].split_floats(",")
+			var t: PackedFloat64Array = f[2].split_floats(",")
+			views.append([f[0], Vector3(e[0], e[1], e[2]), Vector3(t[0], t[1], t[2])])
 	if OS.has_environment("SH_VIEWS"): # (as in the labs: name prefixes)
 		var keep: PackedStringArray = OS.get_environment("SH_VIEWS").split(",")
 		views = views.filter(func(v: Array) -> bool: return Array(keep).any(func(k: String) -> bool: return String(v[0]).begins_with(k)))
@@ -1810,10 +1829,88 @@ func _tracks_shots() -> void:
 		cam.queue_free()
 	Settings.race_track = 1
 
+## `linefix <map id>`: every track's racing line where clear_path moved
+## it most (round something in the way), seen from the line ~10 m before.
+## Prints how far each was moved. linefix_<map>_t<n>.png.
+func _linefix_shots() -> void:
+	var args: PackedStringArray = OS.get_cmdline_user_args()
+	var map_id: String = args[args.find("linefix") + 1] if args.find("linefix") + 1 < args.size() else "race_field"
+	var m: Dictionary = MapCatalog.MAPS.filter(func(e: Dictionary) -> bool: return e.id == map_id)[0]
+	WorldBorder.disabled = true
+	Settings.game_mode = Settings.MODE_RACE
+	Settings.camera_look = 0
+	for t in range(1, RaceCourse.track_list(map_id).size() + 1):
+		Settings.race_track = t
+		get_tree().change_scene_to_file(m.scene)
+		await get_tree().create_timer(2.5).timeout
+		var root: Node = get_tree().current_scene
+		var course: RaceCourse = root.course
+		var drone := root.find_child("Drone", true, false) as RigidBody3D
+		drone.freeze = true
+		var raw: PackedVector3Array = RaceCourse.line_path(course._gates).pts
+		var best: int = -1
+		var most: float = 0.0
+		for i in range(mini(raw.size(), course._line_pts.size())):
+			var d: float = raw[i].distance_to(course._line_pts[i])
+			if d > most:
+				most = d
+				best = i
+		print("LINEFIX %s track %d: moved up to %.2f m at %s" % [map_id, t, most, str(course._line_pts[best]) if best >= 0 else "-"])
+		if best < 0 or most < 0.05:
+			continue
+		var n: int = course._gates.size()
+		var into: int = 0
+		for g in range(n):
+			if course._line_seg[g] <= best:
+				into = (g + 1) % n
+		var from: int = maxi(best - 15, 0)
+		var p: Vector3 = course._line_pts[from] + Vector3(0, 0.6, 0)
+		drone.global_transform = Transform3D(Basis.looking_at(course._line_pts[best] - p, Vector3.UP), p)
+		course._prev_pos = drone.global_position
+		course._next = into
+		course._lap_start = 0.0
+		course._lap = 1
+		course._update_line()
+		await get_tree().create_timer(0.8).timeout
+		await _drawn_frames(3)
+		_shot("linefix_%s_t%d.png" % [map_id, t])
+
+## `splash`: the drone dropped into Mountain Lake, seen from the shore
+## at 0.15 s, 0.4 s and 0.9 s after it hits the water. splash_<n>.png.
+func _splash_shots() -> void:
+	Settings.selected_drone = "seeker3"
+	get_tree().change_scene_to_file("res://scenes/maps/MountainLake.tscn")
+	await get_tree().create_timer(2.5).timeout
+	var sc: BuiltMap = get_tree().current_scene as BuiltMap
+	var d: Drone = sc.drone
+	var spot := Vector3(4, 0, -146)
+	var cam := Camera3D.new()
+	sc.add_child(cam)
+	cam.global_position = spot + Vector3(-3.5, 1.4, 3.5)
+	cam.look_at(spot + Vector3(0, 0.4, 0), Vector3.UP)
+	cam.current = true
+	var hit: Array = [false]
+	d.splashed.connect(func() -> void: hit[0] = true)
+	d.freeze = false
+	d.global_position = spot + Vector3(0, 1.0, 0)
+	d.linear_velocity = Vector3(1.5, -6, 0)
+	d.reset_physics_interpolation()
+	while not hit[0]:
+		await get_tree().process_frame
+	var t0: int = Time.get_ticks_msec()
+	for t in [150, 400, 900]:
+		while Time.get_ticks_msec() - t0 < t:
+			await get_tree().process_frame
+		await _drawn_frames(1)
+		_shot("splash_%d.png" % t)
+
 func _shot(filename: String) -> void:
 	var img := get_viewport().get_texture().get_image()
-	img.save_png("res://previews/%s" % filename)
-	print("SCREENSHOT_SAVED: previews/", filename)
+	# SH_SHOT_DIR: a folder of its own (old shots stay as they are).
+	var dir: String = OS.get_environment("SH_SHOT_DIR") if OS.has_environment("SH_SHOT_DIR") else ProjectSettings.globalize_path("res://previews")
+	DirAccess.make_dir_recursive_absolute(dir)
+	img.save_png(dir.path_join(filename))
+	print("SCREENSHOT_SAVED: ", dir.path_join(filename))
 
 func _find_button(node: Node, text: String) -> Button:
 	if node == null:

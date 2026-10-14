@@ -136,7 +136,11 @@ func _country_road(rng: RandomNumberGenerator) -> void:
 	var city := City.new(geo, rng, fleet)
 	# Clubhouse by the car park, a farm across the road.
 	# (HouseCreator, one storey, open: fly in through the terrace door.)
-	HouseCreator.build(geo, Vector3(63, 0.05, 68), 0.0, 4711, {"storeys": 1, "garage": "none"})
+	var club: Dictionary = HouseCreator.build(geo, Vector3(63, 0.05, 68), 0.0, 4711, {"storeys": 1, "garage": "none", "yard": true})
+	# Its front path on to the car park's gravel (2026-10-14: it ended in the grass).
+	var gate: Vector3 = club.gate
+	if gate != Vector3.INF and gate.x > 50.0:
+		geo.slab(Rect2(50.0, gate.z - 0.7, gate.x - 50.0 + 0.7, 1.4), 0.06, 0.1, "gravel", false)
 	city.house(Vector3(-60, 0, 125), 0.0, 14, 10, 2)
 	for k in range(3):
 		city.building(Vector3(-30 + k * 22, 0, 135), Vector2(18, 12), 0.0, 2, "cty_brick", "gable", false)
@@ -156,6 +160,8 @@ func _safety_net(z: float, x0: float, x1: float) -> void:
 	for i in range(n * 4):
 		var x: float = x0 + i * 1.0 + 0.5
 		geo.box(Vector3(x, 1.75, z), Vector3(0.02, 3.4, 0.02), "net", 0.0, false, false)
+	# The net's fine mesh: solid all over, not just its drawn strands.
+	geo.collider_box(Transform3D(Basis(), Vector3((x0 + x1) * 0.5, 1.75, z)), Vector3(x1 - x0, 3.4, 0.04))
 
 func _pilot_stand(o: Vector3) -> void:
 	geo.box(o + Vector3(0, 0.5, 0), Vector3(8, 1.0, 3), "wood")
