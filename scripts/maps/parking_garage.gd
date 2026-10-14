@@ -119,8 +119,11 @@ func _level_contents(lvl: int) -> void:
 		for i in range(22):
 			var x: float = -27 + i * 2.6
 			geo.box(Vector3(x, y + 0.025, side * 13.5), Vector3(0.1, 0.04, 5.0), "paint_line", 0.0, false, false) # (4.5 cm: 3 cm over the deck flickered)
+			var fpv_bay: bool = lvl == 0 and side > 0.0 and i == FPV_BAY
 			if rng.randf() < 0.3 and not _in_hole(lvl, Vector2(x + 1.3, side * 13.5), 2.5):
-				_car(Vector3(x + 1.3, y, side * 13.5), rng.randf_range(-0.1, 0.1))
+				_car(Vector3(x + 1.3, y, side * 13.5), rng.randf_range(-0.1, 0.1), fpv_bay) # (the FPV car's bay still draws the same random numbers)
+			if fpv_bay:
+				_fpv_car(Vector3(x + 1.3, 0.06, side * 13.5))
 	_car_park_paint(lvl, y)
 	_bando(lvl, y)
 	# Rubble under the collapsed holes above.
@@ -208,12 +211,30 @@ func _bando(lvl: int, y: float) -> void:
 					geo.box(t + b * Vector3(lx, 0.25, lz), Vector3(0.03, 0.5, 0.03), "steel_thin", yaw, false)
 			geo.box(t + Vector3(0, 0.75, 0), Vector3(0.6, 0.45, 0.9), "steel_thin", yaw, false)
 
-func _car(p: Vector3, yaw: float) -> void:
+func _car(p: Vector3, yaw: float, skip: bool = false) -> void:
 	var paint: String = ["car_red", "car_blue", "car_grey", "car_white"][rng.randi() % 4]
+	if skip:
+		return
 	# Nose into the bay (lengthwise along its 5 m lines - turned across, each
 	# car reached into the next bay and the next car).
 	geo.box(p + Vector3(0, 0.55, 0), Vector3(1.8, 0.7, 4.3), paint, yaw)
 	geo.box(p + Vector3(0, 1.12, 0), Vector3(1.6, 0.5, 2.2), "glass", yaw)
+
+const FPV_BAY: int = 8 ## the ground-level bay (south side, x -4.9) of the FPV car
+
+## Easter egg (2026-10-14): one real parked car (Vehicles.car, a hatch, no
+## shark-fin antenna) belongs to an FPV pilot - his goggles stand on the
+## cowl against the windscreen (the glass is opaque, so not on the dash
+## itself) and a drone backpack sits on the bonnet. Nose to the aisle.
+func _fpv_car(p: Vector3) -> void:
+	Vehicles.car(geo, p, 0.0, "veh_paint2", "hatch", false, false)
+	EggProps.ensure(geo)
+	# Hatch: nose at z = -2.05, bonnet from (-2.0, 0.80) up to (-1.07, 0.92).
+	var a: float = atan2(0.12, 0.93)
+	var bonnet := func(z: float) -> float: return 0.8 + (z + 2.0) / 0.93 * 0.12
+	var cxf := Transform3D(Basis(), p)
+	EggProps.backpack(geo, cxf * Transform3D(Basis(Vector3.RIGHT, -a), Vector3(-0.32, bonnet.call(-1.6) - 0.006, -1.6)))
+	EggProps.goggles(geo, cxf * Transform3D(Basis(Vector3.RIGHT, -a), Vector3(0.38, bonnet.call(-1.4) - 0.006, -1.4)))
 
 ## Two-lane ramp bay (see header).
 func _ramps() -> void:

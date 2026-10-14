@@ -312,6 +312,7 @@ func build() -> void:
 	_hotel(hotel_ln)
 	_camp(rng)
 	_cable_car()
+	_quad_rocks()
 	_waterfall()
 	_tarn()
 	_street(main, lane_w, hotel_ln)
@@ -902,6 +903,71 @@ func _cable_car() -> void:
 	geo.beam(sc + Vector3(-1.6, 5.0, 0), sc + Vector3(1.6, 5.0, 0), Vector2(0.28, 0.28), "ml_log")
 	geo.tint = Color(0.85, 0.7, 0.3)
 	geo.box(sc + Vector3(0, 5.0, 0.18), Vector3(0.5, 0.6, 0.08), "ml_paint", 0.0, false) # the summit book's box
+	geo.tint = Color.WHITE
+
+## Easter egg (2026-10-14): on the slope below the cable car's top station
+## the rocks lie in the shape of a quad seen from above - a boulder body,
+## four arms of stones and four round rotors of stones, ~28 m across. From
+## the station's windows and the drone's first climb it is just rocks;
+## from straight above it is a drone. The spot is the flattest place
+## 40-60 m downhill of the station that is off every road (searched
+## deterministically, same every build).
+func _quad_rocks() -> void:
+	var best := Vector2.INF
+	var best_score: float = INF
+	var zb: float = land.ground(CABLE_B.x, CABLE_B.y)
+	for ai in range(24):
+		var a: float = TAU * ai / 24.0
+		for r in [40.0, 50.0, 60.0]:
+			var q: Vector2 = CABLE_B + Vector2(cos(a), sin(a)) * r
+			var g: float = land.ground(q.x, q.y)
+			if g > zb - 4.0 or g < zb - 45.0 or land.on_line(q.x, q.y, 18.0) or land.in_pond(q.x, q.y, 16.0) or geo.on_lane(q, 18.0):
+				continue
+			var lo: float = INF
+			var hi: float = -INF
+			for k in range(12):
+				var p: Vector2 = q + Vector2(cos(TAU * k / 12.0), sin(TAU * k / 12.0)) * 14.0
+				var h: float = land.ground(p.x, p.y)
+				lo = minf(lo, h)
+				hi = maxf(hi, h)
+			var score: float = hi - lo + absf(g - (zb - 15.0)) * 0.1
+			if score < best_score:
+				best_score = score
+				best = q
+	if best == Vector2.INF:
+		return
+	var rr := RandomNumberGenerator.new()
+	rr.seed = 6174
+	var stones: Array = [[Vector2.ZERO, 2.0]]
+	for k in range(4):
+		var d := Vector2(cos(PI * 0.25 + PI * 0.5 * k), sin(PI * 0.25 + PI * 0.5 * k))
+		var c: Vector2 = d * 10.0
+		for j in range(4):
+			stones.append([d * (3.4 + j * 1.5), rr.randf_range(0.6, 0.8)])
+		stones.append([c, 1.5])
+		for j in range(10):
+			var b: float = TAU * j / 10.0 + k
+			stones.append([c + Vector2(cos(b), sin(b)) * 4.0, rr.randf_range(0.85, 1.1)])
+		for j in range(4):
+			var b2: float = TAU * j / 4.0 + 0.4
+			stones.append([c + Vector2(cos(b2), sin(b2)) * 1.9, rr.randf_range(0.7, 0.9)])
+	for st: Array in stones:
+		var p: Vector2 = best + (st[0] as Vector2) + Vector2(rr.randf_range(-0.12, 0.12), rr.randf_range(-0.12, 0.12))
+		var rad: float = st[1]
+		if land.on_line(p.x, p.y, rad + 1.0) or land.in_pond(p.x, p.y, rad + 1.0):
+			continue
+		var lo2: float = INF
+		var hi2: float = -INF
+		# (every point the floating check looks at: the centre, the sides and
+		# the corners of the stone's square footprint - a steep slope drops
+		# away fastest at the corners)
+		for o: Vector2 in [Vector2.ZERO, Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1), Vector2(1, 1), Vector2(1, -1), Vector2(-1, 1), Vector2(-1, -1)]:
+			var h2: float = land.ground(p.x + o.x * rad, p.y + o.y * rad)
+			lo2 = minf(lo2, h2)
+			hi2 = maxf(hi2, h2)
+		var h: float = (hi2 - lo2) + 0.3 + rad * 0.85
+		geo.tint = Color.WHITE.lerp(Color(0.8, 0.82, 0.86), rr.randf())
+		geo.lathe(Vector3(p.x, lo2 - 0.3, p.y), [Vector2(rad * 1.05, 0.0), Vector2(rad, h * 0.45), Vector2(rad * 0.7, h * 0.85), Vector2(0.01, h)], "ml_stone", 9)
 	geo.tint = Color.WHITE
 
 ## The waterfall's water (SH_WATER_LOOK preview): the lake's colour,

@@ -110,7 +110,7 @@ static var detail_v2: bool = not OS.has_environment("SH_CARS_OLD") # (approved 2
 ## daytime-running strip in each headlight, tail lights wrapping round
 ## the corners, roof rails (estate, SUV), a shark-fin antenna, the
 ## exhaust; the rims get five spokes. Cheap boxes - Fleet instances them.
-static func _car_detail(geo: Geo, xf: Transform3D, kind: String, s: Array, mat: String, zf: float, zr: float, zws: float, zrf: float, zrr: float, fa: float, ra: float, R: float, clear: float) -> void:
+static func _car_detail(geo: Geo, xf: Transform3D, kind: String, s: Array, mat: String, zf: float, zr: float, zws: float, zrf: float, zrr: float, fa: float, ra: float, R: float, clear: float, fin: bool = true) -> void:
 	var W: float = s[1]
 	var H: float = s[2]
 	var belt: float = s[3]
@@ -142,15 +142,15 @@ static func _car_detail(geo: Geo, xf: Transform3D, kind: String, s: Array, mat: 
 			_bx(geo, xf, Vector3(sx * (W * 0.5 - 0.22), H + 0.08, (zrf + zrr) * 0.5), Vector3(0.04, 0.04, zrr - zrf - 0.1), "veh_black")
 			for dz in [zrf + 0.1, zrr - 0.1]:
 				_bx(geo, xf, Vector3(sx * (W * 0.5 - 0.22), H + 0.04, dz), Vector3(0.04, 0.06, 0.05), "veh_black")
-	if kind != "van":
-		var fin: Vector3 = Vector3(0, H + 0.04, zrr - 0.15)
-		geo.frustum(xf * Transform3D(Basis(), fin), Vector3(0.06, 0.07, 0.16), 0.02, 0.06, 0.04, "veh_black", false, false)
+	if kind != "van" and fin:
+		var fin_at: Vector3 = Vector3(0, H + 0.04, zrr - 0.15)
+		geo.frustum(xf * Transform3D(Basis(), fin_at), Vector3(0.06, 0.07, 0.16), 0.02, 0.06, 0.04, "veh_black", false, false)
 	geo.cylinder(xf * Vector3(-W * 0.3, clear + 0.08, zr - 0.05), xf * Vector3(-W * 0.3, clear + 0.08, zr + 0.05), 0.035, "veh_chrome", 8, false)
 
 ## A car at p (ground), heading along local -z (yaw). kind: "sedan",
 ## "hatch", "estate", "suv", "van", "pickup", "taxi"; wreck = rusted,
 ## sunk on flat tyres, glass gone.
-static func car(geo: Geo, p: Vector3, yaw: float, paint: String, kind: String = "sedan", wreck: bool = false) -> void:
+static func car(geo: Geo, p: Vector3, yaw: float, paint: String, kind: String = "sedan", wreck: bool = false, fin: bool = true) -> void:
 	ensure_materials(geo)
 	var s: Array = CAR_SPECS.get(kind, CAR_SPECS.sedan)
 	var L: float = s[0]
@@ -235,7 +235,7 @@ static func car(geo: Geo, p: Vector3, yaw: float, paint: String, kind: String = 
 	if kind == "taxi":
 		_bx(geo, xf, Vector3(0, H + 0.12, (zrf + zrr) * 0.5), Vector3(0.62, 0.17, 0.22), "veh_amber")
 	if detail_v2 and not wreck:
-		_car_detail(geo, xf, kind, s, mat, zf, zr, zws, zrf, zrr, fa, ra, R, clear)
+		_car_detail(geo, xf, kind, s, mat, zf, zr, zws, zrf, zrr, fa, ra, R, clear, fin)
 	for sx in [-1.0, 1.0]:
 		for az in [fa, ra]:
 			_wheel(geo, xf, Vector3(sx * (W * 0.5 - 0.13), wr * (0.85 if wreck else 1.0), az), wr, 0.22)

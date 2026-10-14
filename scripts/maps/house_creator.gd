@@ -58,6 +58,9 @@ const FRONTS := [Color(0.96, 0.96, 0.95), Color(0.3, 0.32, 0.34), Color(0.62, 0.
 
 var geo: Geo
 var rng := RandomNumberGenerator.new()
+## The roof's shape for things that sit on it (Easter eggs): kind, pitch, W, D,
+## y0 = the height of the ridge's top surface at z = 0 (house-local), rl = ridge length.
+var roof_info: Dictionary = {}
 var toilets: Array = [] ## what swims in each toilet ("none" mostly)
 var xf: Transform3D ## house-local -> world
 var base: Vector3
@@ -154,7 +157,7 @@ static func build(g: Geo, pos: Vector3, yaw: float, seed_value: int, opts: Dicti
 	h._run(g, pos, yaw, seed_value, opts)
 	g.end_object()
 	return {"views": h.views, "size": Vector2(h.W, h.D), "toilets": h.toilets,
-		"gate": h.gate_at, "drive": h.drive_at, "xf": h.xf}
+		"gate": h.gate_at, "drive": h.drive_at, "xf": h.xf, "roof": h.roof_info}
 
 ## The whole plot (Grundstueck) a village hands over: the house set back
 ## from the street, then GardenCreator's fences (gates where the path
@@ -884,6 +887,7 @@ func _roof() -> void:
 			_box(Vector3(0, ye - 0.08, sd * (D * 0.5 + ov + 0.05)), Vector3(W + 2.0 * ov + 0.2, 0.12, 0.12), "hc_trim", false)
 			_box(Vector3(sd * (W * 0.5 + ov + 0.05), ye - 0.08, 0), Vector3(0.12, 0.12, D + 2.0 * ov), "hc_trim", false)
 		_tint(Color.WHITE)
+		roof_info = {"kind": "hip", "pitch": pitch, "W": W, "D": D, "y0": top, "rl": rl}
 		_downpipes(ye, ov)
 		_chimney(top, 0.0)
 		return
@@ -915,6 +919,7 @@ func _roof() -> void:
 	for sd in [-1.0, 1.0]:
 		_box(Vector3(0, ye - 0.06, sd * (D * 0.5 + ov + 0.1)), Vector3(W + 2.0 * gov, 0.12, 0.13), "hc_trim", false)
 	_tint(Color.WHITE)
+	roof_info = {"kind": "gable", "pitch": pitch, "W": W, "D": D, "y0": ridge + rt / cos(pitch), "rl": W}
 	_downpipes(ye, ov)
 	_chimney(ridge + rt, -1.0)
 	# Dormers on the street side.

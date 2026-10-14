@@ -77,6 +77,7 @@ func build() -> void:
 			geo.box(Vector3(-15 + i * 5, 2.98, -7.5 + j * 5), Vector3(1.2, 0.04, 0.6), "lamp", 0.0, false, false)
 	_outer_walls()
 	_desks()
+	_desk_eggs()
 	_meeting_room(Rect2(8, -11, 10, 8))
 	_kitchen()
 	_lounge()
@@ -122,6 +123,46 @@ func _desks() -> void:
 					geo.box(chair + Vector3(0, 0.46, 0), Vector3(0.5, 0.08, 0.5), "chair")
 					geo.box(chair + Vector3(0, 0.8, 0.25 * signf(dz)), Vector3(0.48, 0.6, 0.06), "chair")
 					geo.cylinder(chair + Vector3(0, 0.05, 0), chair + Vector3(0, 0.42, 0), 0.03, "metal", 6)
+
+## Easter eggs (2026-10-14), both on the first desk pair beside the north
+## aisle (monitor of the desk at -8.8, -5.6, its screen facing south, the
+## aisle): a yellow sticky note on the monitor - "TODO: fix the sim" - and
+## a coffee mug with the horizon mark on the desk next to it. Placed.
+func _desk_eggs() -> void:
+	EggProps.ensure(geo)
+	var screen := Vector3(-8.8, 1.0, -5.44) # (centre of that monitor; its face looks +z)
+	var face_z: float = screen.z + 0.015
+	var nxf := Transform3D(Basis(Vector3.BACK, 0.12), Vector3(screen.x + 0.2, screen.y + 0.07, face_z + 0.011))
+	geo.tint = Color(0.99, 0.88, 0.25)
+	geo.box_xf(nxf, Vector3(0.09, 0.09, 0.022), "egg_flat", false, false)
+	geo.tint = Color.WHITE
+	var tx := Transform3D(nxf.basis, nxf.origin + Vector3(0, 0, 0.0115))
+	StreetKit._label(geo, "TODO:", tx * Transform3D(Basis(), Vector3(0, 0.02, 0)), 0.00055, Color(0.15, 0.12, 0.1), 0.07)
+	StreetKit._label(geo, "fix the sim", tx * Transform3D(Basis(), Vector3(0, -0.012, 0)), 0.00055, Color(0.15, 0.12, 0.1), 0.075)
+	# The mug, 45 cm to the right of the monitor, on the desk (top at 0.745).
+	var mb := Vector3(-8.8 + 0.5, 0.745, -5.45)
+	var r: float = 0.04
+	geo.tint = Color(0.95, 0.95, 0.93)
+	geo.lathe(mb, [Vector2(r - 0.002, 0.0), Vector2(r, 0.006), Vector2(r, 0.095)], "egg_flat", 24, 0.004, false, false)
+	geo.cylinder(mb, mb + Vector3(0, 0.008, 0), r - 0.002, "egg_flat", 24, false, true, false)
+	geo.tint = Color(0.95, 0.95, 0.93)
+	geo.box(mb + Vector3(r + 0.008, 0.05, 0), Vector3(0.012, 0.05, 0.012), "egg_flat", 0.0, false, false)
+	for dy in [0.027, 0.073]:
+		geo.box(mb + Vector3(r + 0.002, dy, 0), Vector3(0.02, 0.01, 0.012), "egg_flat", 0.0, false, false)
+	geo.tint = Color(0.22, 0.12, 0.06)
+	geo.disc(mb + Vector3(0, 0.08, 0), Vector3.UP, r - 0.005, "egg_flat", 20)
+	# The horizon mark on its +z side.
+	var n := Vector3(0, 0, 1)
+	var lc: Vector3 = mb + Vector3(0, 0.052, r)
+	geo.tint = Color(0.97, 0.97, 0.97)
+	geo.fan(lc + n * 0.0015, n, 0.021, 0.0, TAU, "egg_flat", 20)
+	geo.tint = Color(0.13, 0.45, 0.88)
+	geo.fan(lc + n * 0.0025, n, 0.0175, 0.0, PI, "egg_flat", 12)
+	geo.tint = Color(0.91, 0.34, 0.11)
+	geo.fan(lc + n * 0.0025, n, 0.0175, PI, TAU, "egg_flat", 12)
+	geo.tint = Color(0.97, 0.97, 0.97)
+	geo.box_xf(Transform3D(Basis(), lc + n * 0.0035), Vector3(0.036, 0.003, 0.001), "egg_flat", false, false)
+	geo.tint = Color.WHITE
 
 func _meeting_room(rr: Rect2) -> void:
 	# Glass walls on the open-office sides, a door gap facing the desks.

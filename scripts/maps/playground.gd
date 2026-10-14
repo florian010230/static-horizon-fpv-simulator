@@ -68,9 +68,21 @@ func build() -> void:
 	_shelter(Vector3(-17, 0, 13))
 	_houses()
 	_trees()
+	_no_drones_sign()
 
 func after_build() -> void:
 	Collectibles.gnome(self, "playground", 0, Transform3D(Basis(Vector3.UP, 2.4), Vector3(3.2, 0.0, 15.0)))
+
+## Easter egg (2026-10-14): a NO DRONES sign (SignCreator) just inside the
+## gate, turned toward the spawn, with a tiny whoop parked on the top edge of
+## its plate - the pilot who put it there is well past caring. Placed.
+func _no_drones_sign() -> void:
+	var foot := Vector3(3.4, 0.0, 9.0)
+	var yaw: float = atan2(-3.4, 3.0)
+	SignCreator.post(geo, foot, yaw, [["no_drones", "NO DRONES"]])
+	var top: float = SignCreator.BOTTOM + SignCreator.height_of("no_drones") + SignCreator.GAP
+	var b := Basis(Vector3.UP, yaw)
+	EggProps.whoop(geo, Transform3D(b * Basis(Vector3.UP, 0.5), foot + b * Vector3(0.19, top + 0.001, 0.045)), false)
 
 func _fence() -> void:
 	var r := FENCE

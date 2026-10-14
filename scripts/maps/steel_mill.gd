@@ -114,6 +114,7 @@ func build() -> void:
 	_sidings()
 	_fence()
 	_ufo()
+	_whoop_in_chimney()
 	_paradies()
 	_decay()
 	_abandon()
@@ -1170,6 +1171,18 @@ func _ufo() -> void:
 	if OS.has_environment("SH_DUMP"):
 		print("SM ufo hatch floor ", xf * Vector3(-1.6, 2.01, 0.0), " ground ", g)
 	_views.append(["ufo_hatch", (xf * Vector3(-1.6, 3.6, 0.0)) + Vector3(-3, 2, 0), xf * Vector3(-1.6, 1.9, 0.0)])
+
+## Easter egg (2026-10-14): a tiny whoop hovers for ever inside the power
+## house's brick chimney, 3.7 m over the floor, a little tilted, its red
+## low-battery LED on. Seen through the flue inlet at the foot (the open
+## sector at 0-40 degrees) or straight down the shaft. Static, no chance.
+func _whoop_in_chimney() -> void:
+	var base := Vector3(238, 0, 8)
+	var gy: float = _height(base.x, base.z)
+	var a: float = deg_to_rad(20.0)
+	var p := Vector3(base.x + cos(a) * 1.1, gy + 3.7, base.z + sin(a) * 1.1)
+	EggProps.whoop(geo, Transform3D(Basis.from_euler(Vector3(0.14, 0.9, -0.1)), p), true, true)
+	_views.append(["egg_whoop", Vector3(base.x + 6.0, gy + 2.6, base.z + 3.0), p])
 
 static func _local_rng(s: int) -> RandomNumberGenerator:
 	var r := RandomNumberGenerator.new()

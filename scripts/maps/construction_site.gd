@@ -106,7 +106,14 @@ func build() -> void:
 	_ground()
 	_streets_and_blocks()
 	_tower()
-	_tower_crane(TOWER + Vector3(-26, 0, 22), 85.0, 60.0, 35.0)
+	# Easter egg (2026-10-14): with a 10% chance a garden gnome rides this
+	# crane's hook on a pallet instead of the rebar bundle. Its own random
+	# stream seeded from the map seed (5150 + 3; the first draw, 0.092, is
+	# under 0.10, so it shows - changing the map seed re-rolls it) - the
+	# map's rng draws stay as they were.
+	var egg_rng := RandomNumberGenerator.new()
+	egg_rng.seed = 5150 + 3
+	_tower_crane(TOWER + Vector3(-26, 0, 22), 85.0, 60.0, 35.0, egg_rng.randf() < 0.10)
 	_tower_crane(Vector3(-70, -PIT_DEPTH, -45), 62.0 + PIT_DEPTH, 55.0, 150.0)
 	_pit()
 	_steel_frame(Vector3(88, 0, 30))
@@ -322,7 +329,7 @@ func _scaffold(o: Vector3, length: float, lifts: int, along_z: bool) -> void:
 ## on a concrete base, slewing unit with the cab, the jib (triangular
 ## lattice) out to `jib`, counter-jib with ballast blocks, trolley and
 ## a hook with a load. yaw_deg = jib heading.
-func _tower_crane(base: Vector3, height: float, jib: float, yaw_deg: float) -> void:
+func _tower_crane(base: Vector3, height: float, jib: float, yaw_deg: float, gnome_load: bool = false) -> void:
 	var s: float = 1.0
 	geo.box(base + Vector3(0, 0.6, 0), Vector3(6, 1.2, 6), "concrete_old")
 	var corners: Array[Vector3] = [Vector3(-s, 0, -s), Vector3(s, 0, -s), Vector3(s, 0, s), Vector3(-s, 0, s)]
@@ -372,6 +379,17 @@ func _tower_crane(base: Vector3, height: float, jib: float, yaw_deg: float) -> v
 	var hook_y: float = maxf(base.y + 8.0, trolley.y - rng.randf_range(20.0, height * 0.7))
 	geo.beam(trolley, Vector3(trolley.x, hook_y, trolley.z), Vector2(0.04, 0.04), "dark", false, false)
 	geo.box(Vector3(trolley.x, hook_y - 0.3, trolley.z), Vector3(0.5, 0.6, 0.3), "crane_red", 0.0, false, false)
+	if gnome_load:
+		# A pallet (1.2 x 0.8 m) on four slings, a gnome standing on it.
+		var py: float = hook_y - 2.15
+		geo.tint = Color(0.8, 0.68, 0.5)
+		geo.box(Vector3(trolley.x, py - 0.075, trolley.z), Vector3(1.2, 0.15, 0.8), "rebar", 0.0, true, false)
+		geo.tint = Color.WHITE
+		for cx in [-1.0, 1.0]:
+			for cz in [-0.7, 0.7]:
+				geo.beam(Vector3(trolley.x, hook_y - 0.6, trolley.z), Vector3(trolley.x + cx * 0.58, py, trolley.z + cz * 0.38), Vector2(0.03, 0.03), "dark", false, false)
+		EggProps.gnome(geo, Vector3(trolley.x, py, trolley.z), -0.6, 1.0)
+		return
 	geo.box(Vector3(trolley.x, hook_y - 2.8, trolley.z), Vector3(2.2, 1.3, 1.6), "rebar")
 	# Four slings from the hook down to the load's corners.
 	for cx in [-1.0, 1.0]:

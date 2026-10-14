@@ -137,6 +137,7 @@ func _country_road(rng: RandomNumberGenerator) -> void:
 	# Clubhouse by the car park, a farm across the road.
 	# (HouseCreator, one storey, open: fly in through the terrace door.)
 	var club: Dictionary = HouseCreator.build(geo, Vector3(63, 0.05, 68), 0.0, 4711, {"storeys": 1, "garage": "none", "yard": true})
+	_lost_drone_on_roof(club)
 	# Its front path on to the car park's gravel (2026-10-14: it ended in the grass).
 	var gate: Vector3 = club.gate
 	if gate != Vector3.INF and gate.x > 50.0:
@@ -148,6 +149,33 @@ func _country_road(rng: RandomNumberGenerator) -> void:
 func after_build() -> void:
 	course = RaceCourse.make(self, tracks())
 	course.setup("race_field", drone, ui)
+
+## Easter egg (2026-10-14): a lost 5-inch quad lies on the clubhouse roof,
+## a little 12 x 6 cm tag tied to it: PLEASE RETURN. On the south slope,
+## near the eaves (placed, no chance).
+func _lost_drone_on_roof(club: Dictionary) -> void:
+	var rf: Dictionary = club.get("roof", {})
+	if rf.is_empty():
+		return
+	var hxf: Transform3D = club.xf
+	var yaw: float = atan2(hxf.basis.z.x, hxf.basis.z.z) # (not hxf.basis: the house may be mirrored)
+	var pitch: float = rf.pitch
+	var zq: float = rf.D * 0.5 + 0.1 # (about 40 cm up from the eaves: where a drone slid off the ridge would stop)
+	var xl: float = 0.0 if rf.kind == "hip" else -rf.W * 0.18
+	var pos: Vector3 = hxf * Vector3(xl, rf.y0 - zq * tan(pitch) - 0.01, zq)
+	var bs := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch)
+	EggProps.ensure(geo)
+	EggProps.quad5(geo, Transform3D(bs * Basis(Vector3.UP, 0.8), pos))
+	# The tag, flat on the tiles (2.2 cm thick so the tiles can't flicker through it).
+	var tc: Vector3 = pos + bs * Vector3(0.2, 0.0, 0.07)
+	geo.tint = Color(0.97, 0.97, 0.95)
+	geo.box_xf(Transform3D(bs * Basis(Vector3.UP, 0.25), tc + bs * Vector3(0, 0.009, 0)), Vector3(0.12, 0.024, 0.06), "egg_flat", false, false)
+	geo.tint = Color.WHITE
+	var lbl := Transform3D(bs * Basis(Vector3.UP, 0.25), tc + bs * Vector3(0, 0.0215, 0)) * Transform3D(Basis(Vector3.RIGHT, -PI * 0.5))
+	StreetKit._label(geo, "PLEASE RETURN", lbl, 0.0004, Color(0.08, 0.08, 0.1), 0.105)
+	geo.tint = Color(0.1, 0.1, 0.11)
+	geo.beam(pos + bs * Vector3(0.05, 0.03, 0.0), tc + bs * Vector3(-0.05, 0.015, 0.0), Vector2(0.003, 0.003), "egg_flat", false, false)
+	geo.tint = Color.WHITE
 
 ## Tall black net between the course and the people.
 func _safety_net(z: float, x0: float, x1: float) -> void:

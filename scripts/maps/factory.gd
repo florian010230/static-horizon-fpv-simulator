@@ -349,10 +349,41 @@ func _cooling_tower(c: Vector3) -> Array:
 	geo.box(c + Vector3(-13.0, 11.85, 0), Vector3(1.6, 0.3, 4.0), "fc_concrete")
 	geo.tint = Color.WHITE
 	_gnomes.append([gp, PI * 0.5])
+	var camp: Vector3 = _campsite(c)
 	return [["cooling_tower", c + Vector3(55, 20, 45), c + Vector3(0, 18, 0)],
 		["cooling_inside", c + Vector3(8, 3.5, 6), c + Vector3(0, 40, 0)],
 		["cooling_legs", c + Vector3(30, 3.0, 0), c + Vector3(0, 3, 0)],
-		["gnome_cooling", c + Vector3(-9.5, 13.0, 1.5), gp]]
+		["gnome_cooling", c + Vector3(-9.5, 13.0, 1.5), gp],
+		["egg_camp", c + Vector3(-5.5, 14.5, 12.0), camp]]
+
+## Easter egg (2026-10-14): a tiny campsite on the cooling tower's inner
+## ledge, round the corner from the gnome - the ledge runs on along the
+## wall in five more segments, with a small tent, a fire (stones, logs, an
+## orange glow) and a camp chair facing it. Placed (no chance). Returns
+## the fire's place, for the preview view.
+func _campsite(c: Vector3) -> Vector3:
+	var R: float = 12.95
+	var spots: Array = []
+	geo.tint = Color(0.7, 0.7, 0.68)
+	for k in range(5):
+		var phi: float = 0.26 + 0.21 * k
+		var th: float = PI - phi
+		var radial := Vector3(cos(th), 0, sin(th))
+		geo.box_xf(Transform3D(Basis.looking_at(radial, Vector3.UP), c + radial * R + Vector3(0, 11.85, 0)), Vector3(2.9, 0.3, 1.6), "fc_concrete")
+	geo.tint = Color.WHITE
+	for phi: float in [0.47, 0.73, 0.97]:
+		var th2: float = PI - phi
+		var p: Vector3 = c + Vector3(cos(th2), 0, sin(th2)) * R + Vector3(0, 12.0, 0)
+		var p2: Vector3 = c + Vector3(cos(th2 - 0.01), 0, sin(th2 - 0.01)) * R + Vector3(0, 12.0, 0)
+		spots.append([p, (p2 - p).normalized()]) # (tangent toward the next, higher phi)
+	var tp: Array = spots[0]
+	var tangent: Vector3 = tp[1] # toward the fire (the fire is at the higher phi)
+	var tb := Basis(tangent, Vector3.UP, tangent.cross(Vector3.UP))
+	EggProps.tent(geo, Transform3D(tb, tp[0]))
+	EggProps.campfire(geo, spots[1][0])
+	# (the chair at the highest phi looks toward the lower phi, at the fire)
+	EggProps.camp_chair(geo, Transform3D(Basis.looking_at(-(spots[2][1] as Vector3), Vector3.UP), spots[2][0]))
+	return spots[1][0]
 
 ## Loading platform along the siding with a canopy on columns (fly
 ## under it beside the wagons), the hopper's track side.

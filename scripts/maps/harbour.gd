@@ -146,6 +146,7 @@ func build() -> void:
 	_railway()
 	_station()
 	_terminal()
+	_open_container()
 	_bulk_berth()
 	_basin()
 	_tank_farm()
@@ -536,6 +537,66 @@ func _straddle(p: Vector3) -> void:
 func _floodlight(p: Vector3) -> void:
 	geo.cylinder(p, p + Vector3(0, 30, 0), 0.35, "steel", 8)
 	geo.box(p + Vector3(0, 30.5, 0), Vector3(4, 1.4, 1.2), "white")
+
+## Easter egg (2026-10-14): one container at the end of the empty-container
+## depot stands with its doors swung open - inside, a tiny whoop race
+## track: four 0.4 m gates weaving down the box and a start line on the
+## floor. Placed (no chance); the spot is the first free one of a few.
+func _open_container() -> void:
+	EggProps.ensure(geo)
+	if not geo.has_material("egg_lamp"):
+		geo.add_material("egg_lamp", Geo.glow_mat(Color(1.0, 0.97, 0.85), 1.4))
+	var spot := Vector2.INF
+	for q: Vector2 in [Vector2(440, -150), Vector2(440, -168), Vector2(420, -150), Vector2(455, -150), Vector2(400, -165)]:
+		if geo.claim_free(q, Vector2(1, 0), Vector2(CONT.z * 0.5, CONT.x * 0.5), 1.0):
+			spot = q
+			break
+	if spot == Vector2.INF:
+		return
+	var mat: String = "c_white"
+	var L: float = CONT.x
+	var W: float = CONT.z
+	var H: float = CONT.y
+	var xf := Transform3D(Basis(Vector3.UP, PI), Vector3(spot.x, 0.0, spot.y)) # (the door end, local +z, faces -z)
+	var fl: float = 0.15
+	geo.begin_object("container")
+	geo.box_xf(xf * Transform3D(Basis(), Vector3(0, fl * 0.5 - 0.02, 0)), Vector3(W, fl + 0.04, L), mat)
+	geo.box_xf(xf * Transform3D(Basis(), Vector3(0, H - 0.03, 0)), Vector3(W, 0.06, L), mat)
+	for sx in [-1.0, 1.0]:
+		geo.box_xf(xf * Transform3D(Basis(), Vector3(sx * (W * 0.5 - 0.03), (H + fl) * 0.5 - 0.03, 0)), Vector3(0.06, H - fl - 0.06, L), mat)
+	geo.box_xf(xf * Transform3D(Basis(), Vector3(0, (H + fl) * 0.5 - 0.03, -L * 0.5 + 0.03)), Vector3(W - 0.12, H - fl - 0.06, 0.06), mat)
+	# Corner posts and the header at the door end, where the doors hang.
+	geo.tint = Color(0.8, 0.8, 0.8)
+	for sx in [-1.0, 1.0]:
+		geo.box_xf(xf * Transform3D(Basis(), Vector3(sx * (W * 0.5 - 0.06), H * 0.5, L * 0.5 - 0.06)), Vector3(0.12, H, 0.12), mat)
+	geo.box_xf(xf * Transform3D(Basis(), Vector3(0, H - 0.07, L * 0.5 - 0.06)), Vector3(W, 0.14, 0.12), mat)
+	geo.tint = Color.WHITE
+	# The doors, each swung 100 degrees out round its corner post.
+	var phi: float = deg_to_rad(100.0)
+	for sx in [-1.0, 1.0]:
+		var hinge := Vector3(sx * (W * 0.5 + 0.02), 0.0, L * 0.5 + 0.04)
+		var d := Vector3(-sx * cos(phi), 0.0, sin(phi))
+		var centre: Vector3 = hinge + d * (W * 0.25) + Vector3(0, (H - 0.2) * 0.5 + 0.1, 0)
+		var db := Basis.looking_at(xf.basis * d, Vector3.UP)
+		geo.box_xf(Transform3D(db, xf * centre), Vector3(0.05, H - 0.2, W * 0.5 - 0.02), mat)
+	# Inside: a strip lamp, the start line on the floor (and its word), four gates.
+	geo.box_xf(xf * Transform3D(Basis(), Vector3(0, H - 0.08, 0.5)), Vector3(0.7, 0.02, 0.06), "egg_lamp", false, false)
+	var top: float = fl + 0.012 # (floor top + a hair: the line and the gates stand 1.2 cm proud of it)
+	geo.tint = Color(0.96, 0.96, 0.94)
+	geo.box_xf(xf * Transform3D(Basis(), Vector3(0, fl + 0.006, 4.6)), Vector3(W - 0.5, 0.012, 0.07), "egg_flat", false, false)
+	geo.tint = Color.WHITE
+	var lbl := xf * Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(0, fl + 0.03, 4.1))
+	StreetKit._label(geo, "START", lbl, 0.004, Color(0.96, 0.96, 0.94), 0.5)
+	var gates: Array = [[0.25, 2.6, 0.25], [-0.3, 0.2, -0.35], [0.3, -2.2, 0.3], [-0.2, -4.2, -0.2]]
+	for gt: Array in gates:
+		var gx := xf * Transform3D(Basis(Vector3.UP, gt[2]), Vector3(gt[0], top, gt[1]))
+		geo.tint = Color(1.6, 0.8, 0.2)
+		for sx in [-1.0, 1.0]:
+			geo.box_xf(gx * Transform3D(Basis(), Vector3(sx * 0.2, 0.2, 0.0)), Vector3(0.03, 0.4, 0.03), "egg_flat", false, false)
+		geo.box_xf(gx * Transform3D(Basis(), Vector3(0, 0.385, 0.0)), Vector3(0.43, 0.03, 0.03), "egg_flat", false, false)
+		geo.box_xf(gx * Transform3D(Basis(), Vector3(0, 0.015, 0.0)), Vector3(0.43, 0.03, 0.03), "egg_flat", false, false)
+		geo.tint = Color.WHITE
+	geo.end_object()
 
 func _cont(c: Vector3) -> void:
 	geo.box(c + Vector3(0, CONT.y * 0.5, 0), CONT, _colors[rng.randi() % _colors.size()])

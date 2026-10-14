@@ -67,6 +67,13 @@ func restore_state(state: Dictionary) -> void:
 	_gnomes = state.gnomes
 
 func after_build() -> void:
+	# Easter egg (2026-10-14): a bird on the church roof's ridge (ridge top
+	# 15.74 m, 3 m east of the nave's middle) that flies off when the drone
+	# comes within 6 m. Always there; it is a runtime node (see Bird).
+	var bird := Bird.new()
+	bird.drone = drone
+	add_child(bird)
+	bird.position = Vector3(CHURCH.x + 3.0, 15.72, CHURCH.z)
 	for id in VillageCourse.COURSES:
 		var vc := VillageCourse.create(self, id, courses()[id])
 		if drone:
@@ -461,16 +468,31 @@ func _church_square(_roads: Roads) -> Array:
 			holes.append(Rect2(-0.5, 9.0, 1.0, 1.8))
 		var hw: float = tw * 0.5 - (tt if k % 2 == 1 else 0.0)
 		BuildKit.wall(geo, wxf, -hw, hw, y0, top, tt, holes, "vg_plaster", y0)
-		# Clock face.
+		# Clock face (2026-10-14: a real dial): a dark bezel, the white dial
+		# (a full fan, 3 cm in front of it), twelve hour marks, the hour hand
+		# and the minute hand at 10:10, a boss in the middle. Each layer is
+		# 1-3 cm in front of the last.
 		var clock: Vector3 = xf * (tc + dirv * (tw * 0.5 + 0.06) + Vector3(0, 21.0, 0))
+		var cn: Vector3 = (xf.basis * dirv).normalized()
+		var cf := Transform3D(Basis.looking_at(-cn, Vector3.UP), clock) # (+z toward the viewer, +x to his right)
 		geo.tint = Color(0.15, 0.2, 0.3)
-		geo.disc(clock, xf.basis * dirv, 1.15, "vg_paint", 20)
+		geo.disc(clock, cn, 1.15, "vg_paint", 24)
 		geo.tint = Color(0.95, 0.95, 0.9)
-		geo.disc(clock + xf.basis * dirv * 0.02, xf.basis * dirv, 1.0, "vg_paint", 20)
+		geo.fan(clock + cn * 0.03, cn, 1.0, 0.0, TAU, "vg_paint", 32)
 		geo.tint = Color(0.1, 0.1, 0.1)
-		var side := Vector3(-dirv.z, 0, dirv.x)
-		geo.beam(clock + dirv * 0.05, clock + dirv * 0.05 + Vector3(0, 0.75, 0), Vector2(0.06, 0.03), "vg_paint", false)
-		geo.beam(clock + dirv * 0.05, clock + dirv * 0.05 + side * 0.5 - Vector3(0, 0.2, 0), Vector2(0.08, 0.03), "vg_paint", false)
+		for hk in range(12):
+			var ang: float = TAU * hk / 12.0 # (clockwise from 12)
+			var big: bool = hk % 3 == 0
+			var ln: float = 0.2 if big else 0.12
+			var rad: float = 0.9 - ln * 0.5
+			var mk := cf * Transform3D(Basis(Vector3.BACK, -ang), Vector3(sin(ang) * rad, cos(ang) * rad, 0.045))
+			geo.box_xf(mk, Vector3(0.07 if big else 0.04, ln, 0.02), "vg_paint", false, false)
+		for hand: Array in [[deg_to_rad(305.0), 0.55, 0.09, 0.06], [deg_to_rad(60.0), 0.8, 0.06, 0.075]]:
+			var ha: float = hand[0]
+			var hl: float = hand[1]
+			var hm := cf * Transform3D(Basis(Vector3.BACK, -ha), Vector3(sin(ha) * hl * 0.5, cos(ha) * hl * 0.5, hand[3]))
+			geo.box_xf(hm, Vector3(hand[2], hl, 0.015), "vg_paint", false, false)
+		geo.cylinder(clock + cn * 0.06, clock + cn * 0.1, 0.07, "vg_paint", 10, false)
 		geo.tint = Color.WHITE
 	# Cornice and the corner stones.
 	geo.tint = Color(0.85, 0.8, 0.72)
