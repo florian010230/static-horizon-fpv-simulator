@@ -675,26 +675,9 @@ func _cabin_and_pier() -> void:
 ## "DO NOT FLY": a red-ringed plate with a quad crossed out, on a post at
 ## the pier's edge, facing whoever stands at the spawn.
 func _sign(p: Vector3) -> void:
-	StreetKit.ensure_materials(geo)
-	geo.cylinder(p + Vector3(0, -0.6, 0), p + Vector3(0, 2.1, 0), 0.04, "sk_steel", 8)
-	var xf := Transform3D(Basis(Vector3.UP, PI + 0.5), p + Vector3(0, 1.75, 0))
-	geo.tint = Color(0.96, 0.96, 0.95)
-	geo.box_xf(xf, Vector3(0.62, 0.78, 0.03), "sk_paint", false)
-	var face := xf * Transform3D(Basis(), Vector3(0, 0.08, 0.02))
-	geo.tint = Color(0.8, 0.08, 0.08)
-	for k in range(16):
-		var a: float = TAU * k / 16.0
-		var b: float = TAU * (k + 1) / 16.0
-		geo.beam(face * Vector3(cos(a) * 0.22, sin(a) * 0.22, 0), face * Vector3(cos(b) * 0.22, sin(b) * 0.22, 0), Vector2(0.05, 0.01), "sk_paint", false, false)
-	geo.tint = Color(0.08, 0.08, 0.08)
-	for s in [-1.0, 1.0]:
-		geo.beam(face * Vector3(-0.1, -0.1 * s, 0.0), face * Vector3(0.1, 0.1 * s, 0.0), Vector2(0.025, 0.008), "sk_paint", false, false)
-		for t in [-1.0, 1.0]:
-			geo.cylinder(face * Vector3(0.1 * t, 0.1 * s * t, -0.004), face * Vector3(0.1 * t, 0.1 * s * t, 0.006), 0.045, "sk_paint", 10, false)
-	geo.tint = Color(0.8, 0.08, 0.08)
-	geo.beam(face * Vector3(-0.16, 0.16, 0.008), face * Vector3(0.16, -0.16, 0.008), Vector2(0.045, 0.01), "sk_paint", false, false)
-	geo.tint = Color.WHITE
-	StreetKit._label(geo, "DO NOT FLY", xf * Transform3D(Basis(), Vector3(0, -0.27, 0.02)), 0.0021, Color(0.1, 0.1, 0.1))
+	# (SignCreator's drone-ban plate - 2026-10-14, the user: the old
+	# hand-made one didn't look good; the Playground's is the same model.)
+	SignCreator.post(geo, p, PI + 0.5, [["no_drones", "DO NOT FLY"]], 1.0)
 	_views.append(["do_not_fly", p + Vector3(-1.2, 1.4, -2.8), p + Vector3(0, 1.6, 0)])
 
 ## The island chapel: white walls, a shingle roof, a bell tower with an
@@ -1001,10 +984,14 @@ func _waterfall() -> void:
 		if y2 < WATER_Y + 0.12:
 			y2 = WATER_Y - 0.15
 			if not under:
-				# Straight down through the surface (a slope would cross it).
+				# Straight down through the surface (a slope would cross it),
+				# and that is where it ends: under the water nobody sees it,
+				# and it would hang over the lake bed.
 				under = true
 				var last: PackedVector3Array = rows[rows.size() - 1]
 				rows.append(PackedVector3Array([Vector3(last[0].x, y2, last[0].z), Vector3(last[1].x, y2, last[1].z)]))
+				entry = Vector2(last[0].x + last[1].x, last[0].z + last[1].z) * 0.5 + dirv * 2.0
+				break
 		rows.append(PackedVector3Array([Vector3(q2.x, y2, q2.y) - acr2 * 6.2, Vector3(q2.x, y2, q2.y) + acr2 * 6.2]))
 		if g2 < WATER_Y - 0.4:
 			if entry == Vector2.INF:

@@ -8,7 +8,7 @@ const SPACING: float = 2.6
 const CASES: Array = [
 	[["give_way"]], [["stop"]], [["priority"]], [["speed", "30"]], [["speed", "50"]], [["no_entry"]],
 	[["dead_end"]], [["crossing"]], [["parking"]], [["danger"]],
-	[["direction", "Holderbach", "3 km"]], [["give_way"], ["street", "Kirchgasse"]], [["priority"], ["speed", "70"]],
+	[["direction", "Holderbach", "3 km"]], [["give_way"], ["street", "Kirchgasse"]], [["priority"], ["speed", "70"]], [["no_drones", "NO DRONES"]],
 ]
 var _views: Array = []
 

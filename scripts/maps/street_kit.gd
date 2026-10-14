@@ -83,16 +83,14 @@ static func give_way(g: Geo, branch: RoadCreator) -> void:
 	var right := Vector3(-drive.z, 0, drive.x)
 	var p: Vector3 = pts[0] + t0 * 2.0 + right * (branch.line.half + branch.opts.get("verge", 1.0) + 0.6)
 	p.y = branch.land.ground(p.x, p.z)
-	_post(g, p, SIGN_H + 0.95, 0.04)
-	# The plate faces the driver (+t0); a triangle point down, 0.9 m a side.
-	var yaw: float = atan2(t0.x, t0.z)
-	var xf := Transform3D(Basis(Vector3.UP, yaw), p + Vector3(0, SIGN_H + 0.5, 0) + t0 * 0.06)
-	g.tint = Color(0.8, 0.08, 0.08)
-	g.prism(xf * Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3.ZERO), [Vector2(-0.48, 0.28), Vector2(0.48, 0.28), Vector2(0, -0.55)], 0.03, "sk_paint", false)
-	g.tint = Color(0.96, 0.96, 0.95)
-	# (In the turned frame the extrusion axis x points away from the driver.)
-	g.prism(xf * Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3(-0.025, 0, 0)), [Vector2(-0.33, 0.2), Vector2(0.33, 0.2), Vector2(0, -0.37)], 0.03, "sk_paint", false)
-	g.tint = Color.WHITE
+	# The plate faces the driver (+t0): SignCreator's 205 (2026-10-14).
+	SignCreator.post(g, p, atan2(t0.x, t0.z), [["give_way"]])
+	# A lane ending in a turning circle: the dead-end sign at its mouth,
+	# on the other side, for traffic turning in (357).
+	if branch.opts.get("end", "") == "turning":
+		var q: Vector3 = pts[0] + t0 * 3.0 - right * (branch.line.half + branch.opts.get("verge", 1.0) + 0.6)
+		q.y = branch.land.ground(q.x, q.z)
+		SignCreator.post(g, q, atan2(-t0.x, -t0.z), [["dead_end"]])
 
 ## The yellow place-name board (Ortstafel) at d along the road, on the
 ## right of traffic driving in `dir` (+1 along the road, -1 against it):

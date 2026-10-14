@@ -155,7 +155,9 @@ static func lamps(roads: Roads, road: RoadCreator, d0: float, d1: float, every: 
 		foot.y = p.y
 		if road.land != null: # into the verge where it falls away
 			foot.y = minf(p.y, road.land.ground(foot.x, foot.z)) - Geo.SINK
-		roads.lamp(foot, -right)
+		# Main roads (6 m and wider) get the tall whip mast, village
+		# streets the lantern post.
+		roads.lamp(foot, -right, "whip" if road.width >= 6.0 else "village")
 		side = -side
 		d += every
 

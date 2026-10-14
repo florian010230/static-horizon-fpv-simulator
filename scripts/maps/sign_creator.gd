@@ -11,7 +11,8 @@ extends RefCounted
 ## yaw: the way the faces look (toward the traffic they speak to).
 ## Kinds: give_way (205), stop (206), priority (306), speed (274, text =
 ## the limit), no_entry (267), dead_end (357), crossing (350), parking
-## (314), danger (101), direction (yellow arrow board: text = place,
+## (314), danger (101), no_drones (a drone-ban plate: the round ban
+## sign over a quad, text = the line under it), direction (yellow arrow board: text = place,
 ## "km" in text2), street (a street-name plate: text).
 
 const BOTTOM: float = 2.1 ## lower edge of the lowest sign over the ground
@@ -36,16 +37,17 @@ static func height_of(kind: String) -> float:
 		"give_way", "danger": return 0.78
 		"priority": return 0.85
 		"direction": return 0.32
+		"no_drones": return 0.78
 		"street": return 0.17
 	return 0.6
 
-static func post(g: Geo, foot: Vector3, yaw: float, signs: Array) -> void:
+static func post(g: Geo, foot: Vector3, yaw: float, signs: Array, bottom: float = BOTTOM) -> void:
 	ensure_materials(g)
 	g.begin_object("sign")
 	var total: float = 0.0
 	for s: Array in signs:
 		total += height_of(s[0]) + GAP
-	var top: float = BOTTOM + total
+	var top: float = bottom + total
 	var y0: float = g.sunk([foot], foot.y)
 	g.cylinder(Vector3(foot.x, y0 - 0.3, foot.z), foot + Vector3(0, top + 0.05, 0), 0.03, "sg_steel", 8)
 	g.cylinder(foot + Vector3(0, top + 0.05, 0), foot + Vector3(0, top + 0.08, 0), 0.034, "sg_black", 8) # cap
@@ -132,6 +134,25 @@ static func _face(g: Geo, xf: Transform3D, s: Array) -> void:
 			StreetKit._label(g, text, L.call(3) * Transform3D(Basis(), Vector3(-0.12, 0, 0)), 0.0034, Color(0.06, 0.06, 0.06), 0.72)
 			if km != "":
 				StreetKit._label(g, km, L.call(3) * Transform3D(Basis(), Vector3(0.38, 0, 0)), 0.0028, Color(0.06, 0.06, 0.06), 0.18)
+		"no_drones":
+			# White plate, the round ban sign in its top part, a black quad
+			# seen from above crossed out in red, the words underneath.
+			g.plate(L.call(0), _rect(0.6, 0.78), "sg_white", "sg_back")
+			var c := Vector2(0, 0.1)
+			g.plate(L.call(1), _circle(0.25).map(func(q: Vector2) -> Vector2: return q + c), "sg_red")
+			g.plate(L.call(2), _circle(0.2).map(func(q: Vector2) -> Vector2: return q + c), "sg_white")
+			for k in range(2):
+				var a: float = PI * 0.25 + k * PI * 0.5
+				var d := Vector2(cos(a), sin(a))
+				var n2 := Vector2(-d.y, d.x)
+				g.plate(L.call(3), [c - d * 0.13 - n2 * 0.012, c + d * 0.13 - n2 * 0.012, c + d * 0.13 + n2 * 0.012, c - d * 0.13 + n2 * 0.012], "sg_black")
+				for e in [-1.0, 1.0]:
+					g.plate(L.call(3), _circle(0.045, 14).map(func(q: Vector2) -> Vector2: return q + c + d * e * 0.13), "sg_black")
+			g.plate(L.call(3), _rect(0.06, 0.06).map(func(q: Vector2) -> Vector2: return q + c), "sg_black")
+			var bd := Vector2(cos(PI * 0.75), sin(PI * 0.75))
+			var bn := Vector2(-bd.y, bd.x)
+			g.plate(L.call(4), [c - bd * 0.2 - bn * 0.022, c + bd * 0.2 - bn * 0.022, c + bd * 0.2 + bn * 0.022, c - bd * 0.2 + bn * 0.022], "sg_red")
+			StreetKit._label(g, text, L.call(1) * Transform3D(Basis(), Vector3(0, -0.27, 0)), 0.0028, Color(0.06, 0.06, 0.06), 0.52)
 		"street":
 			g.plate(L.call(0), _rect(0.7, 0.17), "sg_black", "sg_back")
 			g.plate(L.call(1), _rect(0.67, 0.14), "sg_white")

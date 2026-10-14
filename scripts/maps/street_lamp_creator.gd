@@ -36,7 +36,7 @@ static func build(g: Geo, foot: Vector3, toward: Vector3, kind: String = "led") 
 	var t: Vector3 = Vector3(toward.x, 0, toward.z).normalized()
 	if t.length() < 0.5:
 		t = Vector3.FORWARD
-	g.begin_object("lamp")
+	# (Not a layout object: its arm reaches over the road on purpose.)
 	match kind:
 		"whip":
 			_whip(g, foot, t)
@@ -44,13 +44,14 @@ static func build(g: Geo, foot: Vector3, toward: Vector3, kind: String = "led") 
 			_village(g, foot, t)
 		_:
 			_led(g, foot, t)
-	g.end_object()
 
 ## The footing: a concrete collar round the mast, down into the ground.
 static func _footing(g: Geo, foot: Vector3, r: float) -> float:
 	var y0: float = g.sunk([foot], foot.y)
-	g.cylinder(Vector3(foot.x, y0 - 0.2, foot.z), foot + Vector3(0, 0.08, 0), r, "sl_concrete", 10)
-	return foot.y + 0.08
+	# (Its top stands clear of the ground: flush, it flickered - 2026-10-14.)
+	var top: float = maxf(foot.y, y0 + Geo.SINK) + 0.12
+	g.cylinder(Vector3(foot.x, y0 - 0.2, foot.z), Vector3(foot.x, top, foot.z), r, "sl_concrete", 10)
+	return top
 
 static func _led(g: Geo, foot: Vector3, t: Vector3) -> void:
 	var y: float = _footing(g, foot, 0.22)
