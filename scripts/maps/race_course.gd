@@ -162,13 +162,14 @@ func _frame(geo: Geo, xf: Transform3D, w: float, h: float, mat: String) -> void:
 	var p: float = PANEL
 	var d: float = 0.09
 	var led: bool = mat.begins_with("led_")
-	var st: int = STYLE if (not led and w > 1.0) else 0 # (2026-10-14 preview: SH_GATE_STYLE 1-3)
+	# (LED gates - Race Arena's - take the LED race style too, in their own colour.)
+	var st: int = STYLE if (w > 1.0 and (not led or STYLE == 2)) else 0
 	var pm: String = mat if not led else "gate_dark"
 	if st == 2:
 		pm = "gate_dark"
 	elif st == 3:
 		pm = "gate_trim"
-	var pal: Dictionary = _pal(mat)
+	var pal: Dictionary = _pal_for(mat)
 	for side in [[Vector3(0, h * 0.5 + p * 0.5, 0), Vector3(w + 2 * p, p, d)], [Vector3(0, -h * 0.5 - p * 0.5, 0), Vector3(w + 2 * p, p, d)],
 			[Vector3(-w * 0.5 - p * 0.5, 0, 0), Vector3(p, h, d)], [Vector3(w * 0.5 + p * 0.5, 0, 0), Vector3(p, h, d)]]:
 		geo.box_xf(xf * Transform3D(Basis(), side[0]), side[1], pm)
@@ -234,10 +235,14 @@ func _brand(geo: Geo, xf: Transform3D, pw: float, ph: float, th: float) -> void:
 # design per style (_pal gives the colours of a gate colour). Everything is
 # printed onto the flat panels as thin plates a few mm apart (LZ), in a few
 # shared flat materials tinted per vertex.
-# The user's pick: Pro banner outdoors, LED race indoors; Chevron only on
-# request (SH_GATE_STYLE=1|2|3 forces one, 0 the plain old gates).
+# The user's pick: Pro banner outdoors, LED race indoors, Chevron in the
+# Office (STYLE_BY_ID); otherwise only on request (SH_GATE_STYLE=1|2|3 forces one, 0 the plain old gates).
 static var STYLE: int = 3
-const INDOOR_IDS: Array = ["garage"] # (indoor, but not marked "indoor" in MapCatalog)
+## An LED gate's colour family (its palette).
+const LED_GATE: Dictionary = {"led_blue": "gate_a", "led_orange": "gate_b"}
+const INDOOR_IDS: Array = ["garage"]
+## Maps with their own pick: the Office whoop gates in Chevron (user, 2026-10-14).
+const STYLE_BY_ID: Dictionary = {"office": 1} # (indoor, but not marked "indoor" in MapCatalog)
 
 ## Picks the style for the map about to be built (BuiltMap, before build()).
 static func pick_style(map: Node) -> void:
@@ -245,11 +250,21 @@ static func pick_style(map: Node) -> void:
 		STYLE = int(OS.get_environment("SH_GATE_STYLE"))
 		return
 	var m: Dictionary = MapCatalog.for_scene(map.scene_file_path)
+	if STYLE_BY_ID.has(m.get("id", "")):
+		STYLE = STYLE_BY_ID[m.id]
+		return
 	STYLE = 2 if m.get("indoor", false) or INDOOR_IDS.has(m.get("id", "")) else 3
 const LZ: Array = [0.0035, 0.007, 0.0105, 0.014]
 const TZ: float = 0.0185
 const INK_DARK := Color(0.06, 0.07, 0.09)
 const INK_LIGHT := Color(0.97, 0.97, 0.97)
+
+## A gate material's palette; an LED gate keeps its own light colour.
+static func _pal_for(mat: String) -> Dictionary:
+	var p: Dictionary = _pal(LED_GATE.get(mat, mat)).duplicate()
+	if mat.begins_with("led_"):
+		p.led = mat
+	return p
 
 static func _pal(mat: String) -> Dictionary:
 	if mat == "gate_b":
@@ -610,18 +625,65 @@ func gate_sized(geo: Geo, pos: Vector3, yaw: float, w: float, h: float, bar: flo
 	var basis := Basis(Vector3.UP, yaw)
 	var xf := Transform3D(basis, pos + Vector3(0, lift + bar + h * 0.5, 0))
 	var d: float = bar * 0.5
-	geo.box_xf(xf * Transform3D(Basis(), Vector3(0, h * 0.5 + bar * 0.5, 0)), Vector3(w + 2 * bar, bar, d), mat)
-	geo.box_xf(xf * Transform3D(Basis(), Vector3(0, -h * 0.5 - bar * 0.5, 0)), Vector3(w + 2 * bar, bar, d), mat)
+	# Styled (2026-10-14, user: "cleaner, fit the design to the small frame"):
+	# a plain frame, the design printed flat on its faces with clean margins,
+	# the pass-direction ring a narrow band at the opening.
+	#   LED race (2): black, a light strip in the gate's colour along the
+	#   middle of the bar, a thin white light near the outer edge.
+	#   Chevron (1): the gate's colour, hazard stripes up the sides, a
+	#   checkered band along the bottom, a white race line along the top.
+	var st: int = STYLE if STYLE in [1, 2] else 0
+	var pal: Dictionary = _pal_for(mat)
+	var fm: String = mat
+	if st == 2:
+		fm = "gate_dark"
+	elif st == 1:
+		fm = "gate_trim"
+		geo.tint = pal.main
+	geo.box_xf(xf * Transform3D(Basis(), Vector3(0, h * 0.5 + bar * 0.5, 0)), Vector3(w + 2 * bar, bar, d), fm)
+	geo.box_xf(xf * Transform3D(Basis(), Vector3(0, -h * 0.5 - bar * 0.5, 0)), Vector3(w + 2 * bar, bar, d), fm)
 	for sx in [-1.0, 1.0]:
-		geo.box_xf(xf * Transform3D(Basis(), Vector3(sx * (w * 0.5 + bar * 0.5), 0, 0)), Vector3(bar, h, d), mat)
-	# White piping round the opening (LED gates: their light strip).
-	var t: float = bar * 0.18
-	var pipe: String = "gate_trim" if not mat.begins_with("led_") else mat
-	geo.box_xf(xf * Transform3D(Basis(), Vector3(0, h * 0.5 + t * 0.5, 0)), Vector3(w, t, d * 1.3), pipe, false, false)
-	geo.box_xf(xf * Transform3D(Basis(), Vector3(0, -h * 0.5 - t * 0.5, 0)), Vector3(w, t, d * 1.3), pipe, false, false)
-	for sx in [-1.0, 1.0]:
-		geo.box_xf(xf * Transform3D(Basis(), Vector3(sx * (w * 0.5 + t * 0.5), 0, 0)), Vector3(t, h, d * 1.3), pipe, false, false)
-	_direction(geo, xf, w, h, d * 0.65 + 0.006, maxf(bar * 0.7, 0.03))
+		geo.box_xf(xf * Transform3D(Basis(), Vector3(sx * (w * 0.5 + bar * 0.5), 0, 0)), Vector3(bar, h, d), fm)
+	geo.tint = Color.WHITE
+	if st > 0:
+		var W: float = w * 0.5
+		var H: float = h * 0.5
+		var b0: float = bar * 0.36 # (the design's inner and outer margins)
+		var b1: float = bar * 0.94
+		for side in [1.0, -1.0]:
+			var face := xf * Transform3D(Basis(Vector3.UP, 0.0 if side > 0.0 else PI), Vector3(0, 0, side * d * 0.5))
+			if st == 2:
+				for e: Array in [[bar * 0.42, bar * 0.58, pal.led], [bar * 0.84, bar * 0.92, pal.led2]]:
+					var i0: float = e[0]
+					var i1: float = e[1]
+					_rc(geo, face, LZ[0], -W - i1, H + i0, W + i1, H + i1, Color.WHITE, e[2])
+					_rc(geo, face, LZ[0], -W - i1, -H - i1, W + i1, -H - i0, Color.WHITE, e[2])
+					for sg in [-1.0, 1.0]:
+						_rc(geo, face, LZ[0], minf(sg * (W + i0), sg * (W + i1)), -H - i0, maxf(sg * (W + i0), sg * (W + i1)), H + i0, Color.WHITE, e[2])
+			else:
+				var per: float = bar * 0.75
+				for sg in [-1.0, 1.0]:
+					var xa: float = minf(sg * (W + b0), sg * (W + b1))
+					var xb: float = maxf(sg * (W + b0), sg * (W + b1))
+					var k: int = 0
+					var c: float = -H - (xb - xa)
+					while c < H:
+						_band(geo, face, LZ[0], xa, xb, c, per * 0.5, sg, [xa, -H, xb, H], pal.c1 if k % 2 == 0 else pal.c2)
+						c += per * 0.5
+						k += 1
+				_rc(geo, face, LZ[0], -W, -H - b1, W, -H - b0, pal.c1)
+				_checker(geo, face, LZ[1], -W, -H - b1, W, -H - b0, int(round(w / ((b1 - b0) * 1.0))), 1, INK_DARK)
+				_rc(geo, face, LZ[0], -W, H + bar * 0.55, W, H + bar * 0.75, pal.c1)
+		_direction(geo, xf, w, h, d * 0.5 + LZ[2], bar * 0.28)
+	else:
+		# White piping round the opening (LED gates: their light strip).
+		var t: float = bar * 0.18
+		var pipe: String = "gate_trim" if not mat.begins_with("led_") else mat
+		geo.box_xf(xf * Transform3D(Basis(), Vector3(0, h * 0.5 + t * 0.5, 0)), Vector3(w, t, d * 1.3), pipe, false, false)
+		geo.box_xf(xf * Transform3D(Basis(), Vector3(0, -h * 0.5 - t * 0.5, 0)), Vector3(w, t, d * 1.3), pipe, false, false)
+		for sx in [-1.0, 1.0]:
+			geo.box_xf(xf * Transform3D(Basis(), Vector3(sx * (w * 0.5 + t * 0.5), 0, 0)), Vector3(t, h, d * 1.3), pipe, false, false)
+		_direction(geo, xf, w, h, d * 0.65 + 0.006, maxf(bar * 0.7, 0.03))
 	if lift > 0.0 and pole:
 		geo.box(pos + Vector3(0, lift * 0.5, 0), Vector3(bar, lift, bar), "gate_pole", yaw)
 		geo.box(pos + Vector3(0, 0.015, 0), Vector3(w * 0.6, 0.03, w * 0.4), "gate_base", yaw)
