@@ -1091,6 +1091,9 @@ func set_spawn(xf: Transform3D) -> void:
 const SPLASH_RESET: float = 1.5
 var _splash_t: float = -1.0
 var _splash_y: float = 0.0
+var _wet: bool = false # (water damage off: under the surface now)
+var _wet_lvl: float = 0.0
+const WATER_DRAG: float = 2.5 # 1/s: under water the speed halves in ~0.3 s
 func _update_water(delta: float) -> bool:
 	if _splash_t >= 0.0:
 		_splash_t += delta
@@ -1105,7 +1108,21 @@ func _update_water(delta: float) -> bool:
 	if map == null:
 		return false
 	var lvl: float = map.water_level(global_position)
-	if lvl == -INF or global_position.y > lvl - 0.02:
+	var under: bool = lvl != -INF and global_position.y <= lvl - 0.02
+	if not Settings.water_damage:
+		# (Water damage off: through the water - a splash going in and
+		# coming out, and the water's drag while under.)
+		if under != _wet:
+			_wet = under
+			var at_lvl: float = lvl if lvl != -INF else _wet_lvl
+			_splash(Vector3(global_position.x, at_lvl, global_position.z), linear_velocity.length() * 0.5)
+		if under:
+			_wet_lvl = lvl
+			var k2: float = 1.0 - exp(-delta * WATER_DRAG)
+			linear_velocity = linear_velocity.lerp(Vector3.ZERO, k2)
+		return false
+	_wet = false
+	if not under:
 		return false
 	_splash_t = 0.0
 	_splash_y = lvl

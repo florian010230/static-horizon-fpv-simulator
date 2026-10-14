@@ -121,11 +121,11 @@ static func flat_mat(color: Color, roughness: float = 0.85, metallic: float = 0.
 ## Water: a flat, slightly see-through surface with a sky sheen. Real
 ## reflections would need engine lighting (see the header) - a bright
 ## unshaded tint reads as water from a drone's height.
-## One water colour on every map (2026-10-14 preview, SH_WATER_LOOK=1:
+## One water colour on every map (2026-10-14, on by default; SH_WATER_OLD=1 shows the old look:
 ## the user saw lake, river and waterfall in different colours). The
 ## shader adds ripples, sky sheen and the sun's glint everywhere.
 const WATER_DEEP := Color(0.08, 0.27, 0.32)
-static var unified_water: bool = OS.has_environment("SH_WATER_LOOK")
+static var unified_water: bool = not OS.has_environment("SH_WATER_OLD") # (on since 2026-10-14, user okay; SH_WATER_OLD = the old look)
 static func water_mat(deep: Color = Color(0.12, 0.3, 0.38), alpha: float = 0.88) -> StandardMaterial3D:
 	if unified_water:
 		deep = WATER_DEEP

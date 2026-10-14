@@ -243,6 +243,7 @@ func _ready() -> void:
 	if OS.has_environment("SH_THIN"):
 		Geo.record_thin = true
 	_building = true
+	RaceCourse.pick_style(self)
 	build()
 	geo.connect_drives()
 	_index_water(geo.water_tris)

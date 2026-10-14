@@ -56,6 +56,7 @@ func _run() -> void:
 	var fresh: Node = (load("res://scripts/settings.gd") as GDScript).new()
 	_check(fresh.wind_level == 0 and not fresh.battery_enabled and not fresh.prop_damage, "settings: wind, battery sag and prop damage are off by default",
 		"wind %d battery %s prop damage %s" % [fresh.wind_level, fresh.battery_enabled, fresh.prop_damage])
+	_check(fresh.water_damage, "settings: water damage is on by default")
 	_check(fresh.race_line_hue == 30, "settings: the racing line is on, orange, by default", str(fresh.race_line_hue))
 	_check(fresh.race_line_length == 1, "settings: the racing line is Medium length by default", str(fresh.race_line_length))
 	_check(not fresh.race_strict, "settings: the competition rule (missed gate voids the lap) is off by default")
@@ -768,6 +769,24 @@ func _test_water() -> void:
 		await _wait(1.6)
 		_check(d.global_position.distance_to(sp) < 1.5, nm + ": ...and is back at its spawn soon after", str(d.global_position))
 		d.splashed.disconnect(cb)
+		# Water damage off: through the water, still armed, slowed, no reset.
+		Settings.water_damage = false
+		hit[0] = false
+		d.splashed.connect(cb)
+		InputManager.armed = true
+		d.global_position = spot + Vector3(0, 1.2, 0)
+		d.linear_velocity = Vector3(4, -6, 0)
+		d.reset_physics_interpolation()
+		await _wait(0.6)
+		var wet: bool = d._wet or d.global_position.y < spot.y
+		_check(not hit[0] and InputManager.armed and d.global_position.distance_to(sp) > 3.0, nm + ": water damage off - the drone goes into the water and keeps flying (no splash-crash, no reset)",
+			"splashed %s armed %s at %s" % [hit[0], InputManager.armed, str(d.global_position)])
+		_check(wet and d.linear_velocity.length() < 6.0, nm + ": ...under the surface, slowed by the water", "wet %s speed %.1f" % [wet, d.linear_velocity.length()])
+		d.splashed.disconnect(cb)
+		Settings.water_damage = true
+		InputManager.armed = false
+		d.reset_to_spawn()
+		await _wait(0.3)
 
 ## SH_SELFTEST_ONLY=flow: every generated map's dead ends listed
 ## (BuiltMap.dead_ends; SH_TEXT_MAPS picks maps).

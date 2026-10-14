@@ -249,6 +249,8 @@ func _build_settings() -> Control:
 	_hint(f1, "A real pack per drone: it drains, sags under load and loses punch. The OSD shows volts and mAh, LOW BATTERY at 3.5 V per cell. R fits a fresh pack.")
 	UIKit.toggle(f1, "Prop damage", Settings.prop_damage, func(v: bool): Settings.prop_damage = v)
 	_hint(f1, "Hard crashes chip props: less thrust on that motor, vibration, a slight pull. R fits new props.")
+	UIKit.toggle(f1, "Water damage", Settings.water_damage, func(v: bool): Settings.water_damage = v)
+	_hint(f1, "On: a drone in the water is lost - splash, motors off, back to the start. Off: fly through the water and out again.")
 	UIKit.section(f_air, "Air")
 	_segmented(f_air, "Wind (outdoor maps)", Settings.WIND_NAMES, Settings.wind_level, func(i: int):
 		Settings.wind_level = i

@@ -158,6 +158,10 @@ const WIND_SPEEDS: Array[float] = [0.0, 3.0, 6.0, 10.0]
 ## Prop damage (Drone): a hard prop strike chips a prop - less thrust on
 ## that motor, vibration, a slight pull. Reset repairs. Off by default.
 var prop_damage: bool = false
+## Water damage (Drone._update_water): on, a drone in the water splashes,
+## cuts its motors and is reset; off, it flies through with a splash in
+## and out and some drag. On by default (user, 2026-10-14).
+var water_damage: bool = true
 ## Race mode: a translucent ghost flies your best lap (RaceCourse).
 var race_ghost: bool = true
 ## Competition rule (MultiGP style): a missed gate voids the lap instead of
@@ -230,7 +234,7 @@ const SAVED_FIELDS: Array[String] = ["crosshair_enabled", "shadows_enabled", "gr
 	"max_fps", "vsync", "camera_angle_deg", "camera_fov_deg", "view_distance", "rates_type", "rates_roll", "rates_pitch", "rates_yaw",
 	"selected_drone", "game_mode", "osd_enabled", "battery_enabled", "video_effect", "wind_level", "units",
 	"stick_overlay", "prop_wash", "throttle_mid", "throttle_expo", "lens_fisheye",
-	"prop_damage", "race_ghost", "race_strict", "keyboard_strength", "keyboard_help", "race_line_hue", "race_line_length", "check_updates", "camera_look", "rate_profile", "rate_profiles"]
+	"prop_damage", "water_damage", "race_ghost", "race_strict", "keyboard_strength", "keyboard_help", "race_line_hue", "race_line_length", "check_updates", "camera_look", "rate_profile", "rate_profiles"]
 var _persist: bool = true
 var _last_saved: String = ""
 var _save_timer: float = 0.0

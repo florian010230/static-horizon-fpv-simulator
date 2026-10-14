@@ -970,45 +970,201 @@ func _quad_rocks() -> void:
 		geo.lathe(Vector3(p.x, lo2 - 0.3, p.y), [Vector2(rad * 1.05, 0.0), Vector2(rad, h * 0.45), Vector2(rad * 0.7, h * 0.85), Vector2(0.01, h)], "ml_stone", 9)
 	geo.tint = Color.WHITE
 
-## The waterfall's water (SH_WATER_LOOK preview): the lake's colour,
-## breaking into white foam in streaks that run down it - so it reads as
-## falling water from far away too.
-func _falls_mat() -> ShaderMaterial:
+## The waterfall's water (v3 2026-10-14, on by default; the
+## user: "still doesn't look like water"): thin see-through water in the
+## lake's colour with fast white streaks running down it, turning to
+## aerated white toward the foot - a real fall is mostly white there.
+## `flow` = the fall's direction on the ground, `top`/`foot` = its heights.
+func _falls_mat(flow: Vector2 = Vector2(-1, 0), top: float = 60.0, foot: float = 0.0) -> ShaderMaterial:
 	var sh := Shader.new()
 	sh.code = """
 shader_type spatial;
-render_mode unshaded, blend_mix, cull_disabled, depth_draw_opaque;
+render_mode unshaded, blend_mix, cull_disabled, depth_draw_never;
 uniform vec3 water = vec3(%f, %f, %f);
+uniform vec2 flow = vec2(-1.0, 0.0);
+uniform float top_y = 60.0;
+uniform float foot_y = 0.0;
 uniform sampler2D noise : filter_linear_mipmap, repeat_enable;
 varying vec3 wpos;
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
-	// Streaks: noise squeezed across the fall, stretched down it, running down.
-	float along = (wpos.x * 0.6 + wpos.z * 0.5);
-	float s1 = texture(noise, vec2(along * 0.35, wpos.y * 0.012 + TIME * 0.22)).r;
-	float s2 = texture(noise, vec2(along * 0.9 + 0.37, wpos.y * 0.03 + TIME * 0.45)).r;
-	float foam = smoothstep(0.45, 0.7, s1 * 0.55 + s2 * 0.55);
-	// The lake's own colour (a touch lighter: thin, moving water), white
-	// only where it foams.
-	vec3 col = mix(water * 1.35 + vec3(0.02, 0.04, 0.05), vec3(0.93, 0.96, 0.98), foam * 0.75);
-	ALBEDO = col;
-	ALPHA = clamp(0.78 + foam * 0.2, 0.0, 0.97);
+	// Across the fall, and down it (height, plus distance along the ground
+	// where it runs over the shore).
+	float across = dot(wpos.xz, vec2(-flow.y, flow.x));
+	float down = -wpos.y + dot(wpos.xz, flow) * 0.35;
+	// Long thin streaks, stretched down the fall, running fast (two speeds:
+	// the water accelerates and the streaks slide over each other).
+	float s1 = texture(noise, vec2(across * 0.15, down * 0.005 - TIME * 0.3)).r;
+	float s2 = texture(noise, vec2(across * 0.4 + 0.37, down * 0.01 - TIME * 0.6)).r;
+	float s3 = texture(noise, vec2(across * 0.9 + 0.71, down * 0.022 - TIME * 1.1)).r;
+	float streak = clamp((s1 * 0.4 + s2 * 0.35 + s3 * 0.35 - 0.55) * 1.8 + 0.55, 0.0, 1.0);
+	// More air in it toward the foot (COLOR.g: 0 at the lip, 1 at the foot).
+	float aer = COLOR.g;
+	float foam = smoothstep(0.68 - aer * 0.14, 0.78 - aer * 0.1, streak) * 0.9;
+	// The body in the lake's own colour (user: as dark as the lake), white
+	// only in the streaks.
+	// (Foam, spray and mist: #C2DEEC, a blue-white - user 2026-10-14.)
+	ALBEDO = mix(water * 1.05, vec3(0.76, 0.87, 0.93), foam);
+	float a = mix(0.72, 0.96, foam);
+	// Ragged edges (COLOR.r: 0 at the edge, 1 in the middle), torn more
+	// as it falls, and holes opening in the thin water low down.
+	// (The noise only spans ~0.3-0.7: stretched to 0-1 first.)
+	float tear = clamp((texture(noise, vec2(across * 0.25 + 0.13, down * 0.03 - TIME * 0.8)).r - 0.5) * 2.8 + 0.5, 0.0, 1.0);
+	a *= smoothstep(0.0, 0.12, COLOR.r - (tear - 0.5) * (0.35 + aer * 0.75));
+	a *= 1.0 - (1.0 - foam) * smoothstep(0.3, 0.1, tear) * aer;
+	// A side stream's ends (COLOR.b) fade into the rock.
+	a *= COLOR.b;
+	ALPHA = clamp(a, 0.0, 0.97);
 }
 """ % [Geo.WATER_DEEP.r, Geo.WATER_DEEP.g, Geo.WATER_DEEP.b]
 	var m := ShaderMaterial.new()
 	m.shader = sh
+	m.set_shader_parameter("noise", _falls_noise(7))
+	m.render_priority = 1 # (over the lake, which is see-through too)
+	m.set_shader_parameter("flow", flow.normalized())
+	m.set_shader_parameter("top_y", top)
+	m.set_shader_parameter("foot_y", foot)
+	m.set_meta("keep_material", true)
+	return m
+
+static func _falls_noise(sd: int) -> NoiseTexture2D:
 	var nt := NoiseTexture2D.new()
 	nt.seamless = true
 	nt.width = 256
 	nt.height = 256
 	var fn := FastNoiseLite.new()
-	fn.seed = 7
+	fn.seed = sd
 	fn.frequency = 0.02
 	fn.fractal_octaves = 3
 	nt.noise = fn
-	m.set_shader_parameter("noise", nt)
+	return nt
+
+## Where the fall hits the lake: aerated white
+## round the impact, broken up and churning, ripple rings running out
+## over the lake and foam drifting off. One disc on the water, drawn by
+## a shader round `centre`.
+func _splash_mat(centre: Vector2, flow: Vector2) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode unshaded, blend_mix, cull_disabled, depth_draw_never;
+uniform vec2 centre;
+uniform vec2 flow;
+uniform sampler2D noise : filter_linear_mipmap, repeat_enable;
+varying vec3 wpos;
+void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void fragment() {
+	vec2 d = wpos.xz - centre;
+	// Stretched downstream: the foam drifts off with the current.
+	float ds = dot(d, flow);
+	vec2 e = vec2(dot(d, vec2(-flow.y, flow.x)), ds > 0.0 ? ds * 0.55 : ds);
+	float r = length(e);
+	float n1 = texture(noise, d * 0.06 + vec2(TIME * 0.05, -TIME * 0.04)).r;
+	float n2 = texture(noise, d * 0.17 - vec2(TIME * 0.11, TIME * 0.07)).r;
+	float churn = n1 * 0.5 + n2 * 0.5;
+	// The boiling white core.
+	float core = (1.0 - smoothstep(1.5, 5.5, r + (churn - 0.5) * 5.0)) * 0.8;
+	// Ripple rings running out from it.
+	float ph = fract(r * 0.22 - TIME * 0.6);
+	float ring = smoothstep(0.0, 0.08, ph) * (1.0 - smoothstep(0.08, 0.3, ph));
+	ring *= smoothstep(4.0, 7.0, r) * (1.0 - smoothstep(10.0, 19.0, r));
+	// Patches of foam drifting off.
+	float patch = smoothstep(0.66, 0.8, churn) * (1.0 - smoothstep(6.0, 18.0, r));
+	float a = max(core * (0.75 + churn * 0.25), max(ring * 0.32, patch * 0.65));
+	ALBEDO = vec3(0.76, 0.87, 0.93);
+	ALPHA = clamp(a, 0.0, 0.97);
+}
+"""
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	m.set_shader_parameter("noise", _falls_noise(23))
+	m.render_priority = 2
+	m.set_shader_parameter("centre", centre)
+	m.set_shader_parameter("flow", flow.normalized())
 	m.set_meta("keep_material", true)
 	return m
+
+## Mist and spray where the fall lands: soft white puffs
+## rising and drifting off, and drops thrown up. Not solid, no shadow.
+func _falls_mist(at: Vector3, flow: Vector2) -> void:
+	var soft := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode unshaded, blend_mix, cull_disabled, depth_draw_never;
+void vertex() {
+	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
+	MODELVIEW_MATRIX = MODELVIEW_MATRIX * mat4(vec4(length(MODEL_MATRIX[0].xyz), 0.0, 0.0, 0.0), vec4(0.0, length(MODEL_MATRIX[1].xyz), 0.0, 0.0), vec4(0.0, 0.0, length(MODEL_MATRIX[2].xyz), 0.0), vec4(0.0, 0.0, 0.0, 1.0));
+}
+void fragment() {
+	float r = length(UV - vec2(0.5)) * 2.0;
+	ALBEDO = COLOR.rgb;
+	ALPHA = COLOR.a * (1.0 - smoothstep(0.2, 1.0, r));
+}
+"""
+	soft.shader = sh
+	soft.set_meta("keep_material", true)
+	var puff := QuadMesh.new()
+	puff.size = Vector2(5.0, 5.0)
+	puff.material = soft
+	var node := Node3D.new()
+	node.name = "FallsMist"
+	node.set_meta("dynamic", true)
+	add_child(node)
+	var f3 := Vector3(flow.x, 0, flow.y).normalized()
+	var mist := CPUParticles3D.new()
+	mist.name = "Mist"
+	mist.mesh = puff
+	mist.amount = 20
+	mist.lifetime = 4.0
+	mist.preprocess = 4.0
+	mist.position = at
+	mist.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	mist.emission_sphere_radius = 3.0
+	mist.direction = Vector3(0, 1, 0) + f3 * 0.6
+	mist.spread = 35.0
+	mist.initial_velocity_min = 0.8
+	mist.initial_velocity_max = 2.0
+	mist.gravity = Vector3(0, 0.15, 0)
+	mist.damping_min = 0.2
+	mist.damping_max = 0.4
+	mist.scale_amount_min = 0.7
+	mist.scale_amount_max = 1.8
+	var grow := Curve.new()
+	grow.add_point(Vector2(0, 0.5))
+	grow.add_point(Vector2(1, 1.6))
+	mist.scale_amount_curve = grow
+	var fade := Gradient.new()
+	fade.set_color(0, Color(0.76, 0.87, 0.93, 0.0))
+	fade.add_point(0.2, Color(0.76, 0.87, 0.93, 0.24))
+	fade.set_color(fade.get_point_count() - 1, Color(0.76, 0.87, 0.93, 0.0))
+	mist.color_ramp = fade
+	mist.visibility_aabb = AABB(Vector3(-25, -5, -25), Vector3(50, 30, 50))
+	node.add_child(mist)
+	# Spray: small drops thrown up and falling back.
+	var drop := QuadMesh.new()
+	drop.size = Vector2(0.35, 0.35)
+	drop.material = soft
+	var spray := CPUParticles3D.new()
+	spray.name = "Spray"
+	spray.mesh = drop
+	spray.amount = 36
+	spray.lifetime = 1.4
+	spray.preprocess = 1.4
+	spray.position = at
+	spray.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	spray.emission_sphere_radius = 2.5
+	spray.direction = Vector3(0, 1, 0) + f3 * 0.4
+	spray.spread = 40.0
+	spray.initial_velocity_min = 3.0
+	spray.initial_velocity_max = 6.5
+	spray.gravity = Vector3(0, -9.8, 0)
+	var fade2 := Gradient.new()
+	fade2.set_color(0, Color(0.76, 0.87, 0.93, 0.7))
+	fade2.set_color(1, Color(0.76, 0.87, 0.93, 0.0))
+	spray.color_ramp = fade2
+	spray.visibility_aabb = AABB(Vector3(-15, -3, -15), Vector3(30, 15, 30))
+	node.add_child(spray)
 
 ## The waterfall: the creek from the tarn across the pasture, then down
 ## the gully in a white curtain, foam where it meets the lake.
@@ -1024,6 +1180,10 @@ func _waterfall() -> void:
 	var rows: Array = []
 	var dirv: Vector2 = (FALL_FOOT - FALL_TOP).normalized()
 	var m: int = 24
+	if Geo.unified_water:
+		_fall_streams(dirv)
+		m = -1 # (the main stream's rows come from _fall_streams)
+		rows = _fall_main
 	for k in range(m + 1):
 		var f: float = float(k) / m
 		var q: Vector2 = FALL_TOP + dirv * (f * FALL_TOP.distance_to(FALL_FOOT))
@@ -1055,10 +1215,17 @@ func _waterfall() -> void:
 				# and it would hang over the lake bed.
 				under = true
 				var last: PackedVector3Array = rows[rows.size() - 1]
-				rows.append(PackedVector3Array([Vector3(last[0].x, y2, last[0].z), Vector3(last[1].x, y2, last[1].z)]))
-				entry = Vector2(last[0].x + last[1].x, last[0].z + last[1].z) * 0.5 + dirv * 2.0
+				var down_row := PackedVector3Array()
+				for lp: Vector3 in last:
+					down_row.append(Vector3(lp.x, y2, lp.z))
+					_fall_col[down_row[down_row.size() - 1]] = _fall_col.get(lp, Color.WHITE)
+				rows.append(down_row)
+				entry = Vector2(last[0].x + last[last.size() - 1].x, last[0].z + last[last.size() - 1].z) * 0.5 + dirv * (0.5 if Geo.unified_water else 2.0)
 				break
-		rows.append(PackedVector3Array([Vector3(q2.x, y2, q2.y) - acr2 * 6.2, Vector3(q2.x, y2, q2.y) + acr2 * 6.2]))
+		if Geo.unified_water:
+			rows.append(_fall_row(Vector3(q2.x, y2, q2.y), acr2, 6.2, 6.2, 0.15, 1.0, 1.0))
+		else:
+			rows.append(PackedVector3Array([Vector3(q2.x, y2, q2.y) - acr2 * 6.2, Vector3(q2.x, y2, q2.y) + acr2 * 6.2]))
 		if g2 < WATER_Y - 0.4:
 			if entry == Vector2.INF:
 				entry = q2
@@ -1068,6 +1235,11 @@ func _waterfall() -> void:
 	if entry == Vector2.INF:
 		entry = FALL_FOOT + dirv * 14.0
 	geo.light_fn = func(_nn: Vector3, _p: Vector3) -> Color: return Color(1.1, 1.12, 1.16)
+	if Geo.unified_water:
+		# Per corner: how far in from the edge, how far down, the stream's end.
+		geo.light_fn = func(_nn: Vector3, pp: Vector3) -> Color: return _fall_col.get(pp, Color(0, 1, 1))
+		for side_rows: Array in _fall_side:
+			geo.strip(side_rows, "ml_falls")
 	geo.strip(rows, "ml_falls")
 	# No tree in the falling water: its strip is kept clear of scatter.
 	for k in range(rows.size() - 1):
@@ -1079,6 +1251,21 @@ func _waterfall() -> void:
 		if along.length() < 0.05:
 			continue
 		geo.reserve(Vector2((mid0.x + mid1.x) * 0.5, (mid0.z + mid1.z) * 0.5), along.normalized(), Vector2(along.length() * 0.5 + 0.5, r0[0].distance_to(r0[1]) * 0.5 + 1.5), minf(mid0.y, mid1.y) - 2.0, maxf(mid0.y, mid1.y) + 8.0)
+	if Geo.unified_water:
+		var top_y: float = (rows[0][0].y + rows[0][1].y) * 0.5
+		geo.material("ml_falls").set_shader_parameter("flow", dirv)
+		geo.material("ml_falls").set_shader_parameter("top_y", top_y)
+		geo.material("ml_falls").set_shader_parameter("foot_y", WATER_Y)
+		geo.add_material("ml_splash", _splash_mat(entry, dirv))
+		var disc: Array[Vector3] = []
+		for k in range(24):
+			var an3: float = TAU * k / 24.0
+			disc.append(Vector3(entry.x, WATER_Y + 0.06, entry.y) + Vector3(cos(an3), 0, sin(an3)) * 20.0 + Vector3(dirv.x, 0, dirv.y) * 8.0)
+		geo.light_fn = func(_nn: Vector3, _p: Vector3) -> Color: return Color.WHITE
+		geo.polygon(disc, "ml_splash", false)
+		geo.light_fn = Callable()
+		_falls_mist(Vector3(entry.x, WATER_Y + 1.0, entry.y), dirv)
+		return
 	geo.light_fn = func(_nn: Vector3, _p: Vector3) -> Color: return Color(1.3, 1.32, 1.35) # (foam: bright white in the sun)
 	var foam := Vector3(entry.x, WATER_Y + 0.06, entry.y)
 	var pts: Array[Vector3] = []
@@ -1098,6 +1285,68 @@ func _waterfall() -> void:
 			fp.append(fc + Vector3(cos(an2) * fr * frng.randf_range(0.7, 1.2), 0, sin(an2) * fr * frng.randf_range(0.7, 1.2)))
 		geo.polygon(fp, "ml_foam", false)
 	geo.light_fn = Callable()
+
+## The waterfall's shape (v3 2026-10-14, user: "a natural
+## curved sheet that leaves the lip, thins and breaks up as it falls,
+## uneven edges, several streams"): a main sheet bowed out from the rock,
+## shooting off the lip, with ragged edges, and two thinner side streams
+## that split off on the rock and run back into it lower down. Each row
+## is five points across; their vertex colours tell the shader how far
+## in from the edge (r), how far down (g) and how near the stream's end
+## (b) each corner is - the shader tears the edges and opens holes.
+var _fall_main: Array = []
+var _fall_side: Array = []
+var _fall_col: Dictionary = {}
+
+func _fall_row(c: Vector3, acr: Vector3, wl: float, wr: float, bow: float, f: float, fade: float) -> PackedVector3Array:
+	var row := PackedVector3Array()
+	for j in range(5):
+		var u: float = (j - 2) / 2.0 # -1..1 across
+		var w: float = wl if u < 0.0 else wr
+		var q: Vector3 = c + acr * (u * w) + Vector3(0, bow * (1.0 - u * u), 0)
+		row.append(q)
+		_fall_col[q] = Color(1.0 - absf(u), f, fade)
+	return row
+
+func _fall_streams(dirv: Vector2) -> void:
+	_fall_main = []
+	_fall_side = []
+	_fall_col = {}
+	var acr := Vector3(-dirv.y, 0, dirv.x)
+	var nz := FastNoiseLite.new()
+	nz.seed = 77
+	nz.frequency = 0.9
+	var L: float = FALL_TOP.distance_to(FALL_FOOT)
+	# [across offset at the top, at the foot, width top, width foot,
+	#  stand-off from the rock, from f, to f]
+	var specs: Array = [[0.0, 0.0, 2.2, 5.6, 3.0, 0.0, 1.0],
+		[-6.0, -4.2, 0.8, 1.4, 1.7, 0.1, 0.85],
+		[5.5, 4.6, 0.6, 1.2, 2.1, 0.2, 0.92]]
+	for si in range(specs.size()):
+		var sp: Array = specs[si]
+		var out: Array = []
+		var m: int = 28
+		for k in range(m + 1):
+			var f: float = lerpf(sp[5], sp[6], float(k) / m)
+			var off: float = lerpf(sp[0], sp[1], f)
+			var q: Vector2 = FALL_TOP + dirv * (f * L) + Vector2(acr.x, acr.z) * off
+			# (Each stream on the rock under its own middle: the gully's
+			# sides rise, a side stream runs on them.)
+			var g: float = land.ground(q.x, q.y)
+			# Off the lip it shoots out fast, then falls back toward the rock.
+			var y: float = maxf(g + 0.3 + sp[4] * sin(PI * pow(f, 0.6)), 0.04)
+			var w: float = lerpf(sp[2], sp[3], f)
+			# Ragged: each edge wanders on its own, more as it falls.
+			var wl: float = w * (1.0 + (0.15 + 0.3 * f) * nz.get_noise_2d(f * L * 0.25, 10.0 + si * 31.0))
+			var wr: float = w * (1.0 + (0.15 + 0.3 * f) * nz.get_noise_2d(f * L * 0.25, 50.0 + si * 31.0))
+			var fade: float = 1.0
+			if si > 0:
+				fade = minf(smoothstep(0.0, 0.25, float(k) / m), 1.0 - smoothstep(0.7, 1.0, float(k) / m))
+			out.append(_fall_row(Vector3(q.x, y, q.y), acr, wl, wr, w * 0.22, f, fade))
+		if si == 0:
+			_fall_main = out
+		else:
+			_fall_side.append(out)
 
 ## The tarn: water in its hollow, a little under the lowest ground round it.
 func _tarn() -> void:

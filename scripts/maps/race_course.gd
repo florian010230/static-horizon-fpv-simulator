@@ -129,7 +129,7 @@ static func add_materials(geo: Geo) -> void:
 	geo.add_material("gate_base", Geo.flat_mat(Color(0.16, 0.16, 0.17), 0.7))
 	geo.add_material("gate_closed", Geo.flat_mat(Color(0.86, 0.13, 0.1), 0.7))
 	# LED gates (Drone Racing League style): self-lit, bloom on High.
-	for led in [["led_blue", Color(0.2, 0.55, 1.0)], ["led_orange", Color(1.0, 0.45, 0.1)], ["led_green", Color(0.2, 1.0, 0.4)], ["led_pink", Color(1.0, 0.25, 0.7)]]:
+	for led in [["led_blue", Color(0.2, 0.55, 1.0)], ["led_orange", Color(1.0, 0.45, 0.1)], ["led_green", Color(0.2, 1.0, 0.4)], ["led_pink", Color(1.0, 0.25, 0.7)], ["led_white", Color(0.92, 0.96, 1.0)]]:
 		geo.add_material(led[0], Geo.glow_mat(led[1], 2.5))
 	# Pass direction: a green ring round the opening on the side you fly in
 	# from, a red one on the way-out side (self-lit, so the red reads in
@@ -162,23 +162,39 @@ func _frame(geo: Geo, xf: Transform3D, w: float, h: float, mat: String) -> void:
 	var p: float = PANEL
 	var d: float = 0.09
 	var led: bool = mat.begins_with("led_")
+	var st: int = STYLE if (not led and w > 1.0) else 0 # (2026-10-14 preview: SH_GATE_STYLE 1-3)
+	var pm: String = mat if not led else "gate_dark"
+	if st == 2:
+		pm = "gate_dark"
+	elif st == 3:
+		pm = "gate_trim"
+	var pal: Dictionary = _pal(mat)
 	for side in [[Vector3(0, h * 0.5 + p * 0.5, 0), Vector3(w + 2 * p, p, d)], [Vector3(0, -h * 0.5 - p * 0.5, 0), Vector3(w + 2 * p, p, d)],
 			[Vector3(-w * 0.5 - p * 0.5, 0, 0), Vector3(p, h, d)], [Vector3(w * 0.5 + p * 0.5, 0, 0), Vector3(p, h, d)]]:
-		geo.box_xf(xf * Transform3D(Basis(), side[0]), side[1], mat if not led else "gate_dark")
+		geo.box_xf(xf * Transform3D(Basis(), side[0]), side[1], pm)
+		if st > 0:
+			continue # (flat panels: the printed skin goes on them)
 		# The pillow: a slimmer, thicker strip down the panel's middle.
 		var inner: Vector3 = side[1] * Vector3(0.82 if side[1].x > side[1].y else 0.55, 0.55 if side[1].x > side[1].y else 0.82, 1.6)
-		geo.box_xf(xf * Transform3D(Basis(), side[0]), inner, mat if not led else "gate_dark", false, false)
+		geo.box_xf(xf * Transform3D(Basis(), side[0]), inner, pm, false, false)
 	# Piping (or, on LED gates, the light strip) round the opening.
 	var t: float = 0.035
 	var pipe: String = "gate_trim" if not led else mat
+	if st == 2:
+		pipe = pal.led
+	if st == 3:
+		geo.tint = pal.main
 	for e in [[Vector3(0, h * 0.5 + t * 0.5, 0), Vector3(w + 2 * t, t, d * 1.25)], [Vector3(0, -h * 0.5 - t * 0.5, 0), Vector3(w + 2 * t, t, d * 1.25)],
 			[Vector3(-w * 0.5 - t * 0.5, 0, 0), Vector3(t, h, d * 1.25)], [Vector3(w * 0.5 + t * 0.5, 0, 0), Vector3(t, h, d * 1.25)]]:
 		geo.box_xf(xf * Transform3D(Basis(), e[0]), e[1], pipe, false, false)
+	geo.tint = Color.WHITE
 	# Outer PVC frame.
 	for e in [[Vector3(0, h * 0.5 + p, 0), Vector3(w + 2 * p + 0.05, 0.05, 0.05)], [Vector3(0, -h * 0.5 - p, 0), Vector3(w + 2 * p + 0.05, 0.05, 0.05)],
 			[Vector3(-w * 0.5 - p, 0, 0), Vector3(0.05, h + 2 * p, 0.05)], [Vector3(w * 0.5 + p, 0, 0), Vector3(0.05, h + 2 * p, 0.05)]]:
 		geo.box_xf(xf * Transform3D(Basis(), e[0]), e[1], "gate_pole", false, false)
-	if not led and w > 1.0:
+	if st > 0:
+		_gate_skin(geo, xf, w, h, pal, st)
+	elif not led and w > 1.0:
 		if OS.has_environment("SH_GATE_BRAND"): # (2026-10-14 preview: the brand on the top panel)
 			_brand(geo, xf * Transform3D(Basis(), Vector3(0, h * 0.5 + p * 0.5, 0)), w + 2 * p, p, d * 1.7)
 		else:
@@ -212,6 +228,306 @@ func _brand(geo: Geo, xf: Transform3D, pw: float, ph: float, th: float) -> void:
 		var x0: float = -bw * 0.5 + 2.0 * r + bh * 0.24
 		var x1: float = bw * 0.5 - bh * 0.12
 		StreetKit._label(geo, "STATIC HORIZON FPV", face * Transform3D(Basis(), Vector3((x0 + x1) * 0.5, 0, 0.006)), bh * 0.62 / 64.0 * 1.3, Color(0.97, 0.97, 0.97), x1 - x0)
+
+# --- gate styles (2026-10-14) ------------------------------------------------
+# 1 Chevron, 2 LED race, 3 Pro banner. Gates and the turn flags share one
+# design per style (_pal gives the colours of a gate colour). Everything is
+# printed onto the flat panels as thin plates a few mm apart (LZ), in a few
+# shared flat materials tinted per vertex.
+# The user's pick: Pro banner outdoors, LED race indoors; Chevron only on
+# request (SH_GATE_STYLE=1|2|3 forces one, 0 the plain old gates).
+static var STYLE: int = 3
+const INDOOR_IDS: Array = ["garage"] # (indoor, but not marked "indoor" in MapCatalog)
+
+## Picks the style for the map about to be built (BuiltMap, before build()).
+static func pick_style(map: Node) -> void:
+	if OS.has_environment("SH_GATE_STYLE"):
+		STYLE = int(OS.get_environment("SH_GATE_STYLE"))
+		return
+	var m: Dictionary = MapCatalog.for_scene(map.scene_file_path)
+	STYLE = 2 if m.get("indoor", false) or INDOOR_IDS.has(m.get("id", "")) else 3
+const LZ: Array = [0.0035, 0.007, 0.0105, 0.014]
+const TZ: float = 0.0185
+const INK_DARK := Color(0.06, 0.07, 0.09)
+const INK_LIGHT := Color(0.97, 0.97, 0.97)
+
+static func _pal(mat: String) -> Dictionary:
+	if mat == "gate_b":
+		return {"main": BRAND_ORANGE, "c1": Color(0.97, 0.97, 0.97), "c2": Color(0.05, 0.05, 0.06), "led": "led_orange", "led2": "led_white"}
+	if mat == "gate_dark":
+		return {"main": Color(0.12, 0.12, 0.13), "c1": Color(0.97, 0.97, 0.97), "c2": Color(0.9, 0.1, 0.1), "led": "led_green", "led2": "led_white"}
+	return {"main": BRAND_BLUE, "c1": Color(0.97, 0.97, 0.97), "c2": Color(1.0, 0.82, 0.08), "led": "led_blue", "led2": "led_white"}
+
+## A flat plate (points in `face`'s XY plane, `z` out of it).
+static func _pl(geo: Geo, face: Transform3D, z: float, pts: Array, col: Color, mat: String = "gate_trim") -> void:
+	geo.tint = col if not mat.begins_with("led_") else Color.WHITE
+	geo.plate(face * Transform3D(Basis(), Vector3(0, 0, z)), pts, mat)
+	geo.tint = Color.WHITE
+
+static func _rc(geo: Geo, face: Transform3D, z: float, x0: float, y0: float, x1: float, y1: float, col: Color, mat: String = "gate_trim") -> void:
+	_pl(geo, face, z, [Vector2(x0, y0), Vector2(x1, y0), Vector2(x1, y1), Vector2(x0, y1)], col, mat)
+
+## Convex polygon `subj` cut to the convex, counter-clockwise `clip`.
+static func _clip(subj: Array, clip: Array) -> Array:
+	var out: Array = subj
+	for i in range(clip.size()):
+		var a: Vector2 = clip[i]
+		var b: Vector2 = clip[(i + 1) % clip.size()]
+		var inp: Array = out
+		out = []
+		if inp.is_empty():
+			break
+		for j in range(inp.size()):
+			var c: Vector2 = inp[j]
+			var d: Vector2 = inp[(j + 1) % inp.size()]
+			var cin: float = (b - a).cross(c - a)
+			var din: float = (b - a).cross(d - a)
+			if cin >= 0.0:
+				out.append(c)
+			if (cin >= 0.0) != (din >= 0.0):
+				out.append(c + (d - c) * (cin / (cin - din)))
+	return out
+
+static func _rect_pts(x0: float, y0: float, x1: float, y1: float) -> Array:
+	return [Vector2(x0, y0), Vector2(x1, y0), Vector2(x1, y1), Vector2(x0, y1)]
+
+## A diagonal band (sloped by `m`, `th` thick measured up) over x0..x1,
+## starting at height c0 at x0, cut to the rectangle `r` (x0,y0,x1,y1).
+static func _band(geo: Geo, face: Transform3D, z: float, x0: float, x1: float, c0: float, th: float, m: float, r: Array, col: Color, mat: String = "gate_trim") -> void:
+	var dx: float = x1 - x0
+	var poly: Array = [Vector2(x0, c0), Vector2(x1, c0 + m * dx), Vector2(x1, c0 + m * dx + th), Vector2(x0, c0 + th)]
+	var cut: Array = _clip(poly, _rect_pts(r[0], r[1], r[2], r[3]))
+	if cut.size() >= 3:
+		_pl(geo, face, z, cut, col, mat)
+
+static func _checker(geo: Geo, face: Transform3D, z: float, x0: float, y0: float, x1: float, y1: float, nx: int, ny: int, col: Color) -> void:
+	for i in range(nx):
+		for j in range(ny):
+			if (i + j) % 2 == 0:
+				_rc(geo, face, z, lerpf(x0, x1, float(i) / nx), lerpf(y0, y1, float(j) / ny), lerpf(x0, x1, float(i + 1) / nx), lerpf(y0, y1, float(j + 1) / ny), col)
+
+## Text with a thin outline: the same text four times, 3 mm behind and
+## nudged 4 mm each way, in `edge` (readable on any colour).
+## `subj` clipped to the convex `clip`, both made counter-clockwise first.
+static func _ccw_clip(subj: Array, clip: Array) -> Array:
+	var a: Array = subj.duplicate()
+	var b: Array = clip.duplicate()
+	if _area(a) < 0.0:
+		a.reverse()
+	if _area(b) < 0.0:
+		b.reverse()
+	return _clip(a, b)
+
+static func _area(pts: Array) -> float:
+	var sum: float = 0.0
+	for i in range(pts.size()):
+		var p: Vector2 = pts[i]
+		var q: Vector2 = pts[(i + 1) % pts.size()]
+		sum += p.cross(q)
+	return sum * 0.5
+
+static func _label_edged(geo: Geo, text: String, xf: Transform3D, px: float, col: Color, edge: Color, max_w: float) -> void:
+	for o in [Vector3(0.004, 0, 0), Vector3(-0.004, 0, 0), Vector3(0, 0.004, 0), Vector3(0, -0.004, 0)]:
+		StreetKit._label(geo, text, xf * Transform3D(Basis(), o + Vector3(0, 0, -0.003)), px, edge, max_w)
+	StreetKit._label(geo, text, xf, px, col, max_w)
+
+## The Static Horizon mark (white ring, blue sky over orange ground, the
+## horizon bar - as icon.png) with an outline disc behind it. `ink` is
+## the ring and bar, `edge` the outline.
+static func _mark(geo: Geo, face: Transform3D, c: Vector2, r: float, ink: Color, edge: Color, z0: float = LZ[0]) -> void:
+	var n: Vector3 = face.basis.z.normalized()
+	geo.tint = edge
+	geo.fan(face * Vector3(c.x, c.y, z0), n, r * 1.1, 0.0, TAU, "gate_trim", 20)
+	geo.tint = ink
+	geo.fan(face * Vector3(c.x, c.y, z0 + 0.0035), n, r, 0.0, TAU, "gate_trim", 20)
+	geo.tint = BRAND_BLUE
+	geo.fan(face * Vector3(c.x, c.y, z0 + 0.007), n, r * 0.84, 0.0, PI, "gate_trim", 12)
+	geo.tint = BRAND_ORANGE
+	geo.fan(face * Vector3(c.x, c.y, z0 + 0.007), n, r * 0.84, PI, TAU, "gate_trim", 12)
+	geo.tint = Color.WHITE
+	_rc(geo, face, z0 + 0.0105, c.x - r * 0.85, c.y - r * 0.07, c.x + r * 0.85, c.y + r * 0.07, ink)
+
+## Mark + name across x0..x1 (face coordinates), centred on yc, `bh` high.
+static func _brand_face(geo: Geo, face: Transform3D, x0: float, x1: float, yc: float, bh: float, ink: Color, edge: Color, scale: float = 1.0) -> void:
+	var r: float = bh * 0.44
+	_mark(geo, face, Vector2(x0 + r * 1.1, yc), r, ink, edge)
+	var t0: float = x0 + 2.0 * r * 1.1 + bh * 0.22
+	var t1: float = x1 - bh * 0.05
+	var px: float = bh * 0.62 / 64.0 * 1.3 * scale
+	_label_edged(geo, "STATIC HORIZON FPV", face * Transform3D(Basis(), Vector3((t0 + t1) * 0.5, yc, TZ)), px, ink, edge, t1 - t0)
+
+func _gate_skin(geo: Geo, xf: Transform3D, w: float, h: float, pal: Dictionary, st: int) -> void:
+	var p: float = PANEL
+	var X: float = w * 0.5 + p
+	var xa: float = w * 0.5 + 0.045 # side panel columns xa..xb
+	var xb: float = X - 0.02
+	var ty0: float = h * 0.5 + 0.045 # top panel ty0..ty1 (bottom one mirrored)
+	var ty1: float = h * 0.5 + p - 0.02
+	var main: Color = pal.main
+	var c1: Color = pal.c1
+	var c2: Color = pal.c2
+	var led: String = pal.led
+	var led2: String = pal.led2
+	for side in [1.0, -1.0]:
+		var face := xf * Transform3D(Basis(Vector3.UP, 0.0 if side > 0.0 else PI), Vector3(0, 0, side * 0.045))
+		if st == 1: # Chevron
+			for sg in [-1.0, 1.0]:
+				var cx: float = sg * (xa + xb) * 0.5
+				var hw: float = (xb - xa) * 0.5
+				for k in range(7):
+					var y0: float = -h * 0.5 + 0.05 + k * 0.19
+					var col: Color = c1 if k % 2 == 0 else c2
+					_pl(geo, face, LZ[0], [Vector2(cx - hw, y0), Vector2(cx, y0 + hw * 0.9), Vector2(cx, y0 + hw * 0.9 + 0.085), Vector2(cx - hw, y0 + 0.085)], col)
+					_pl(geo, face, LZ[0], [Vector2(cx, y0 + hw * 0.9), Vector2(cx + hw, y0), Vector2(cx + hw, y0 + 0.085), Vector2(cx, y0 + hw * 0.9 + 0.085)], col)
+			# Race lines along the top panel, the name between them.
+			_rc(geo, face, LZ[0], -X + 0.02, ty1 - 0.016, X - 0.02, ty1, c2)
+			_rc(geo, face, LZ[0], -X + 0.02, ty0, X - 0.02, ty0 + 0.016, c1)
+			_brand_face(geo, face, -X + 0.07, X - 0.07, (ty0 + ty1) * 0.5, ty1 - ty0 - 0.05, INK_LIGHT, INK_DARK)
+			# The checkered band along the bottom panel.
+			_rc(geo, face, LZ[0], -X + 0.02, -ty1, X - 0.02, -ty0, c1)
+			_checker(geo, face, LZ[1], -X + 0.02, -ty1, X - 0.02, -ty0, 16, 2, INK_DARK)
+		elif st == 2: # LED race
+			var o: float = 0.012
+			_rc(geo, face, LZ[0], -X + o, h * 0.5 + p - o - 0.02, X - o, h * 0.5 + p - o, Color.WHITE, led2)
+			_rc(geo, face, LZ[0], -X + o, -h * 0.5 - p + o, X - o, -h * 0.5 - p + o + 0.03, Color.WHITE, led2)
+			for sg in [-1.0, 1.0]:
+				_rc(geo, face, LZ[0], sg * X - (o + 0.02 if sg > 0 else -o), -h * 0.5 - p + o + 0.02, sg * X - (o if sg > 0 else -o - 0.02), h * 0.5 + p - o - 0.03, Color.WHITE, led2)
+				# Thin race lines slanting up the side panels.
+				var r: Array = [minf(sg * xa, sg * xb), -h * 0.5, maxf(sg * xa, sg * xb), h * 0.5]
+				for k in range(6):
+					var x0: float = sg * xa
+					var x1: float = sg * xb
+					var poly: Array = [Vector2(x0, -h * 0.5 - 0.55 + k * 0.5), Vector2(x1, -h * 0.5 - 0.55 + k * 0.5 + 2.4 * (xb - xa) * sg * sg), Vector2(x1, -h * 0.5 - 0.55 + k * 0.5 + 2.4 * (xb - xa) + 0.05), Vector2(x0, -h * 0.5 - 0.55 + k * 0.5 + 0.03)]
+					if sg < 0.0:
+						poly.reverse()
+					var cut: Array = _clip(poly, _rect_pts(r[0], r[1], r[2], r[3]))
+					if cut.size() >= 3:
+						_pl(geo, face, LZ[1], cut, Color.WHITE, led)
+			# Running lights along the bottom panel.
+			for k in range(9):
+				var cxk: float = lerpf(-X + 0.2, X - 0.2, k / 8.0)
+				_rc(geo, face, LZ[0], cxk - 0.07, -(ty0 + ty1) * 0.5 - 0.016, cxk + 0.07, -(ty0 + ty1) * 0.5 + 0.016, Color.WHITE, led if k % 2 == 0 else led2)
+			_brand_face(geo, face, -X + 0.07, X - 0.07, (ty0 + ty1) * 0.5, ty1 - ty0 - 0.06, INK_LIGHT, INK_DARK)
+		else: # Pro banner
+			for sg in [-1.0, 1.0]:
+				var r: Array = [minf(sg * xa, sg * xb), -h * 0.5, maxf(sg * xa, sg * xb), h * 0.5]
+				for k in range(-1, 3):
+					var base: float = -h * 0.5 - 0.7 + k * 0.9
+					var m: float = 3.0
+					# (a left column mirrors the right one)
+					for e in [[0.0, 0.42, main], [0.5, 0.06, c2]]:
+						var dy: float = base + e[0]
+						var poly: Array = [Vector2(sg * xa, dy), Vector2(sg * xb, dy + m * (xb - xa)), Vector2(sg * xb, dy + m * (xb - xa) + e[1]), Vector2(sg * xa, dy + e[1])]
+						if sg < 0.0:
+							poly = [Vector2(sg * xa, dy), Vector2(sg * xb, dy + m * (xb - xa)), Vector2(sg * xb, dy + m * (xb - xa) + e[1]), Vector2(sg * xa, dy + e[1])]
+						var cut: Array = _clip(poly if sg > 0.0 else [poly[3], poly[2], poly[1], poly[0]], _rect_pts(r[0], r[1], r[2], r[3]))
+						if cut.size() >= 3:
+							_pl(geo, face, LZ[0], cut, e[2])
+				# Checkered corner pieces.
+				_checker(geo, face, LZ[0], minf(sg * xa, sg * xb), ty0, maxf(sg * xa, sg * xb), ty1, 4, 4, INK_DARK)
+				_checker(geo, face, LZ[0], minf(sg * xa, sg * xb), -ty1, maxf(sg * xa, sg * xb), -ty0, 4, 4, INK_DARK)
+			# Name big across the top panel, a swoosh along the bottom one.
+			_brand_face(geo, face, -xa + 0.03, xa - 0.03, (ty0 + ty1) * 0.5, ty1 - ty0, INK_DARK, INK_LIGHT, 1.1)
+			var cy: float = -(ty0 + ty1) * 0.5
+			_rc(geo, face, LZ[0], -xa + 0.03, cy - 0.055, xa - 0.03, cy + 0.01, main)
+			_rc(geo, face, LZ[0], -xa + 0.03, cy + 0.04, xa - 0.03, cy + 0.058, c2)
+			_rc(geo, face, LZ[0], -xa + 0.03, cy - 0.085, xa - 0.03, cy - 0.07, c2)
+
+## The sail of a turn flag in the gate style (visual only, like the
+## banner it replaces): a tall squared-off foot tapering to the tip along
+## the pole at `pos`, flying toward `xdir` (+1/-1, local X after `yaw`),
+## `k` the flag's scale. Same colours, stripes and logo as that style's gates.
+func _style_sail(geo: Geo, pos: Vector3, yaw: float, xdir: float, k: float, mat: String) -> void:
+	var pal: Dictionary = _pal(mat)
+	var F := Transform3D(Basis(Vector3.UP, yaw), pos)
+	var s: float = xdir
+	# A feather flag (2026-10-14, user's reference photo): tall and narrow
+	# (~1:4.3), a straight edge on the pole (the sleeve), the top curving
+	# over from the pole top like a sail, the outer edge nearly straight,
+	# the foot cut on a slant - lowest at the pole, rising to the tip.
+	var W: float = 0.62 * k
+	var x0: float = 0.03 * k * s
+	var outline: Array = [Vector2(x0, 0.78 * k)]
+	var arc_n: int = 8
+	for i in range(arc_n + 1):
+		var a: float = PI * 0.5 * i / arc_n
+		outline.append(Vector2(x0 + s * W * sin(a), (3.0 + 0.62 * cos(a)) * k))
+	for i in range(1, 6):
+		var t: float = float(i) / 6.0
+		# (a slight outward bulge on the outer edge)
+		outline.append(Vector2(x0 + s * W * (1.0 - 0.07 * t + 0.05 * sin(PI * t)), lerpf(3.0, 1.05, t) * k))
+	outline.append(Vector2(x0 + s * W * 0.93, 1.05 * k))
+	outline.reverse() # (pole bottom -> foot tip -> up the outer edge -> over the top)
+	outline.push_front(outline.pop_back())
+	var slices: Array = []
+	var n: int = 18
+	for i in range(n):
+		var ya: float = (0.7 + 3.0 * i / n) * k
+		var yb: float = (0.7 + 3.0 * (i + 1) / n) * k
+		var band: Array = [Vector2(x0, ya), Vector2(x0 + s * 1.2 * k, ya), Vector2(x0 + s * 1.2 * k, yb), Vector2(x0, yb)]
+		slices.append(_ccw_clip(band, outline))
+	slices = slices.filter(func(q: Array) -> bool: return q.size() >= 3)
+	var base_col: Color = pal.main
+	if STYLE == 2:
+		base_col = Color(0.1, 0.1, 0.11)
+	elif STYLE == 3:
+		base_col = Color(0.95, 0.95, 0.93)
+	var ink: Color = INK_DARK if STYLE == 3 else INK_LIGHT
+	var edge: Color = INK_LIGHT if STYLE == 3 else INK_DARK
+	for side in [1.0, -1.0]:
+		var face := F * Transform3D(Basis(Vector3.UP, 0.0 if side > 0.0 else PI), Vector3(0, 0, side * 0.012 * k))
+		# (face coordinates: x is mirrored on the back)
+		var fx := func(pt: Vector2) -> Vector2: return Vector2(pt.x * side, pt.y)
+		for q: Array in slices:
+			_pl(geo, face, LZ[0] * 0.6, q.map(fx), base_col)
+		var bands: Array = [] # [colour, material, polygon]
+		if STYLE == 1:
+			for j in range(-2, 12):
+				var ya: float = (0.5 + j * 0.3) * k
+				bands.append([pal.c1 if j % 2 == 0 else pal.c2, "gate_trim", [Vector2(0, ya), Vector2(s * 0.8 * k, ya + 0.9 * k), Vector2(s * 0.8 * k, ya + 1.03 * k), Vector2(0, ya + 0.13 * k)]])
+		elif STYLE == 2:
+			for j in range(4):
+				var ya: float = (0.9 + j * 0.55) * k
+				bands.append([Color.WHITE, pal.led, [Vector2(0, ya), Vector2(s * 0.8 * k, ya + 0.9 * k), Vector2(s * 0.8 * k, ya + 0.95 * k), Vector2(0, ya + 0.05 * k)]])
+		else:
+			bands.append([pal.main, "gate_trim", [Vector2(0, 1.7 * k), Vector2(s * 0.8 * k, 2.6 * k), Vector2(s * 0.8 * k, 3.2 * k), Vector2(0, 2.3 * k)]])
+			bands.append([pal.c2, "gate_trim", [Vector2(0, 1.2 * k), Vector2(s * 0.8 * k, 2.1 * k), Vector2(s * 0.8 * k, 2.16 * k), Vector2(0, 1.26 * k)]])
+		if STYLE != 2: # a checkered band low on the sail, like the gates'
+			for ci in range(10):
+				for cr in range(2):
+					var cx: float = ci * 0.075 * k
+					var cy: float = (1.22 + cr * 0.075) * k
+					var blk: bool = (ci + cr) % 2 == 0
+					bands.append([INK_DARK if blk else INK_LIGHT, "gate_trim", [Vector2(s * cx, cy), Vector2(s * (cx + 0.075 * k), cy), Vector2(s * (cx + 0.075 * k), cy + 0.075 * k), Vector2(s * cx, cy + 0.075 * k)]])
+		for q: Array in slices:
+			var cc: Array = q.map(fx)
+			if (cc[1] - cc[0]).cross(cc[2] - cc[0]) < 0.0:
+				cc.reverse()
+			for b: Array in bands:
+				var poly: Array = (b[2] as Array).map(fx)
+				if (poly[1] - poly[0]).cross(poly[2] - poly[0]) < 0.0:
+					poly.reverse()
+				var cut: Array = _clip(poly, cc)
+				if cut.size() >= 3:
+					_pl(geo, face, LZ[1], cut, b[0], b[1])
+		if STYLE == 2: # a lit edge round the sail, off the pole
+			for i in range(1, outline.size() - 1):
+				var e0: Vector2 = outline[i]
+				var e1: Vector2 = outline[i + 1]
+				var inw: Vector2 = Vector2(-s * 0.04 * k, 0)
+				var lit: Array = [e0, e1, e1 + inw, e0 + inw].map(fx)
+				if (lit[1] - lit[0]).cross(lit[2] - lit[0]) < 0.0:
+					lit.reverse()
+				_pl(geo, face, LZ[1], lit, Color.WHITE, pal.led2)
+		# The sleeve on the pole.
+		var sl: Array = [Vector2(x0, 0.78 * k), Vector2(x0 + s * 0.05 * k, 0.79 * k), Vector2(x0 + s * 0.05 * k, 3.6 * k), Vector2(x0, 3.62 * k)].map(fx)
+		if (sl[1] - sl[0]).cross(sl[2] - sl[0]) < 0.0:
+			sl.reverse()
+		_pl(geo, face, LZ[1], sl, edge)
+		if k >= 0.6: # (the little indoor flags carry colours only)
+			_mark(geo, face, Vector2((x0 + s * 0.26 * k) * side, 1.75 * k), 0.13 * k, ink, edge, LZ[2])
+			var lab := face * Transform3D(Basis(Vector3.BACK, PI * 0.5), Vector3(side * (x0 + s * 0.3 * k), 2.75 * k, TZ + 0.004))
+			_label_edged(geo, "STATIC HORIZON FPV", lab, 0.0022 * k, ink, edge, 1.0 * k)
 
 func _register(xf: Transform3D, w: float, h: float) -> void:
 	_gates.append({"xf": xf, "w": w, "h": h})
@@ -408,13 +724,29 @@ var _flag_decal: MeshInstance3D
 func turn_flag(geo: Geo, pos: Vector3, yaw: float, side: String, mat: String = "gate_b", k: float = 1.0) -> void:
 	var basis := Basis(Vector3.UP, yaw)
 	var s: float = 1.0 if side == "right" else -1.0
-	geo.cylinder(pos, pos + Vector3(0, 3.7 * k, 0), 0.03 * maxf(k, 0.5), "gate_pole", 6)
-	geo.cylinder(pos, pos + Vector3(0, 0.06 * k, 0), 0.25 * k, "gate_base", 10)
+	if STYLE > 0:
+		# A feather flag's pole: a ground spike, a short collar, the pole up
+		# the sleeve and bent over along the sail's top arc.
+		var r: float = 0.022 * maxf(k, 0.5)
+		geo.cylinder(pos - Vector3(0, 0.3 * k, 0), pos + Vector3(0, 3.62 * k, 0), r, "gate_pole", 6)
+		geo.cylinder(pos, pos + Vector3(0, 0.12 * k, 0), 0.045 * k, "gate_base", 8)
+		var out: Vector3 = basis * Vector3(-s, 0, 0)
+		var prev: Vector3 = pos + Vector3(0, 3.62 * k, 0)
+		for i in range(1, 9):
+			var a: float = PI * 0.5 * i / 8.0
+			var q: Vector3 = pos + out * ((0.03 + 0.62 * sin(a)) * k) + Vector3(0, (3.0 + 0.62 * cos(a)) * k, 0)
+			geo.cylinder(prev, q, r * 0.7, "gate_pole", 6)
+			prev = q
+	else:
+		geo.cylinder(pos, pos + Vector3(0, 3.7 * k, 0), 0.03 * maxf(k, 0.5), "gate_pole", 6)
+		geo.cylinder(pos, pos + Vector3(0, 0.06 * k, 0), 0.25 * k, "gate_base", 10)
 	var aim := Transform3D(basis, pos + basis * Vector3(s * (FLAG_AIM * 0.5 + 0.1) * k, 0, 0) + Vector3(0, (FLAG_AIM * 0.5 + 0.1) * k, 0))
 	var zone := Transform3D(basis, pos + basis * Vector3(s * FLAG_W * 0.5 * k, 0, 0) + Vector3(0, FLAG_H * 0.5 * k, 0))
 	_register(aim, FLAG_AIM * k, FLAG_AIM * k)
 	_gates[_gates.size() - 1].merge({"zone": {"xf": zone, "w": FLAG_W * k, "h": FLAG_H * k}, "flag": s, "pole": pos, "k": k})
-	_flags.append({"pos": pos, "basis": basis, "s": s, "colour": FLAG_COLOURS.get(mat, Color(0.93, 0.36, 0.1)), "gate": _gates.size() - 1, "k": k})
+	_flags.append({"pos": pos, "basis": basis, "s": s, "colour": FLAG_COLOURS.get(mat, Color(0.93, 0.36, 0.1)), "gate": _gates.size() - 1, "k": k, "styled": STYLE > 0})
+	if STYLE > 0:
+		_style_sail(geo, pos, yaw, -s, k, mat)
 
 ## The turn flags' banners (one mesh) and ground marks (one mesh, its
 ## shader lights up and animates the next flag's chevrons).
@@ -429,6 +761,8 @@ func _build_flags() -> void:
 	var us: Array[float] = [0.0, 0.35, 0.7, 0.72, 0.84, 0.86, 1.0]
 	const ROWS: int = 18
 	for f in _flags:
+		if f.get("styled", false):
+			continue # (SH_GATE_STYLE: drawn as plates by _style_sail)
 		var out: Vector3 = f.basis * Vector3(-f.s, 0, 0) # away from the pass
 		var back: Vector3 = f.basis * Vector3(0, 0, 1)
 		var base: int = bv.size()
@@ -454,7 +788,8 @@ func _build_flags() -> void:
 	arr[Mesh.ARRAY_COLOR] = bc
 	arr[Mesh.ARRAY_INDEX] = bi
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	if bv.size() > 0:
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	var bm := StandardMaterial3D.new()
 	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	bm.vertex_color_use_as_albedo = true
@@ -464,7 +799,10 @@ func _build_flags() -> void:
 	banners.mesh = mesh
 	banners.material_override = bm
 	banners.set_meta("keep_material", true)
-	add_child(banners)
+	if bv.size() > 0:
+		add_child(banners)
+	else:
+		banners.free()
 	# Ground marks: one quad per flag, UV = metres across (+ = the pass
 	# side) and ahead, UV2.x = its gate index.
 	var gv := PackedVector3Array()
@@ -532,6 +870,7 @@ void fragment() {
 ## ghost, flag ground marks) are "dynamic". opts: "ao_height", "ao_min"
 ## for the gates' baked AO.
 static func make(map: BuiltMap, tracks: Array, opts: Dictionary = {}) -> RaceCourse:
+	pick_style(map) # (also when the map itself came from the map cache)
 	var t: int = clampi(Settings.race_track, 1, tracks.size())
 	var g := Geo.new()
 	for p in ["sun_dir", "sun", "sun_tint", "ambient", "sky"]:
