@@ -939,7 +939,9 @@ void fragment() {
 	float s1 = texture(noise, vec2(along * 0.35, wpos.y * 0.012 + TIME * 0.22)).r;
 	float s2 = texture(noise, vec2(along * 0.9 + 0.37, wpos.y * 0.03 + TIME * 0.45)).r;
 	float foam = smoothstep(0.45, 0.7, s1 * 0.55 + s2 * 0.55);
-	vec3 col = mix(water * 2.3, vec3(0.95, 0.97, 0.99), 0.12 + foam * 0.8);
+	// The lake's own colour (a touch lighter: thin, moving water), white
+	// only where it foams.
+	vec3 col = mix(water * 1.35 + vec3(0.02, 0.04, 0.05), vec3(0.93, 0.96, 0.98), foam * 0.75);
 	ALBEDO = col;
 	ALPHA = clamp(0.78 + foam * 0.2, 0.0, 0.97);
 }
@@ -983,14 +985,65 @@ func _waterfall() -> void:
 		var c := Vector3(q.x, y, q.y)
 		var acr := Vector3(-dirv.y, 0, dirv.x)
 		rows.append(PackedVector3Array([c - acr * w, c + acr * w]))
+	# On over the shore and INTO the lake: the water runs down the last of
+	# the rock and dips under the surface - no gap, no fall ending on dry
+	# rock (2026-10-14, user). Its foam ring is where it meets the lake.
+	var acr2 := Vector3(-dirv.y, 0, dirv.x)
+	var entry := Vector2.INF
+	var under: bool = false
+	var t: float = 1.5
+	while t < 45.0:
+		var q2: Vector2 = FALL_FOOT + dirv * t
+		var g2: float = land.ground(q2.x, q2.y)
+		# Clear of the lake's surface either way (within a few cm they
+		# flicker): over the rock, or under the water.
+		var y2: float = g2 + 0.15
+		if y2 < WATER_Y + 0.12:
+			y2 = WATER_Y - 0.15
+			if not under:
+				# Straight down through the surface (a slope would cross it).
+				under = true
+				var last: PackedVector3Array = rows[rows.size() - 1]
+				rows.append(PackedVector3Array([Vector3(last[0].x, y2, last[0].z), Vector3(last[1].x, y2, last[1].z)]))
+		rows.append(PackedVector3Array([Vector3(q2.x, y2, q2.y) - acr2 * 6.2, Vector3(q2.x, y2, q2.y) + acr2 * 6.2]))
+		if g2 < WATER_Y - 0.4:
+			if entry == Vector2.INF:
+				entry = q2
+			elif q2.distance_to(entry) > 3.0:
+				break
+		t += 1.5
+	if entry == Vector2.INF:
+		entry = FALL_FOOT + dirv * 14.0
 	geo.light_fn = func(_nn: Vector3, _p: Vector3) -> Color: return Color(1.1, 1.12, 1.16)
 	geo.strip(rows, "ml_falls")
-	var foam := Vector3(FALL_FOOT.x - 14.0, 0.04, FALL_FOOT.y)
+	# No tree in the falling water: its strip is kept clear of scatter.
+	for k in range(rows.size() - 1):
+		var r0: PackedVector3Array = rows[k]
+		var r1: PackedVector3Array = rows[k + 1]
+		var mid0: Vector3 = (r0[0] + r0[1]) * 0.5
+		var mid1: Vector3 = (r1[0] + r1[1]) * 0.5
+		var along := Vector2(mid1.x - mid0.x, mid1.z - mid0.z)
+		if along.length() < 0.05:
+			continue
+		geo.reserve(Vector2((mid0.x + mid1.x) * 0.5, (mid0.z + mid1.z) * 0.5), along.normalized(), Vector2(along.length() * 0.5 + 0.5, r0[0].distance_to(r0[1]) * 0.5 + 1.5), minf(mid0.y, mid1.y) - 2.0, maxf(mid0.y, mid1.y) + 8.0)
+	geo.light_fn = func(_nn: Vector3, _p: Vector3) -> Color: return Color(1.3, 1.32, 1.35) # (foam: bright white in the sun)
+	var foam := Vector3(entry.x, WATER_Y + 0.06, entry.y)
 	var pts: Array[Vector3] = []
 	for k in range(12):
 		var an: float = TAU * k / 12.0
-		pts.append(foam + Vector3(cos(an) * 5.5, 0, sin(an) * 5.0))
+		pts.append(foam + Vector3(cos(an) * 7.0, 0, sin(an) * 6.0))
 	geo.polygon(pts, "ml_foam", false)
+	# Foam drifting off on the lake: a few smaller patches.
+	var frng := RandomNumberGenerator.new()
+	frng.seed = 41
+	for k in range(6):
+		var fc: Vector3 = foam + Vector3(dirv.x, 0, dirv.y) * frng.randf_range(7.0, 16.0) + acr2 * frng.randf_range(-7.0, 7.0)
+		var fp: Array[Vector3] = []
+		var fr: float = frng.randf_range(0.8, 2.2)
+		for j in range(8):
+			var an2: float = TAU * j / 8.0
+			fp.append(fc + Vector3(cos(an2) * fr * frng.randf_range(0.7, 1.2), 0, sin(an2) * fr * frng.randf_range(0.7, 1.2)))
+		geo.polygon(fp, "ml_foam", false)
 	geo.light_fn = Callable()
 
 ## The tarn: water in its hollow, a little under the lowest ground round it.

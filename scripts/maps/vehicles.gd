@@ -81,7 +81,7 @@ static func _wheel(geo: Geo, xf: Transform3D, local: Vector3, r: float, w: float
 	# Rim and hub stand ~1 cm proud: discs at their outer faces.
 	geo.disc(c + ax * side * 1.08, ax * side, r * 0.62, "veh_rim", 12)
 	geo.disc(c + ax * side * 1.16, ax * side, r * 0.2, "veh_steel", 8)
-	if detail_v2: # five spokes, darker between (SH_CARS preview)
+	if detail_v2: # five spokes, darker between (2026-10-14)
 		var n: Vector3 = ax.normalized() * side
 		var up: Vector3 = xf.basis.y.normalized()
 		for k in range(5):
@@ -102,8 +102,8 @@ const CAR_SPECS := {
 	"pickup": [5.3, 1.92, 1.82, 1.12, 1.0, 1.42, 0.72, 1.15, 0.2, 0.38, 0.95, 1.25],
 }
 
-## Preview (2026-10-14, SH_CARS=1): the extra detail of _car_detail.
-static var detail_v2: bool = OS.has_environment("SH_CARS")
+## The extra detail of _car_detail (2026-10-14, on; SH_CARS_OLD=1 for the old cars).
+static var detail_v2: bool = not OS.has_environment("SH_CARS_OLD") # (approved 2026-10-14; SH_CARS_OLD shows the old cars)
 
 ## The things that make a car read as a car up close, each touching the
 ## body: black sills and arch liners, door seams and handles, a
@@ -536,7 +536,321 @@ static func rail_xf(geo: Geo, b: Transform3D, kind: String, rng: RandomNumberGen
 				var p1: Vector2 = prof[i + 1]
 				geo.cone(a.lerp(c, p0.y / 16.0), a.lerp(c, p1.y / 16.0), p0.x, p1.x, shell, 16)
 			_bx(geo, b, Vector3(0, 5.6, 0), Vector3(1.4, 0.4, 1.4), "veh_black")
+	if trains_v2:
+		_train_detail(geo, b, kind, L, bogie)
 	return L
+
+## The extra detail of _train_detail (2026-10-14, on; SH_TRAINS_OLD=1 for the old trains).
+static var trains_v2: bool = not OS.has_environment("SH_TRAINS_OLD") # (approved 2026-10-14; SH_TRAINS_OLD shows the old trains)
+
+## A ladder on a flat face whose outward normal is along z (end walls):
+## two uprights and rungs, 7 cm deep, resting on the face at z = zf (sn
+## = which way is out). x0 = centre across, y0..y1 = bottom/top.
+static func _end_ladder(geo: Geo, b: Transform3D, x0: float, y0: float, y1: float, zf: float, sn: float) -> void:
+	var zc: float = zf + sn * 0.035
+	for dx in [-0.17, 0.17]:
+		_bx(geo, b, Vector3(x0 + dx, (y0 + y1) * 0.5, zc), Vector3(0.04, y1 - y0, 0.07), "veh_steel")
+	var y: float = y0 + 0.2
+	while y < y1 - 0.05:
+		_bx(geo, b, Vector3(x0, y, zc), Vector3(0.34, 0.035, 0.07), "veh_steel")
+		y += 0.28
+
+## Window frames and rubber seals over a _windows band (same loop, so
+## the panes line up): a dark strip along the top and bottom and an edge
+## strip each side of every pane, all 5 cm thick on the 2.95 m body
+## (3 cm proud of the glass: flush, it flickered).
+static func _window_frames(geo: Geo, b: Transform3D, z0: float, z1: float, y0: float, y1: float, pane: float, pillar: float) -> void:
+	var z: float = z0
+	var glass: bool = false
+	for sx in [-1.0, 1.0]:
+		_bx(geo, b, Vector3(sx * 1.5, y0 + 0.04, (z0 + z1) * 0.5), Vector3(0.05, 0.08, z1 - z0), "veh_black")
+		_bx(geo, b, Vector3(sx * 1.5, y1 - 0.04, (z0 + z1) * 0.5), Vector3(0.05, 0.08, z1 - z0), "veh_black")
+	while z < z1 - 0.01:
+		var l: float = minf((pane if glass else pillar), z1 - z)
+		if glass:
+			for sx in [-1.0, 1.0]:
+				for ze in [z + 0.02, z + l - 0.02]:
+					_bx(geo, b, Vector3(sx * 1.5, (y0 + y1) * 0.5, ze), Vector3(0.05, y1 - y0, 0.05), "veh_black")
+		z += l
+		glass = not glass
+
+## Bogie details, brake hoses and couplings, roof boxes, lamps, ladders,
+## handrails (2026-10-14). Every piece overlaps the body or
+## a neighbour (nothing floats); overlays stand 3-5 cm proud of the
+## surface they sit on (flush ones flickered on the cars).
+static func _train_detail(geo: Geo, b: Transform3D, kind: String, L: float, bogie: float) -> void:
+	var h: float = L * 0.5
+	var electric: bool = kind == "loco" or kind.begins_with("ice")
+	# --- bogies: axles, brake discs, coil springs, axle boxes, damper ---
+	for bz in [-bogie, bogie]:
+		for az in [-0.95, 0.95]:
+			geo.cylinder(b * Vector3(-0.74, 0.46, bz + az), b * Vector3(0.74, 0.46, bz + az), 0.07, "veh_steel", 8, false, true, false)
+			for sx in [-0.4, 0.4]:
+				geo.cylinder(b * Vector3(sx - 0.015, 0.46, bz + az), b * Vector3(sx + 0.015, 0.46, bz + az), 0.3, "veh_chrome", 12, false, true, false)
+		for sx in [-1.0, 1.0]:
+			for az in [-0.95, 0.95]:
+				# Axle box housing around the existing journal cap, spring on top.
+				_bx(geo, b, Vector3(sx * 1.25, 0.46, bz + az), Vector3(0.12, 0.3, 0.3), "veh_steel")
+				geo.cylinder(b * Vector3(sx * 1.22, 0.58, bz + az), b * Vector3(sx * 1.22, 0.86, bz + az), 0.1, "veh_steel", 8, false, true, false)
+				for k in range(3):
+					var yk: float = 0.62 + 0.09 * k
+					geo.cylinder(b * Vector3(sx * 1.22, yk, bz + az), b * Vector3(sx * 1.22, yk + 0.025, bz + az), 0.125, "veh_chrome", 8, false, true, false)
+			# Yaw damper between the two springs, along the side beam.
+			geo.cylinder(b * Vector3(sx * 1.18, 0.72, bz - 0.4), b * Vector3(sx * 1.18, 0.72, bz + 0.4), 0.05, "veh_chrome", 6, false, true, false)
+	# --- ends: couplings and brake hoses ---
+	var ends: Array = [-1.0, 1.0]
+	if kind == "ice_head":
+		ends = [1.0]
+	elif kind == "ice_tail":
+		ends = [-1.0]
+	for ez in ends:
+		if electric or kind == "coach":
+			if kind == "coach" or kind == "ice":
+				# Centre coupler (Scharfenberg-style cone) under the gangway.
+				geo.cone(b * Vector3(0, 1.0, ez * (h - 0.1)), b * Vector3(0, 1.0, ez * (h + 0.55)), 0.16, 0.1, "veh_steel", 8, false, false)
+				for sx in [-0.35, 0.35]:
+					geo.cylinder(b * Vector3(sx, 1.2, ez * h), b * Vector3(sx, 0.85, ez * (h + 0.3)), 0.03, "veh_black", 6, false, true, false)
+			else:
+				geo.cone(b * Vector3(0, 1.0, ez * (h - 0.1)), b * Vector3(0, 1.0, ez * (h + 0.55)), 0.16, 0.1, "veh_steel", 8, false, false)
+		else:
+			# Hook + screw coupling between the buffers, red/black air hoses.
+			_bx(geo, b, Vector3(0, 0.95, ez * (h + 0.1)), Vector3(0.14, 0.16, 0.5), "veh_steel")
+			geo.cylinder(b * Vector3(0, 0.95, ez * (h + 0.3)), b * Vector3(0, 0.7, ez * (h + 0.3)), 0.035, "veh_steel", 6, false, true, false)
+			geo.cylinder(b * Vector3(0, 0.7, ez * (h + 0.1)), b * Vector3(0, 0.7, ez * (h + 0.42)), 0.055, "veh_chrome", 8, false, true, false)
+			for sx in [-0.4, 0.4]:
+				var hose: String = "train_red" if sx < 0.0 else "veh_black"
+				geo.cylinder(b * Vector3(sx, 1.0, ez * (h + 0.0)), b * Vector3(sx, 0.72, ez * (h + 0.3)), 0.035, hose, 6, false, true, false)
+				_bx(geo, b, Vector3(sx, 0.7, ez * (h + 0.32)), Vector3(0.08, 0.08, 0.08), "veh_steel")
+	# --- per kind ---
+	match kind:
+		"loco":
+			var zc: float = h - 0.3
+			for pz in [-4.0, 4.0]:
+				# Pantograph: insulators, contact strips on the head.
+				for sx in [-0.5, 0.5]:
+					geo.cylinder(b * Vector3(sx, 4.0, pz), b * Vector3(sx, 4.32, pz), 0.07, "train_white", 8, false, true, false)
+				geo.beam(b * Vector3(0.18, 4.1, pz + 0.05), b * Vector3(0.18, 5.2, pz + 1.4), Vector2(0.04, 0.04), "veh_steel", false, false)
+				geo.beam(b * Vector3(-0.18, 4.1, pz + 0.05), b * Vector3(-0.18, 5.2, pz + 1.4), Vector2(0.04, 0.04), "veh_steel", false, false)
+				for dz in [-0.07, 0.07]:
+					_bx(geo, b, Vector3(0, 5.28, pz + 1.4 + dz), Vector3(1.7, 0.05, 0.05), "veh_black")
+			# Roof: resistor grid box and a vent between the pantographs.
+			_bx(geo, b, Vector3(0, 4.17, 0), Vector3(1.6, 0.25, 2.6), "train_roof")
+			for k in range(5):
+				_bx(geo, b, Vector3(0, 4.31, -1.0 + k * 0.5), Vector3(1.4, 0.04, 0.08), "veh_black")
+			for ez in [-1.0, 1.0]:
+				var tip: float = ez * zc
+				# Windscreen wipers on the sloped cab glass (slope: 0.55 m
+				# along z for 0.95 m up; 4 cm out of the glass).
+				for wx in [-0.9, -0.1]:
+					var ta: Vector3 = _loco_slope(tip, ez, wx, 0.1)
+					var tb: Vector3 = _loco_slope(tip, ez, wx + 0.55, 0.62)
+					geo.beam(b * ta, b * tb, Vector2(0.03, 0.03), "veh_black", false, false)
+					_bx(geo, b, ta, Vector3(0.1, 0.1, 0.1), "veh_black")
+				for wx in [0.9]:
+					_bx(geo, b, _loco_slope(tip, ez, wx, 0.1), Vector3(0.1, 0.1, 0.1), "veh_black")
+				# Cab glass frame: a dark strip along the top edge of the glass.
+				_bx(geo, b, Vector3(0, 3.58, tip - ez * 0.85), Vector3(2.9, 0.06, 0.1), "veh_black")
+				# Lamps: top lamp, red tail lamps, number plate; buffer beam.
+				_bx(geo, b, Vector3(0, 3.62, tip - ez * 0.9), Vector3(0.3, 0.14, 0.12), "veh_head")
+				for sx in [-1.1, 1.1]:
+					_bx(geo, b, Vector3(sx, 1.75, tip + ez * 0.02), Vector3(0.2, 0.12, 0.08), "veh_tail")
+				_bx(geo, b, Vector3(0, 1.55, tip + ez * 0.02), Vector3(0.5, 0.14, 0.08), "veh_plate")
+				# Cab door on the side, outline + handrail + step.
+				var dz: float = ez * (zc - 1.0)
+				_door_outline(geo, b, dz, 1.5, 2.55, 0.9, 1.47)
+				# Handrail beside the door
+				_side_rail(geo, b, dz + ez * 0.62, 1.6, 2.5, 1.47)
+		"shunter":
+			var zf: float = -h + 0.7 # hood front face z = -L/2+... (hood is L-4.6 long about z=-1.6)
+			zf = -1.6 - (L - 4.6) * 0.5
+			for sx in [-0.6, 0.6]:
+				_bx(geo, b, Vector3(sx, 1.9, zf - 0.02), Vector3(0.2, 0.14, 0.08), "veh_head")
+			# Cab windows (the old glass box was buried in the cab): front, sides, back.
+			var zcab: float = L * 0.5 - 1.95
+			_bx(geo, b, Vector3(0, 3.4, h - 3.4), Vector3(2.0, 0.9, 0.06), "veh_glass")
+			_bx(geo, b, Vector3(0, 3.4, h - 0.5), Vector3(2.0, 0.9, 0.06), "veh_glass")
+			for sx in [-1.0, 1.0]:
+				_bx(geo, b, Vector3(sx * 1.4, 3.4, zcab), Vector3(0.06, 0.9, 2.0), "veh_glass")
+				_bx(geo, b, Vector3(sx * 1.43, 3.88, zcab), Vector3(0.05, 0.06, 2.1), "veh_black")
+				_bx(geo, b, Vector3(sx * 1.43, 2.92, zcab), Vector3(0.05, 0.06, 2.1), "veh_black")
+			geo.beam(b * Vector3(-0.6, 3.0, h - 3.4 - 0.04), b * Vector3(0.3, 3.75, h - 3.4 - 0.04), Vector2(0.03, 0.03), "veh_black", false, false)
+			# Rear lamps, beacon, handrails along the hood.
+			for sx in [-0.9, 0.9]:
+				_bx(geo, b, Vector3(sx, 1.9, h - 0.5 + 0.02), Vector3(0.2, 0.14, 0.08), "veh_tail")
+			geo.cylinder(b * Vector3(0.9, 4.15, h - 1.5), b * Vector3(0.9, 4.45, h - 1.5), 0.1, "veh_amber", 8, false, true, false)
+			for sx in [-1.0, 1.0]:
+				for pz in [zf + 0.3, -1.6, 1.4]:
+					_bx(geo, b, Vector3(sx * 1.3, 1.7, pz), Vector3(0.04, 0.7, 0.04), "veh_steel")
+				_bx(geo, b, Vector3(sx * 1.3, 2.05, (zf + 1.4) * 0.5), Vector3(0.04, 0.04, 1.4 - zf), "veh_steel")
+			_door_outline(geo, b, h - 1.95, 1.5, 3.2, 1.0, 1.4)
+		"ice_head", "ice_tail":
+			var sn: float = -1.0 if kind == "ice_head" else 1.0
+			var zb: float = sn * (h - 5.0)
+			var za: float = -sn * h
+			var lo: float = minf(za, zb)
+			var hi: float = maxf(za, zb)
+			_window_frames(geo, b, lo + 0.6, hi - 0.6, 2.45, 3.3, 1.8, 0.45)
+			# Door on each side at the passenger end, with handrails.
+			var dz: float = za + (-sn) * 0.0
+			dz = (za + (1.4 if za < zb else -1.4))
+			_door_outline(geo, b, dz, 1.3, 3.25, 1.1, 1.47)
+			_roof_boxes(geo, b, lo + 3.0, hi - 3.0)
+			# Pantograph contact strips (the head's pantograph exists).
+			for dzz in [-0.07, 0.07]:
+				_bx(geo, b, Vector3(0, 5.28, -sn * 0.8 + dzz), Vector3(1.7, 0.05, 0.05), "veh_black")
+			# Red tail marker: a strip across the nose tip.
+			var zt: float = sn * h
+			for sx in [-0.3, 0.3]:
+				_bx(geo, b, Vector3(sx, 1.35, zt - sn * 0.02), Vector3(0.25, 0.1, 0.1), "veh_tail")
+		"ice", "coach":
+			_window_frames(geo, b, -h + 2.6, h - 2.6, 2.45, 3.3, 1.9, 0.5)
+			_roof_boxes(geo, b, -h + 3.0, h - 3.0)
+			for ez in [-1.0, 1.0]:
+				var dz: float = ez * (h - 1.5)
+				_door_outline(geo, b, dz, 1.2, 3.2, 1.2, 1.495)
+				# Steps below the door, handrails each side.
+				for sx in [-1.0, 1.0]:
+					_bx(geo, b, Vector3(sx * 1.45, 1.12, dz), Vector3(0.3, 0.1, 0.9), "veh_black")
+					for zo in [-0.75, 0.75]:
+						_side_rail_side(geo, b, sx, dz + zo, 1.35, 3.1, 1.495)
+			# Underfloor boxes (battery, air, tanks) below the underframe.
+			for k in range(-2, 3):
+				for sx in [-0.8, 0.8]:
+					if (k + (1 if sx > 0.0 else 0)) % 2 != 0 and k != 0:
+						_bx(geo, b, Vector3(sx, 0.62, k * 3.2), Vector3(0.7, 0.4, 2.0), "train_grey")
+			_bx(geo, b, Vector3(0, 0.5, 0), Vector3(1.0, 0.3, 2.5), "veh_steel")
+		"tank":
+			# Straps round the tank (2 cm bigger than the shell), saddle ribs.
+			for zz in [-L * 0.5 + 2.0, -3.0, 3.0, L * 0.5 - 2.0]:
+				geo.cylinder(b * Vector3(0, 2.8, zz - 0.04), b * Vector3(0, 2.8, zz + 0.04), 1.49, "veh_black", 18, false, true, false)
+			# Side ladders from the frame to the walkway level.
+			for ez in [-1.0, 1.0]:
+				_side_ladder(geo, b, ez * (h - 2.6), 1.2, 2.9)
+			# Dome: bolted lid with a ring, safety valve.
+			geo.cylinder(b * Vector3(0, 4.58, 0), b * Vector3(0, 4.66, 0), 0.55, "veh_steel", 10, false, true, false)
+			geo.cylinder(b * Vector3(0.0, 4.6, 0), b * Vector3(0.0, 4.95, 0), 0.12, "veh_steel", 8, false, true, false)
+			_under_air(geo, b, h)
+			for ez in [-1.0, 1.0]:
+				_end_ladder_frame(geo, b, ez * h)
+		"box":
+			for sx in [-1.0, 1.0]:
+				# Door rail above and below the sliding door (5 cm proud), handle, rooflight.
+				_bx(geo, b, Vector3(sx * 1.5, 4.42, 0), Vector3(0.1, 0.06, 6.0), "veh_black")
+				_bx(geo, b, Vector3(sx * 1.54, 2.9, 1.9), Vector3(0.06, 0.8, 0.06), "veh_steel")
+				_bx(geo, b, Vector3(sx * 1.5, 1.5, 0), Vector3(0.1, 0.06, 6.0), "veh_black")
+				_bx(geo, b, Vector3(sx * 1.47, 4.45, -L * 0.5 + 0.9), Vector3(0.05, 0.14, 0.8), "veh_black") # vent slot
+				_bx(geo, b, Vector3(sx * 1.47, 4.45, L * 0.5 - 0.9), Vector3(0.05, 0.14, 0.8), "veh_black")
+			for ez in [-1.0, 1.0]:
+				_end_ladder(geo, b, -ez * 1.0, 1.3, 4.6, ez * h, ez)
+				# Hand brake wheel on a post at the other corner.
+				_bx(geo, b, Vector3(ez * 1.0, 3.0, ez * (h + 0.04)), Vector3(0.05, 0.05, 0.08), "veh_black")
+			geo.cylinder(b * Vector3(1.0, 3.0, -h - 0.03), b * Vector3(1.0, 3.0, -h - 0.09), 0.2, "veh_black", 10, false, true, false)
+			_under_air(geo, b, h)
+		"hopper":
+			var zw: float = h - 0.4
+			for ez in [-1.0, 1.0]:
+				_end_ladder(geo, b, -ez * 0.9, 2.3, 4.0, ez * zw, ez)
+				# End platform with handrail on the top rim.
+				_bx(geo, b, Vector3(0, 3.95, ez * (zw + 0.25)), Vector3(2.8, 0.05, 0.5), "veh_steel")
+				_bx(geo, b, Vector3(0, 4.45, ez * (zw + 0.48)), Vector3(2.8, 0.04, 0.04), "veh_steel")
+				for sx in [-1.35, 0.0, 1.35]:
+					_bx(geo, b, Vector3(sx, 4.2, ez * (zw + 0.48)), Vector3(0.04, 0.55, 0.04), "veh_steel")
+			# Top rim, hatches over the four outlets.
+			for sx in [-1.0, 1.0]:
+				_bx(geo, b, Vector3(sx * 1.5, 4.0, 0), Vector3(0.1, 0.1, L - 0.8), "veh_steel")
+			for k in range(4):
+				var hz: float = -L * 0.5 + 2.2 + k * (L - 4.4) / 3.0
+				_bx(geo, b, Vector3(0, 4.03, hz), Vector3(0.9, 0.08, 0.9), "veh_steel")
+				_bx(geo, b, Vector3(0, 4.1, hz), Vector3(0.3, 0.06, 0.3), "veh_black")
+				_bx(geo, b, Vector3(0.0, 1.0, hz), Vector3(1.2, 0.08, 1.2), "veh_steel")
+		"flat", "flat_empty":
+			# Stakes along both sides of the deck, container twist locks.
+			for sx in [-1.0, 1.0]:
+				for k in range(8):
+					_bx(geo, b, Vector3(sx * 1.38, 1.9, -h + 1.4 + k * (L - 2.8) / 7.0), Vector3(0.06, 1.0, 0.06), "veh_black")
+			for ez in [-1.0, 1.0]:
+				for sx in [-1.1, 1.1]:
+					_bx(geo, b, Vector3(sx, 1.46, ez * (h - 0.4)), Vector3(0.16, 0.12, 0.2), "veh_steel")
+			# Hand brake: post and wheel at one end.
+			_bx(geo, b, Vector3(1.25, 1.8, -h + 0.3), Vector3(0.05, 0.9, 0.05), "veh_black")
+			geo.cylinder(b * Vector3(1.25, 2.25, -h + 0.3), b * Vector3(1.25, 2.28, -h + 0.3), 0.2, "veh_black", 10, false, true, false)
+			_end_ladder_frame(geo, b, -h)
+			_end_ladder_frame(geo, b, h)
+			_under_air(geo, b, h)
+		"torpedo":
+			for ez in [-1.0, 1.0]:
+				for sx in [-1.0, 1.0]:
+					_bx(geo, b, Vector3(sx * 1.2, 2.0, ez * 9.0), Vector3(0.06, 0.9, 0.06), "veh_steel") # stanchions
+					_bx(geo, b, Vector3(sx * 1.2, 1.9, ez * 6.6), Vector3(0.06, 0.6, 0.06), "veh_steel")
+				_bx(geo, b, Vector3(-1.2, 2.3, ez * 7.8), Vector3(0.04, 0.04, 2.6), "veh_steel")
+				_bx(geo, b, Vector3(1.2, 2.3, ez * 7.8), Vector3(0.04, 0.04, 2.6), "veh_steel")
+
+## A point on the loco's sloped cab glass (x across, t 0..1 up the slope),
+## 4 cm out of the glass.
+static func _loco_slope(tip: float, ez: float, x: float, t: float) -> Vector3:
+	return Vector3(x, 2.6 + 0.95 * t + 0.02, tip - ez * 0.55 * t + ez * 0.035)
+
+## Door outline on both sides of a coach/loco: four dark strips round
+## a door (centre dz, y0..y1, width w), proud of the body face at
+## |x| = xs by 4 cm (3 cm proud: flush, it flickered).
+static func _door_outline(geo: Geo, b: Transform3D, dz: float, y0: float, y1: float, w: float, xs: float) -> void:
+	var yc: float = (y0 + y1) * 0.5
+	for sx in [-1.0, 1.0]:
+		var x: float = sx * (xs + 0.02)
+		_bx(geo, b, Vector3(x, y0 + 0.02, dz), Vector3(0.05, 0.05, w + 0.1), "veh_black")
+		_bx(geo, b, Vector3(x, y1 - 0.02, dz), Vector3(0.05, 0.05, w + 0.1), "veh_black")
+		_bx(geo, b, Vector3(x, yc, dz - w * 0.5), Vector3(0.05, y1 - y0, 0.05), "veh_black")
+		_bx(geo, b, Vector3(x, yc, dz + w * 0.5), Vector3(0.05, y1 - y0, 0.05), "veh_black")
+		_bx(geo, b, Vector3(x, yc, dz), Vector3(0.05, 0.04, w - 0.05), "veh_black") # seam (centre of a double door)
+
+## Vertical chrome handrail on both sides at z, with stubs into the body.
+static func _side_rail(geo: Geo, b: Transform3D, z: float, y0: float, y1: float, xs: float) -> void:
+	for sx in [-1.0, 1.0]:
+		_side_rail_side(geo, b, sx, z, y0, y1, xs)
+
+static func _side_rail_side(geo: Geo, b: Transform3D, sx: float, z: float, y0: float, y1: float, xs: float) -> void:
+	var xr: float = xs + 0.09
+	geo.cylinder(b * Vector3(sx * xr, y0, z), b * Vector3(sx * xr, y1, z), 0.022, "veh_chrome", 6, false, true, false)
+	for y in [y0 + 0.05, y1 - 0.05]:
+		geo.cylinder(b * Vector3(sx * (xs - 0.02), y, z), b * Vector3(sx * xr, y, z), 0.018, "veh_chrome", 6, false, true, false)
+
+## Roof equipment on the (flat, 1.2 m wide) roof top at y 4.18: AC
+## units and a vent row, between z0 and z1.
+static func _roof_boxes(geo: Geo, b: Transform3D, z0: float, z1: float) -> void:
+	var n: int = maxi(2, int((z1 - z0) / 6.0))
+	for k in range(n):
+		var zc: float = z0 + (k + 0.5) * (z1 - z0) / n
+		_bx(geo, b, Vector3(0, 4.3, zc), Vector3(1.0, 0.24, 2.4), "train_roof")
+		for j in range(4):
+			_bx(geo, b, Vector3(0, 4.43, zc - 0.9 + j * 0.6), Vector3(0.8, 0.04, 0.1), "veh_black")
+
+## Wagon side ladder at z, from the frame (y0) to y1 on the tank flank:
+## two uprights 1.55 m out, brackets at both ends reaching the shell/frame.
+static func _side_ladder(geo: Geo, b: Transform3D, z: float, y0: float, y1: float) -> void:
+	for sx in [-1.0, 1.0]:
+		for dz in [-0.2, 0.2]:
+			_bx(geo, b, Vector3(sx * 1.56, (y0 + y1) * 0.5, z + dz), Vector3(0.04, y1 - y0, 0.04), "veh_steel")
+			_bx(geo, b, Vector3(sx * 1.45, y0 + 0.1, z + dz), Vector3(0.24, 0.05, 0.05), "veh_steel") # bracket to the frame
+			_bx(geo, b, Vector3(sx * 1.48, 2.75, z + dz), Vector3(0.2, 0.05, 0.05), "veh_steel") # bracket to the shell (widest point)
+		var y: float = y0 + 0.35
+		while y < y1 - 0.1:
+			_bx(geo, b, Vector3(sx * 1.56, y, z), Vector3(0.04, 0.035, 0.4), "veh_steel")
+			y += 0.3
+
+## Frame end: a small step and a grab rail on the headstock, both sides.
+static func _end_ladder_frame(geo: Geo, b: Transform3D, zf: float) -> void:
+	var sn: float = signf(zf)
+	for sx in [-1.0, 1.0]:
+		_bx(geo, b, Vector3(sx * 1.25, 1.55, zf - sn * 0.05), Vector3(0.05, 0.4, 0.05), "veh_steel")
+		_bx(geo, b, Vector3(sx * 1.25, 1.13, zf + sn * 0.12), Vector3(0.4, 0.05, 0.3), "veh_steel")
+
+## Brake cylinder, air reservoir and the pipe joining them, hung under
+## the frame's centre (the frame bottom is at y 1.05).
+static func _under_air(geo: Geo, b: Transform3D, h: float) -> void:
+	geo.cylinder(b * Vector3(-0.6, 0.93, -1.2), b * Vector3(-0.6, 0.93, 1.2), 0.22, "veh_steel", 10, false, true, false)
+	geo.cylinder(b * Vector3(0.6, 0.95, -0.7), b * Vector3(0.6, 0.95, 0.7), 0.17, "veh_black", 10, false, true, false)
+	geo.cylinder(b * Vector3(0.0, 1.0, -0.7), b * Vector3(0.0, 1.0, 0.7), 0.04, "veh_chrome", 6, false, true, false)
+	_bx(geo, b, Vector3(0.0, 1.0, 0.0), Vector3(1.4, 0.06, 0.06), "veh_chrome")
 
 ## A whole train from x0 along x.
 static func train(geo: Geo, x0: float, y: float, z: float, kinds: Array, rng: RandomNumberGenerator, container_mats: Array = []) -> void:

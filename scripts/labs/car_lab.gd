@@ -1,7 +1,7 @@
 extends BuiltMap
 
 ## Dev lab for Vehicles.car (not in the menu): every kind side by side
-## on a car park, close-ups front-three-quarter and rear. SH_CARS=1 shows
+## on a car park, close-ups front-three-quarter and rear. SH_CARS_OLD=1 shows the cars before
 ## the 2026-10-14 detail. `godot --path . -- --dev-preview lab CarLab`.
 
 const KINDS: Array[String] = ["sedan", "hatch", "estate", "suv", "van", "pickup", "taxi"]
