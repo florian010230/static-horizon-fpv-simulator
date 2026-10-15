@@ -46,7 +46,7 @@ const MAPS: Array[Dictionary] = [
 	 "text": "An abandoned multi-storey car park: tight decks, ramps, collapsed slabs to dive through, broken parapets to punch out of - the strip lights still half working."},
 	{"id": "construction", "name": "Construction Site", "scene": "res://scenes/maps/ConstructionSite.tscn", "tier": "High", "drone": "any",
 	 "color": Color("#e0a526"),
-	 "text": "A high-rise going up in the city: fly through its open floors, round two tower cranes, down the 12 m pit, through a steel frame and under the railway arches."},
+	 "text": "A whole company campus under construction: three towers (a bare concrete core, a steel frame, a glass giant) with lift shafts you can fly up, four tower cranes with loads hanging in the air, walkway bridges, a car park, offices and a lab to fly through, a hall with half a roof, a high-bay warehouse, a foundation pit - and two roads that come out of tunnels."},
 	{"id": "harbour", "gnomes": 3, "name": "Harbour & Central Station", "scene": "res://scenes/maps/Harbour.tscn", "tier": "High", "drone": "any",
 	 "color": Color("#2a7fb0"),
 	 "text": "A port city at sunset: container cranes and ships, a rail branch into the terminal, a through station with a glass train shed, the old harbour and the city grid."},

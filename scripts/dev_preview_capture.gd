@@ -95,7 +95,7 @@ const HERO := {
 	"race_arena": [Vector3(-54, 12, 25), Vector3(15, 0, -5)],
 	"office": [Vector3(-17, 2.75, 10.5), Vector3(5, 0.5, -6)],
 	"garage": [Vector3(-60, 40, 70), Vector3(0, 6, 0)],
-	"construction": [Vector3(220, 140, 230), Vector3(20, 20, -20)],
+	"construction": [Vector3(262, 150, 215), Vector3(-10, 10, -60)],
 	"harbour": [Vector3(-480, 260, 300), Vector3(-120, 0, -380)],
 	"mountain_lake": [Vector3(0, 160, 420), Vector3(0, 20, -100)],
 	"test_valley": [Vector3(250, 55, 190), Vector3(20, 0, 0)],

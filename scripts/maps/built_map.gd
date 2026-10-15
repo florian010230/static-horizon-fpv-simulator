@@ -137,6 +137,72 @@ func loose_driveways(reach: float = 1.5) -> Array:
 			out.append(e)
 	return out
 
+## Entrances (2026-10-14, "nothing cut off"): a map with buildings, docks
+## or ramps records where each can be entered from the ground
+## (register_entrance), and the point(s) where the outside world comes in
+## (`root`: a gatehouse). cut_off_entrances() lists those that no road
+## reaches: more than `reach` m from a lane, or on a road network that
+## does not join the root's. Maps that record none pass.
+var entrances: Array = [] ## [position: Vector3, label: String, root: bool]
+
+func register_entrance(pos: Vector3, label: String = "", root: bool = false) -> void:
+	entrances.append([pos, label, root])
+
+func cut_off_entrances(reach: float = 4.0) -> Array:
+	var out: Array = []
+	if entrances.is_empty():
+		return out
+	if from_cache:
+		push_warning("cut_off_entrances(): %s came from the map cache - Geo holds nothing to check" % name)
+	var net: PackedInt32Array = geo.lane_networks()
+	var good: Dictionary = {}
+	for e: Array in entrances:
+		if e[2]:
+			var li: int = geo.lane_near(Vector2(e[0].x, e[0].z), reach)
+			if li >= 0:
+				good[net[li]] = true
+	if good.is_empty():
+		# No root recorded (or none on a road): the biggest network counts.
+		var sizes: Dictionary = {}
+		for id in net:
+			sizes[id] = sizes.get(id, 0) + 1
+		var best: int = -1
+		for id: int in sizes:
+			if best < 0 or sizes[id] > sizes[best]:
+				best = id
+		good[best] = true
+	for e: Array in entrances:
+		var p := Vector2(e[0].x, e[0].z)
+		var li: int = geo.lane_near(p, reach)
+		if li < 0:
+			out.append([e[1], e[0], "no road within %.0f m (nearest %.1f m)" % [reach, geo.lane_gap(p, 60.0)]])
+		elif not good.has(net[li]):
+			out.append([e[1], e[0], "on a road that does not reach the gate"])
+	return out
+
+## Lines that must stay flyable (2026-10-14): [label, from, to] - a lift
+## shaft, a tunnel, a walkway, a corridor. The self-test sweeps a drone-sized
+## ball along each and fails if anything is in the way.
+func clear_lines() -> Array:
+	return []
+
+func blocked_lines() -> Array:
+	var out: Array = []
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var ball := SphereShape3D.new()
+	ball.radius = 0.3
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = ball
+	if drone:
+		q.exclude = [drone.get_rid()]
+	for l: Array in clear_lines():
+		q.transform = Transform3D(Basis(), l[1])
+		q.motion = l[2] - l[1]
+		var r: Array = space.cast_motion(q)
+		if r.size() > 0 and r[0] < 0.999:
+			out.append([l[0], l[1] + (l[2] - l[1]) * r[0]])
+	return out
+
 func layout_conflicts() -> Array:
 	if from_cache:
 		push_warning("layout_conflicts(): %s came from the map cache - Geo holds nothing to check" % name)

@@ -147,6 +147,10 @@ func _run() -> void:
 			await _test_text_all()
 		if only.has("zfight"):
 			await _test_zfight_all()
+		if only.has("maps"): # the per-map checks for the maps in SH_TEXT_MAPS (default: Construction Site)
+			var mnames: PackedStringArray = OS.get_environment("SH_TEXT_MAPS").split(",") if OS.has_environment("SH_TEXT_MAPS") else PackedStringArray(["ConstructionSite"])
+			for mn in mnames:
+				await _test_map("res://scenes/maps/%s.tscn" % mn, "five", false)
 		if only.has("flow"):
 			await _test_flow_all()
 		if only.has("water"):
@@ -843,6 +847,14 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		_check(lc.is_empty(), tag + ": layout makes sense (no building on a road or rail, none in another)", "%d: %s" % [lc.size(), str(lc.slice(0, 4))])
 		var de: Array = (sc as BuiltMap).dead_ends()
 		_check(de.is_empty(), tag + ": no dead ends (every hollow you can fly into has a way out)", "%d: %s" % [de.size(), str(de.slice(0, 3))])
+		var ce: Array = (sc as BuiltMap).cut_off_entrances()
+		for e: Array in ce:
+			print("  CUTOFF %s: %s at (%.1f, %.1f, %.1f) - %s" % [sc.name, e[0], e[1].x, e[1].y, e[1].z, e[2]])
+		_check(ce.is_empty(), tag + ": nothing cut off (every entrance is on a road that reaches the gate)", "%d of %d: %s" % [ce.size(), (sc as BuiltMap).entrances.size(), str(ce.slice(0, 4).map(func(e: Array) -> String: return "%s %s" % [e[0], e[2]]))])
+		var bl: Array = (sc as BuiltMap).blocked_lines()
+		for e: Array in bl:
+			print("  BLOCKED %s: %s stopped at (%.1f, %.1f, %.1f)" % [sc.name, e[0], e[1].x, e[1].y, e[1].z])
+		_check(bl.is_empty(), tag + ": flyable lines stay clear (%d: shafts, tunnels, corridors, aisles)" % (sc as BuiltMap).clear_lines().size(), str(bl.slice(0, 4)))
 		var ld: Array = (sc as BuiltMap).loose_driveways()
 		_check(ld.is_empty(), tag + ": every driveway meets a road", "%d of %d: %s" % [ld.size(), (sc as BuiltMap).geo.drive_ends.size(), str(ld.slice(0, 3).map(func(e: Array) -> String: return "(%.0f, %.0f)" % [e[0].x, e[0].z]))])
 		if sc.has_method("surface_glitches"):

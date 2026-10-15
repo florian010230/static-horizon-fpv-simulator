@@ -348,6 +348,67 @@ func connect_drives(reach: float = 8.0) -> void:
 			box(Vector3(c.x, (top + bottom) * 0.5, c.z), Vector3(w, top - bottom, piece + 0.01), "hc_paving", yaw, false, false)
 		e.append(L) # (how far it was carried on, for the check)
 
+## Which lanes touch which (2026-10-14, "nothing cut off"): union-find
+## over the recorded lanes - two lanes are one network when their centre
+## lines come closer than the sum of their half widths (+ `slack`).
+## Returns the network id of every lane (index = lane index).
+func lane_networks(slack: float = 0.3) -> PackedInt32Array:
+	var n: int = _lanes.size()
+	var parent: Array[int] = []
+	parent.resize(n)
+	for i in range(n):
+		parent[i] = i
+	var find := func(x: int) -> int:
+		while parent[x] != x:
+			parent[x] = parent[parent[x]]
+			x = parent[x]
+		return x
+	for cell: Vector2i in _lane_grid:
+		var list: Array = _lane_grid[cell]
+		for ii in range(list.size()):
+			var a: Array = _lanes[list[ii]]
+			for jj in range(ii + 1, list.size()):
+				var b: Array = _lanes[list[jj]]
+				var ra: int = find.call(list[ii])
+				var rb: int = find.call(list[jj])
+				if ra == rb:
+					continue
+				if _seg_dist(a[0], a[1], b[0], b[1]) <= a[2] + b[2] + slack:
+					parent[ra] = rb
+	var out := PackedInt32Array()
+	out.resize(n)
+	for i in range(n):
+		out[i] = find.call(i)
+	return out
+
+static func _seg_dist(a0: Vector2, a1: Vector2, b0: Vector2, b1: Vector2) -> float:
+	if Geometry2D.segment_intersects_segment(a0, a1, b0, b1) != null:
+		return 0.0
+	return minf(minf(Geometry2D.get_closest_point_to_segment(a0, b0, b1).distance_to(a0), Geometry2D.get_closest_point_to_segment(a1, b0, b1).distance_to(a1)),
+		minf(Geometry2D.get_closest_point_to_segment(b0, a0, a1).distance_to(b0), Geometry2D.get_closest_point_to_segment(b1, a0, a1).distance_to(b1)))
+
+## Index of the lane nearest p (x, z) whose edge is within `reach` of it
+## (-1: none), and that distance in lane_near_gap.
+var lane_near_gap: float = 0.0
+func lane_near(p: Vector2, reach: float) -> int:
+	var best: float = INF
+	var bi: int = -1
+	var c0 := Vector2i(floori((p.x - reach) / OBS_CELL), floori((p.y - reach) / OBS_CELL))
+	var c1 := Vector2i(floori((p.x + reach) / OBS_CELL), floori((p.y + reach) / OBS_CELL))
+	for cx in range(c0.x, c1.x + 1):
+		for cz in range(c0.y, c1.y + 1):
+			for idx in _lane_grid.get(Vector2i(cx, cz), []):
+				var l: Array = _lanes[idx]
+				var a: Vector2 = l[0]
+				var ab: Vector2 = l[1] - a
+				var t: float = clampf((p - a).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+				var g: float = maxf((a + ab * t).distance_to(p) - l[2], 0.0)
+				if g < best:
+					best = g
+					bi = idx
+	lane_near_gap = best
+	return bi if best <= reach else -1
+
 ## Is p (x, z) on a road or track (within `margin` of its edge)?
 func on_lane(p: Vector2, margin: float) -> bool:
 	for idx in _lane_grid.get(Vector2i(floori(p.x / OBS_CELL), floori(p.y / OBS_CELL)), []):
