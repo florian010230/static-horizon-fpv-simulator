@@ -64,8 +64,9 @@ const SHOTS: Dictionary = {
 		Vector3(30, 9, -25), Vector3(12, 30, -95), Vector3(-15, 70, -170), Vector3(-30, 95, -215)]},
 	"t_barn": {"map": "village", "speed": 6.0, "fov": 75.0, "clear": 1.2, "ray_up": 0.3, "bank": 0.0, "pts": [
 		Vector3(92, 5.3, 237.6), Vector3(114, 5.1, 237.5), Vector3(136, 4.9, 237.2), Vector3(158, 4.7, 237), Vector3(172, 5.0, 237)]},
+	# Across the T1-T2 walkway at floor 4 and on through T2's steel frame.
 	"t_tower": {"map": "construction", "speed": 8.0, "fov": 78.0, "clear": 1.0, "ray_up": 0.3, "bank": 0.0, "pts": [
-		Vector3(8, 30.6, -24.5), Vector3(30, 30.6, -24.5), Vector3(55, 30.6, -24.5), Vector3(80, 30.6, -24.5), Vector3(100, 30.6, -24.5)]},
+		Vector3(-114, 15.9, -100), Vector3(-100, 15.9, -100), Vector3(-85, 15.9, -100), Vector3(-70, 15.9, -100), Vector3(-55, 15.9, -100)]},
 	# --- trailer v2: the same places with curves, height changes, arcs
 	# and drifting views instead of straight lines. ---
 	"v2_lake_dawn": {"map": "mountain_lake", "speed": 10.0, "fov": 70.0, "clear": 2.0, "look": Vector3(48, 9, 18), "pts": [
@@ -86,8 +87,8 @@ const SHOTS: Dictionary = {
 	"v2_furnaces": {"map": "steelmill", "speed": 11.0, "fov": 65.0, "clear": 3.0, "look": Vector3(-25, 16, 55), "look_to": Vector3(5, 16, 50), "pts": [
 		Vector3(-125, 26, 125), Vector3(-75, 30, 150), Vector3(-15, 32, 158), Vector3(40, 29, 140)]},
 	"v2_tower": {"map": "construction", "speed": 8.0, "fov": 78.0, "clear": 1.0, "ray_up": 0.3, "pts": [
-		Vector3(-24, 25, -10), Vector3(-6, 29, -20), Vector3(10, 30.6, -24.5), Vector3(30, 30.6, -24.5), Vector3(55, 30.6, -24.5),
-		Vector3(80, 30.6, -24.5), Vector3(98, 31.4, -24.5), Vector3(116, 34, -18)]},
+		Vector3(-185, 12, -82), Vector3(-165, 15, -96), Vector3(-150, 15.9, -100), Vector3(-130, 15.9, -100), Vector3(-110, 15.9, -100),
+		Vector3(-90, 15.9, -100), Vector3(-70, 15.9, -100), Vector3(-55, 17, -100), Vector3(-46, 23, -90), Vector3(-40, 32, -72)]},
 	"v2_falls": {"map": "mountain_lake", "speed": 20.0, "fov": 75.0, "clear": 2.5, "yaw_off": -8.0, "yaw_off_to": 6.0, "pts": [
 		Vector3(15, 4, -52), Vector3(55, 4.5, -38), Vector3(92, 16, -28),
 		Vector3(118, 48, -30), Vector3(150, 82, -34), Vector3(210, 98, -44), Vector3(250, 104, -54)]},

@@ -25,7 +25,10 @@ func _init(m: BuiltMap, r: RandomNumberGenerator, f: Fleet) -> void:
 
 static func add_materials(geo: Geo) -> void:
 	geo.add_material("ground", Geo.ground_mat(MapTextures.get_tex("meadow"), Color.WHITE, 8.0, 0, 0.45))
-	geo.add_material("site", Geo.ground_mat(MapTextures.get_tex("gravel_verge"), Color(1.75, 1.62, 1.4), 4.0, 1, 0.5))
+	geo.add_material("site", Geo.ground_mat(MapTextures.get_tex("gravel_verge"), Color(1.62, 1.57, 1.48), 4.0, 1, 0.5))
+	geo.add_material("bank", Geo.ground_mat(MapTextures.get_tex("gravel_verge"), Color(0.82, 0.7, 0.55), 4.0, 1, 0.5))
+	geo.add_material("weeds", Geo.ground_mat(MapTextures.get_tex("meadow"), Color(1.0, 1.02, 0.85), 6.0, 3, 0.45))
+	geo.add_material("stone", Geo.ground_mat(MapTextures.get_tex("gravel_verge"), Color(2.3, 2.27, 2.2), 2.5, 3, 0.3))
 	geo.add_material("haul", Geo.ground_mat(MapTextures.get_tex("gravel_verge"), Color(2.1, 1.98, 1.75), 3.0, 2, 0.4))
 	geo.add_material("ruts", Geo.ground_flat(Color(0.5, 0.43, 0.35), 3))
 	geo.add_material("mudpatch", Geo.ground_mat(MapTextures.get_tex("gravel_verge"), Color(0.62, 0.5, 0.38), 2.0, 3, 0.2))

@@ -422,9 +422,8 @@ func _pipe_rack() -> void:
 func _pit() -> void:
 	var p: Rect2 = CampusKit.PIT
 	var d: float = CampusKit.PIT_DEPTH
-	# The pit floor in mud (laid just over the terrain).
+	# (The pit floor and banks: bare earth draped on the terrain, ConstructionSite._site_ground.)
 	geo.tint = Color.WHITE
-	geo.slab(p.grow(0.0), -d + 0.06, 0.3, "mud", false)
 	# The ramp: flat from the road to the bank, then down (a solid wedge).
 	var pts: Array[Vector3] = []
 	var x: float = -73.0

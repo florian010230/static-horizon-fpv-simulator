@@ -116,6 +116,7 @@ func build() -> void:
 	CampusBig.new(kit).build_all()
 	CampusOffices.new(kit).build_all()
 	CampusYard.new(kit, roads).build_all()
+	_ground_patches()
 	_woods_and_fields(lrng)
 	if OS.has_environment("SH_CUTOFF_TEST"):
 		# Dev aid: an entrance in the middle of nowhere - the "nothing cut off" check must fail with it.
@@ -208,10 +209,70 @@ func _portals() -> void:
 
 # --- the campus ground -------------------------------------------------------------------------------------
 
+## Gravel inside the haul-road loop (and an apron at the gate); outside the
+## loop the meadow is left (only trodden flat). The pit: bare earth draped
+## on the terrain, floor and banks.
+const LOOP_GROUND := Rect2(-178, -138, 356, 266)
+
 func _site_ground() -> void:
-	var inner := Rect2(FENCE.position + Vector2(2, 2), FENCE.size - Vector2(4, 4))
-	for r in CampusKit.rect_minus(inner, [PIT.grow(9.0)]):
+	for r in CampusKit.rect_minus(LOOP_GROUND, [PIT.grow(9.0)]):
 		geo.slab(r, 0.0, 1.0, "site", false)
+	geo.slab(Rect2(-22, LOOP_GROUND.end.y, 44, FENCE.end.y - 2.0 - LOOP_GROUND.end.y), 0.0, 1.0, "site", false)
+	var fc := FieldCreator.new()
+	fc.geo = geo
+	fc.land = land
+	var e: Rect2 = PIT.grow(9.0)
+	fc._drape(PackedVector2Array([e.position, Vector2(e.end.x, e.position.y), e.end, Vector2(e.position.x, e.end.y)]), 0.03, "bank")
+	# The bank starts falling a little before the gravel ends (8 m terrain
+	# grid): an earth skirt under the gravel's edge closes the step, or the
+	# meadow under the gravel shows through it.
+	var cx: float = e.get_center().x
+	var cz: float = e.get_center().y
+	for s in [-1.0, 1.0]:
+		geo.box(Vector3(cx, -0.75, cz + s * (e.size.y * 0.5 - 0.05)), Vector3(e.size.x, 1.5, 0.08), "mud", 0.0, false, false)
+		geo.box(Vector3(cx + s * (e.size.x * 0.5 - 0.05), -0.75, cz), Vector3(0.08, 1.5, e.size.y), "mud", 0.0, false, false)
+
+## Patches on the open gravel (seen from the air it was one brown sheet):
+## weeds where nobody drives, wet mud, lighter crushed stone. Laid last,
+## off the roads, the pit and everything standing.
+func _ground_patches() -> void:
+	var prng := RandomNumberGenerator.new()
+	prng.seed = 3407
+	var placed: Array = [] # [centre, r]
+	var area: Rect2 = LOOP_GROUND.grow(-4.0)
+	var tries: int = 0
+	while placed.size() < 70 and tries < 1500:
+		tries += 1
+		var r: float = prng.randf_range(3.5, 11.0)
+		var c := Vector2(prng.randf_range(area.position.x + r, area.end.x - r), prng.randf_range(area.position.y + r, area.end.y - r))
+		if PIT.grow(10.0 + r).has_point(c) or geo.on_lane(c, r + 1.0):
+			continue
+		var free: bool = not geo.blocked(c, r * 0.5, 0.0, 0.6)
+		for q: Array in placed:
+			if c.distance_to(q[0]) < r + q[1] + 1.0:
+				free = false
+		if not free:
+			continue
+		var n: int = 14
+		var ph := Vector2(prng.randf() * TAU, prng.randf() * TAU)
+		var rim: Array[Vector2] = []
+		for i in range(n):
+			var a: float = TAU * i / n
+			rim.append(c + Vector2(cos(a), sin(a)) * r * (1.0 + 0.22 * sin(3.0 * a + ph.x) + 0.12 * sin(5.0 * a + ph.y)))
+		for q in rim:
+			if geo.blocked(q, 0.3, 0.0, 0.6) or geo.on_lane(q, 0.5):
+				free = false
+		if not free:
+			continue
+		placed.append([c, r])
+		var kind: float = prng.randf()
+		var mat: String = "weeds" if kind < 0.4 else ("mudpatch" if kind < 0.75 else "stone")
+		var tri := PackedVector3Array()
+		for i in range(n):
+			var a: Vector2 = rim[i]
+			var b: Vector2 = rim[(i + 1) % n]
+			tri.append_array([Vector3(c.x, 0.0, c.y), Vector3(a.x, 0.0, a.y), Vector3(b.x, 0.0, b.y)])
+		geo.tris(tri, mat)
 
 func _site_roads() -> void:
 	# Horizontal roads whole, vertical ones cut where they cross them (same
