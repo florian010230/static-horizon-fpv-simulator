@@ -275,7 +275,7 @@ func tracks() -> Array:
 			["gate", Vector3(-48, 0.02, -8), S, 2, 0.0, 1, "led_orange"], # double gate, upper
 		]},
 		# Hard: south, left under the gallery deck between its columns (a 3 m
-		# gate over the pits), out and up over the deck rail (a gate hung
+		# gate over the pits), out from under it and up over the deck rail (a gate hung
 		# above the deck), the split-S ladder at the east end, round a flag,
 		# a 6 m dive along the stand, a snake of three gates 8 m apart (two
 		# hairpins, the gates yawed into the turns), home.
@@ -283,6 +283,8 @@ func tracks() -> Array:
 			["start", Vector3(-50, 0.02, 14), S],
 			["turn", Vector3(-44.8, 0.02, 22.8), -PI * 0.75, "right"],
 			["sized", Vector3(-28, 0.02, 28), E, 3.0, 3.0, 0.15, 1.5, "led_green"], # under the deck, over the pits
+			["via", Vector3(-15, 3.6, 22.5)], # (the racing line: out from under the deck between two columns,
+			["via", Vector3(-3, 7.8, 24.0)], # then up past its edge - not through it)
 			["hanging", Vector3(8.5, 8.5, 27.5), E, 18.2, "led_blue"], # above the deck
 			["ladder", Vector3(50, 0.02, -8), N, 3.5, "led_pink"],
 			["turn", Vector3(46, 0.02, -16), PI * 0.25, "right"],

@@ -171,8 +171,7 @@ func _build_settings() -> Control:
 	var quality_hint := _hint_label()
 	_segmented(g1, "Graphics quality", Settings.QUALITY_NAMES, Settings.graphics_quality, func(i: int):
 		Settings.graphics_quality = i
-		quality_hint.text = QUALITY_HINTS[i]
-		_refresh_tab_titles())
+		quality_hint.text = QUALITY_HINTS[i])
 	quality_hint.text = QUALITY_HINTS[clampi(Settings.graphics_quality, 0, 2)]
 	g1.add_child(quality_hint)
 	UIKit.gap(g1, 6)
@@ -253,8 +252,7 @@ func _build_settings() -> Control:
 	_hint(f1, "On: a drone in the water is lost - splash, motors off, back to the start. Off: fly through the water and out again.")
 	UIKit.section(f_air, "Air")
 	_segmented(f_air, "Wind (outdoor maps)", Settings.WIND_NAMES, Settings.wind_level, func(i: int):
-		Settings.wind_level = i
-		_refresh_tab_titles())
+		Settings.wind_level = i)
 	_hint(f_air, "3 / 6 / 10 m/s at 10 m height, with gusts and turbulence. Calmer near the ground and in the lee of buildings.")
 	UIKit.toggle(f_air, "Prop wash", Settings.prop_wash, func(v: bool): Settings.prop_wash = v)
 	_hint(f_air, "Shaking and lost lift when you dive into your own downwash. Off: a clean catch every time.")
@@ -334,7 +332,6 @@ func _build_settings() -> Control:
 	_hint(r_ctrl, "How far a held key moves the stick; it moves there smoothly. Lower = gentler turns. H shows or hides the key guide while flying.")
 	UIKit.gap(r_ctrl, 14)
 	_radio_help(r_ctrl)
-	_refresh_tab_titles()
 	return parts[0]
 
 ## A panel for one topic inside a tab (2026-10-12): dark, a sky-blue top
@@ -360,19 +357,6 @@ func _group(page: HBoxContainer, ratio: float = 1.0) -> VBoxContainer:
 	panel.add_child(col)
 	UIKit.gap(col, 4)
 	return col
-
-## Tab titles with the key value beside them (Flying: the wind, Graphics:
-## the quality).
-func _refresh_tab_titles() -> void:
-	if settings_tabs == null:
-		return
-	var titles: Dictionary = {"Flying": "Flying  ·  wind %s" % String(Settings.WIND_NAMES[clampi(Settings.wind_level, 0, Settings.WIND_NAMES.size() - 1)]).to_lower(),
-		"Graphics": "Graphics  ·  %s" % Settings.QUALITY_NAMES[clampi(Settings.graphics_quality, 0, 2)]}
-	for k: String in titles:
-		var i: int = TAB_NAMES.find(k)
-		settings_tabs.set_tab_title(i, titles[k])
-		if i < _tab_buttons.size():
-			_tab_buttons[i].text = titles[k]
 
 func _hint_label() -> Label:
 	var l := Label.new()

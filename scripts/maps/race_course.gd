@@ -550,6 +550,11 @@ func _register(xf: Transform3D, w: float, h: float) -> void:
 	# back without its script variables (see _ready).
 	set_meta("gates", _gates)
 
+## A racing-line waypoint after the last registered gate.
+func _add_via(p: Vector3) -> void:
+	var g: Dictionary = _gates[_gates.size() - 1]
+	g["via"] = (g.get("via", []) as Array) + [p]
+
 func _ready() -> void:
 	if _gates.is_empty() and has_meta("gates"):
 		_gates.assign(get_meta("gates"))
@@ -951,6 +956,7 @@ static func make(map: BuiltMap, tracks: Array, opts: Dictionary = {}) -> RaceCou
 
 ## Builds a track from data: each call is [kind, args...] with kind one of
 ## "start" | "gate" | "sized" | "dive" | "hurdle" | "flag" | "turn" | "hanging" | "ladder"
+## | "via" (a waypoint of the racing line toward the next gate, [kind, position])
 ## (the builders above, args in their order after geo) or "box" (a plain
 ## prop: centre, size, colour - e.g. the desk under a gate; its own flat
 ## material, since the map's are not there on a cached load).
@@ -959,6 +965,9 @@ func build_track(geo: Geo, calls: Array) -> void:
 		"hurdle": "hurdle", "flag": "flag", "turn": "turn_flag", "hanging": "hanging_gate", "ladder": "ladder"}
 	for c: Array in calls:
 		var kind: String = c[0]
+		if kind == "via": # a point the racing line passes on the way to the next gate (not a gate)
+			_add_via(c[1])
+			continue
 		if kind == "box":
 			var m: String = "prop_" + (c[3] as Color).to_html(false)
 			if not geo.has_material(m):
@@ -1417,6 +1426,9 @@ static func track_shape(p_map_id: String, p_track: int) -> Dictionary:
 	for c: Array in tl[p_track - 1].calls:
 		if c[0] in ["box", "flag"]:
 			continue
+		if c[0] == "via":
+			rc._add_via(c[1])
+			continue
 		rc.callv({"start": "start_gate", "gate": "gate", "sized": "gate_sized", "dive": "dive_gate", "hurdle": "hurdle",
 			"turn": "turn_flag", "hanging": "hanging_gate", "ladder": "ladder"}[c[0]], [g] + c.slice(1))
 	var lp: Dictionary = line_path(rc._gates)
@@ -1450,24 +1462,39 @@ static func line_path(gates: Array) -> Dictionary:
 		var p1: Vector3 = b.xf.origin
 		var d0: Vector3 = -a.xf.basis.z.normalized()
 		var d1: Vector3 = -b.xf.basis.z.normalized()
-		var l: float = p0.distance_to(p1)
-		var x: float = 1.0 - d0.dot(d1)
-		var k: float = 1.0 - 0.16 * x + 0.33 * x * x # 1 straight, ~1.17 a quarter turn, 2 a half loop
-		var t0: Vector3 = d0 * l * k
-		var t1: Vector3 = d1 * l * k
 		var floor_y: float = minf(p0.y, p1.y) - 0.3
-		var steps: int = maxi(int(l * (1.0 + x) / LINE_STEP), 2)
-		for j in range(steps):
-			var t: float = float(j) / steps
-			var t2: float = t * t
-			var t3: float = t2 * t
-			var p: Vector3 = (2 * t3 - 3 * t2 + 1) * p0 + (t3 - 2 * t2 + t) * t0 + (-2 * t3 + 3 * t2) * p1 + (t3 - t2) * t1
-			p.y = maxf(p.y, floor_y)
-			if j == 0 or p.distance_to(pts[pts.size() - 1]) >= LINE_STEP:
-				pts.append(p)
+		var via: Array = a.get("via", [])
+		if via.is_empty():
+			var l: float = p0.distance_to(p1)
+			var x: float = 1.0 - d0.dot(d1)
+			var k: float = 1.0 - 0.16 * x + 0.33 * x * x # 1 straight, ~1.17 a quarter turn, 2 a half loop
+			_hermite(pts, p0, d0 * l * k, p1, d1 * l * k, int(l * (1.0 + x) / LINE_STEP), floor_y, true)
+			continue
+		# Through the waypoints ("via" calls): Catmull-Rom tangents there,
+		# the gates' own directions at the ends.
+		var q: Array = [p0] + via + [p1]
+		for m in range(q.size() - 1):
+			var l: float = (q[m] as Vector3).distance_to(q[m + 1])
+			var t0: Vector3 = d0 * l if m == 0 else ((q[m + 1] as Vector3) - q[m - 1]) * 0.5
+			var t1: Vector3 = d1 * l if m == q.size() - 2 else ((q[m + 2] as Vector3) - q[m]) * 0.5
+			_hermite(pts, q[m], t0, q[m + 1], t1, int(l * 1.5 / LINE_STEP), floor_y, m == 0)
 	pts.append(pts[0]) # closed: back into START
 	seg.append(pts.size() - 1)
 	return {"pts": pts, "seg": seg}
+
+## One Hermite piece p0 -> p1 (p1 itself left to the next piece), points
+## LINE_STEP apart, never below floor_y; `at_gate`: p0 is a gate's opening
+## (always kept - the stretch's first point, line_path's "seg").
+static func _hermite(pts: PackedVector3Array, p0: Vector3, t0: Vector3, p1: Vector3, t1: Vector3, steps: int, floor_y: float, at_gate: bool) -> void:
+	steps = maxi(steps, 2)
+	for j in range(steps):
+		var t: float = float(j) / steps
+		var t2: float = t * t
+		var t3: float = t2 * t
+		var p: Vector3 = (2 * t3 - 3 * t2 + 1) * p0 + (t3 - 2 * t2 + t) * t0 + (-2 * t3 + 3 * t2) * p1 + (t3 - t2) * t1
+		p.y = maxf(p.y, floor_y)
+		if (j == 0 and at_gate) or p.distance_to(pts[pts.size() - 1]) >= LINE_STEP:
+			pts.append(p)
 
 ## The racing line must not run through anything (2026-10-14): a ball of
 ## LINE_CLEAR round every point; where it touches something, the line is

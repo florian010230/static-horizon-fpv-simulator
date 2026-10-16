@@ -195,6 +195,8 @@ var _obs_grid: Dictionary = {}
 ## Driveways' street ends [street end, house end] (HouseCreator): each
 ## must meet a road (BuiltMap.loose_driveways, self-test).
 var drive_ends: Array = []
+## Sign posts placed inside a drawn piece (SignCreator.post fills it): positions.
+var sign_conflicts: Array = []
 var _lanes: Array = [] # [a: Vector2, b: Vector2, half width, surface y]
 var _lane_grid: Dictionary = {}
 

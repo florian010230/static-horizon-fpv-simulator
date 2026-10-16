@@ -354,6 +354,7 @@ func tracks() -> Array:
 			["turn", Vector3(15.4, 0.02, -0.2), N, "right", "gate_a", K], # back up its east side
 			["ladder", Vector3(6.5, 0.02, -1.0), W, 0.9, "gate_b", 0.6],
 			["turn", Vector3(5.0, 0.02, 5.0), S, "right", "gate_a", K], # west of the pillar
+			["via", Vector3(-2.8, 0.6, 8.6)], # (the racing line: the U-turn inside the south wall, not through it)
 			["turn", Vector3(-10.6, 0.02, 5.0), N, "left", "gate_b", K], # round the other pillar
 		]},
 		# Hard, a lap of (nearly) everything: a three-flag slalom east along

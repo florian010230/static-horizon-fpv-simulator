@@ -77,8 +77,8 @@ func after_build() -> void:
 ## gate, turned toward the spawn, with a tiny whoop parked on the top edge of
 ## its plate - the pilot who put it there is well past caring. Placed.
 func _no_drones_sign() -> void:
-	var foot := Vector3(3.4, 0.0, 9.0)
-	var yaw: float = atan2(-3.4, 3.0)
+	var foot := Vector3(0.6, 0.0, 9.0) # clear of the table-tennis table (x 1.63 to 4.37)
+	var yaw: float = atan2(-0.6, 3.0)
 	SignCreator.post(geo, foot, yaw, [["no_drones", "NO DRONES"]])
 	var top: float = SignCreator.BOTTOM + SignCreator.height_of("no_drones") + SignCreator.GAP
 	var b := Basis(Vector3.UP, yaw)

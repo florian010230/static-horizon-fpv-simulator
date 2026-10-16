@@ -64,7 +64,8 @@ static func build(parent: Node3D, profile: Dictionary) -> void:
 		# axis, so it can spin (Drone.spin_props) - 2026-10-14.
 		var base_key: String = key.rstrip("0123456789")
 		var m: Array = mats[base_key]
-		mi.material_override = _material(m[0], m[1], m[2], m[3])
+		# (props: the see-through shader even when opaque - they fade into the blur disc)
+		mi.material_override = _material(m[0], m[1], m[2], m[3], base_key == "prop")
 		if base_key != key:
 			var idx: int = int(key.substr(base_key.length()))
 			mi.name = "%s%d" % [base_key.capitalize(), idx]
@@ -78,29 +79,39 @@ static func build(parent: Node3D, profile: Dictionary) -> void:
 ## part of the frame and never moved - in the replay and the line-of-
 ## sight view the quad looked switched off). `rpm` 0..1 (Drone.
 ## rpm_fraction). The blades turn at a speed the eye can follow - real
-## ones at 20 000+ rpm would only alias on a 60 Hz screen - and over
-## ~45% the blur disc takes over, as props look in a video.
+## ones at 20 000+ rpm would only alias on a 60 Hz screen - and cross-
+## fade into the blur disc between BLUR_FROM and BLUR_TO, as props look
+## in a video (2026-10-15, user: the switch was a jump at ~1% throttle,
+## and idle blades crawled). Measured on the ground, all four drones:
+## rpm 0.06 idle, 0.09 at 2% throttle, 0.17 at 5%, 0.25 at 10%.
 const BLADE_REV_S: float = 5.0
+const BLUR_FROM: float = 0.09
+const BLUR_TO: float = 0.27
 static func spin_props(root: Node, rpm: float, delta: float) -> void:
-	var fast: bool = rpm > 0.45
+	var f: float = smoothstep(BLUR_FROM, BLUR_TO, rpm) if rpm > 0.0 else 0.0
 	for c in root.get_children():
 		if not c.has_meta("spin"):
 			continue
-		var n: Node3D = c
-		if String(n.name).begins_with("Blur"):
-			n.visible = fast
-		else:
-			n.visible = not fast
-			if rpm > 0.0:
-				n.rotation.y += float(n.get_meta("spin")) * TAU * BLADE_REV_S * clampf(rpm / 0.45, 0.2, 1.0) * delta
+		var n: MeshInstance3D = c
+		var blur: bool = String(n.name).begins_with("Blur")
+		var a: float = f if blur else 1.0 - f
+		n.visible = a > 0.01
+		var m := n.material_override as ShaderMaterial
+		if m:
+			if not n.has_meta("albedo0"):
+				n.set_meta("albedo0", m.get_shader_parameter("albedo"))
+			var c0: Color = n.get_meta("albedo0")
+			m.set_shader_parameter("albedo", Color(c0.r, c0.g, c0.b, c0.a * a))
+		if not blur and rpm > 0.0:
+			n.rotation.y += float(n.get_meta("spin")) * TAU * BLADE_REV_S * lerpf(0.6, 1.0, clampf(rpm / BLUR_TO, 0.0, 1.0)) * delta
 
-static func _material(c: Color, metallic: float, gloss: float, weave: bool) -> ShaderMaterial:
+static func _material(c: Color, metallic: float, gloss: float, weave: bool, fades: bool = false) -> ShaderMaterial:
 	if _shader == null:
 		_shader = load("res://shaders/drone_studio.gdshader")
 		_shader_alpha = Shader.new()
 		_shader_alpha.code = _shader.code.replace("render_mode unshaded,", "render_mode unshaded, blend_mix, depth_draw_opaque,").replace("// ALPHA_LINE", "ALPHA = albedo.a; //")
 	var m := ShaderMaterial.new()
-	m.shader = _shader_alpha if c.a < 0.99 else _shader
+	m.shader = _shader_alpha if c.a < 0.99 or fades else _shader
 	m.set_shader_parameter("albedo", c)
 	m.set_shader_parameter("metallic", metallic)
 	m.set_shader_parameter("gloss", gloss)

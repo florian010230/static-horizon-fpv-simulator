@@ -43,6 +43,13 @@ static func height_of(kind: String) -> float:
 
 static func post(g: Geo, foot: Vector3, yaw: float, signs: Array, bottom: float = BOTTOM) -> void:
 	ensure_materials(g)
+	# A post must not stand inside something solid placed before it.
+	# (filled_at sees thin pieces like a table top that blocked() skips.)
+	for i in range(8, 41): # from 0.4 m up: paving and kerbs are not obstacles
+		if g.filled_at(foot + Vector3(0, i * 0.05, 0)):
+			g.sign_conflicts.append(foot)
+			push_warning("SignCreator.post: sign at %s stands inside a drawn piece" % foot)
+			break
 	g.begin_object("sign")
 	var total: float = 0.0
 	for s: Array in signs:

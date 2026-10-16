@@ -12,7 +12,7 @@ extends BuiltMap
 ## rock wall - to the cabin's car park and its pier (the spawn). A
 ## chapel on an island in the lake; a chalet hotel on the south-west
 ## shore; a campground on the east meadow under the cliffs; above the
-## cliffs a hanging valley with a tarn and an alpine farm, its creek
+## cliffs a hanging valley with an alpine farm and a spring, its creek
 ## dropping through a gully into the lake as a waterfall; a cable car
 ## from the north shore to the summit station, its restaurant and the
 ## summit cross.
@@ -33,9 +33,10 @@ const VILLAGE_Y: float = 5.0
 const HOTEL := Vector2(-176, 136)
 const HOTEL_Y: float = 7.5
 const CAMP := Vector2(168, 96)
-## The alpine farm on the hanging valley's pasture, and its tarn.
+## The alpine farm on the hanging valley's pasture (TARN: where the tarn was, kept for the dev dump).
 const ALM := Vector2(292, -132)
 const TARN := Vector2(352, -40)
+const SPRING := Vector2(322, -32) ## the creek's spring at the head of its gully (2026-10-15: no tarn any more)
 ## The waterfall: the lip of the gully on the cliff top, its foot at the lake.
 const FALL_TOP := Vector2(198, -35)
 const FALL_FOOT := Vector2(140, -32)
@@ -110,7 +111,7 @@ class AlpLand extends TerrainCreator:
 		return tint_fn.call(n, p)
 	## The lake counts as a pond for everything that keeps off water.
 	func in_pond(x: float, z: float, margin: float = 0.0) -> bool:
-		return lake_fn.call(x, z) < margin + 3.0 or Vector2(x, z).distance_to(TARN) < 36.0 + margin
+		return lake_fn.call(x, z) < margin + 3.0
 
 ## Signed distance (roughly, m) from the lake's shore line: negative in
 ## the water. The shore wanders (noise on the angle), the southern arm
@@ -159,10 +160,11 @@ func _alp(x: float, z: float) -> float:
 		var floor_y: float = 14.0 - 7.0 * smoothstep(50.0, 150.0, vx) * smoothstep(300.0, 160.0, z) - maxf(z - DAM_Z, 0.0) * 0.022 + maxf(vx - 140.0, 0.0) * 0.1
 		var shelf: float = minf(floor_y, maxf(d, 0.0) * 0.7 + minf(d, 0.0) * 0.3 - 0.7)
 		h = lerpf(h, shelf, v)
-	# The gorge under the dam: rock walls ~45 m down to the river.
+	# The gorge under the dam: rock walls ~45 m down to the river (2026-10-16:
+	# a flat floor 15 m each side, so the 8 m terrain grid never lifts the water's banks).
 	if z > DAM_Z - 6.0:
 		var gf: float = _gorge_floor(z)
-		var wall: float = gf + smoothstep(8.0, 30.0, vx + n * 3.0) * (h - gf)
+		var wall: float = gf + smoothstep(15.0, 34.0, vx + n * 3.0) * (h - gf)
 		h = lerpf(h, minf(h, wall), smoothstep(DAM_Z - 6.0, DAM_Z + 2.0, z))
 	# The east cliffs and the hanging valley above them (~72 m), with the
 	# gully the creek has cut down through the cliff.
@@ -170,17 +172,13 @@ func _alp(x: float, z: float) -> float:
 	if ex > 0.0 and d > 0.0:
 		var step: float = 72.0 * smoothstep(2.0, 50.0, d) + maxf(d - 50.0, 0.0) * 0.05
 		h = lerpf(h, maxf(h, step + n * 2.0), ex)
-		var gq: Vector2 = Geometry2D.get_closest_point_to_segment(Vector2(x, z), Vector2(TARN.x - 30.0, TARN.y + 8.0), FALL_FOOT)
+		var gq: Vector2 = Geometry2D.get_closest_point_to_segment(Vector2(x, z), SPRING, FALL_FOOT)
 		var gd: float = gq.distance_to(Vector2(x, z))
 		h -= 7.0 * (1.0 - smoothstep(3.0, 13.0, gd)) * ex * smoothstep(0.0, 30.0, d)
 	# The rock wall above the north road.
 	var wd: float = _wall_d(x, z)
 	if wd > 0.0:
 		h += 46.0 * smoothstep(6.0, 40.0, wd) * (1.0 - smoothstep(90.0, 160.0, wd))
-	# The tarn in the hanging valley: a hollow (its water drawn in _tarn).
-	var dt: float = Vector2(x, z).distance_to(TARN)
-	if dt < 40.0:
-		h -= 5.0 * (1.0 - smoothstep(14.0, 38.0, dt))
 	# The summit the cable car climbs to.
 	h += 70.0 * (1.0 - smoothstep(0.0, 160.0, Vector2(x, z).distance_to(SUMMIT)))
 	return h
@@ -314,7 +312,6 @@ func build() -> void:
 	_cable_car()
 	_quad_rocks()
 	_waterfall()
-	_tarn()
 	_street(main, lane_w, hotel_ln)
 	var t4: int = Time.get_ticks_msec()
 	# --- the alpine farm and its meadows ---
@@ -348,6 +345,7 @@ func build() -> void:
 		[Vector2(-330, 320), 130.0, 40, 1.2, 7.0], # south-west
 		[Vector2(40, -430), 140.0, 60, 1.5, 9.0], # the north wall
 		[Vector2(300, -90), 80.0, 30, 0.6, 3.0], # the pasture
+		[SPRING + Vector2(3.0, 0), 3.0, 9, 2.2, 4.0], # the spring comes out between them
 		[Vector2(0, 300), 70.0, 20, 0.8, 3.5], # the gorge rim
 	], meadows.map(func(m: Array) -> PackedVector2Array: return FieldCreator.poly(m)))
 	_views.append_array(rinfo.views.slice(0, 2))
@@ -368,7 +366,6 @@ func build() -> void:
 		["hotel", Vector3(-90, 20, 150), Vector3(HOTEL.x, 8, HOTEL.y)],
 		["waterfall", Vector3(90, 30, -10), Vector3(170, 35, -34)],
 		["behind_falls", Vector3(150.0, 52.0, -31.0), Vector3(166.1, 54.0, -33.4)],
-		["tarn", Vector3(290, 100, -10), Vector3(TARN.x, 66, TARN.y)],
 		["pasture", Vector3(180, 110, -40), Vector3(300, 75, -110)],
 		["cable_car", Vector3(-80, 60, -150), Vector3(-260, 120, -260)],
 		["summit", Vector3(-400, 300, -300), Vector3(SUMMIT.x, 280, SUMMIT.y)],
@@ -402,8 +399,10 @@ func _materials() -> void:
 	falls.set_meta("keep_material", true)
 	if Geo.unified_water:
 		geo.add_material("ml_falls", _falls_mat())
+		geo.add_material("ml_spill", _falls_mat(Vector2(0, 1))) # (the dam's: its own flow direction)
 	else:
 		geo.add_material("ml_falls", falls)
+		geo.add_material("ml_spill", falls)
 	geo.add_material("ml_lot", Geo.ground_mat(MapTextures.get_tex("asphalt"), Color(0.95, 0.95, 0.95), 7.0, 1, 0.3))
 	geo.add_material("ml_foam", Geo.flat_mat(Color(0.9, 0.94, 0.96))) # (on water, not ground)
 
@@ -489,34 +488,130 @@ func _dam() -> void:
 	geo.beam(fb0, fb1, Vector2(1.6, 0.25), "ml_steel")
 	for sx in [-0.8, 0.8]:
 		geo.beam(fb0 + Vector3(sx, 1.0, 0), fb1 + Vector3(sx, 1.0, 0), Vector2(0.06, 0.06), "ml_steel", false)
-	# The spillway: water over a lowered stretch of the crest, down the face.
-	var rows: Array = []
-	var yy: float = CREST_Y - 0.3
-	while yy > _gorge_floor(DAM_Z) - 0.5:
-		var thick: float = 4.0 + (CREST_Y - yy) * 0.22
-		var zf: float = _dam_face_z(0.0) + thick + 0.25
-		rows.append(PackedVector3Array([Vector3(-5.0, yy, zf), Vector3(5.0, yy, zf)]))
-		yy -= 2.0
-	geo.light_fn = func(_nn: Vector3, _p: Vector3) -> Color: return Color(1.05, 1.08, 1.12)
-	geo.strip(rows, "ml_falls")
-	geo.light_fn = Callable()
+	_spillway()
 	_views.append(["spillway", Vector3(6, -24, 248), Vector3(0, -10, DAM_Z)])
+	_views.append(["pool_top", Vector3(0, -8, DAM_Z + 14.0), Vector3(0, -34, DAM_Z + 14.1)])
+	_views.append(["river_top", Vector3(_gorge_x(DAM_Z + 90.0), 0, DAM_Z + 90.0), Vector3(_gorge_x(DAM_Z + 90.0), -34, DAM_Z + 90.1)])
+	_views.append(["river_low", Vector3(-1.0, -31.0, DAM_Z + 24.0), Vector3(_gorge_x(DAM_Z + 120.0) - 3.0, -33.5, DAM_Z + 120.0)])
+	_views.append(["spillway_side", Vector3(16, -12, DAM_Z + 16.0), Vector3(0, -16, DAM_Z - 2.0)])
+
+## The spillway (2026-10-15, user: it ran sideways, was a flat sheet and
+## stopped short): water over the crest between two training walls, out
+## over the downstream edge in a falling arc - two sheets, the underside
+## leaving slower, so it thickens as it falls - into a plunge pool at the
+## river's level; the waterfall's shader (flowing +z here), foam and mist.
+var _spill_land := Vector3.ZERO
+const SPILL_POOL_END: float = DAM_Z + 16.0 ## the plunge pool; the river starts here
+func _spillway() -> void:
+	# (2026-10-16, user: over the crest the water came from above the
+	# lake - it leaves through an outlet in the face below the waterline.)
+	var hw: float = 3.0
+	var zu: float = _dam_face_z(0.0)
+	var zd: float = zu + 4.0
+	var pool_y: float = _gorge_floor(DAM_Z) + 0.3
+	var out_top: float = WATER_Y - 2.0
+	var out_bot: float = out_top - 1.6
+	var face: float = zd + (CREST_Y - out_top) * 0.22 # the downstream face at the outlet's top
+	# The outlet: a concrete portal on the face, the dark mouth in it.
+	var lip: float = face + 1.2
+	geo.box(Vector3(0, (out_top + out_bot) * 0.5, face + 0.45), Vector3(hw * 2.0 + 1.6, out_top - out_bot + 1.4, 1.5), "ml_concrete")
+	if not geo.has_material("ml_mouth"):
+		geo.add_material("ml_mouth", Geo.flat_mat(Color(0.04, 0.05, 0.06)))
+	geo.box(Vector3(0, (out_top + out_bot) * 0.5, lip + 0.01), Vector3(hw * 2.0, out_top - out_bot, 0.04), "ml_mouth", 0.0, false, false)
+	var col: Dictionary = {}
+	var row := func(zs: float, y: float, f: float, fade: float, bulge: float, w: float) -> PackedVector3Array:
+		var r := PackedVector3Array()
+		for j in range(7):
+			var u: float = (j - 3) / 3.0
+			var q := Vector3(u * w, y, zs + bulge * (1.0 - u * u))
+			r.append(q)
+			col[q] = Color(1.0 - absf(u), f, fade)
+		return r
+	var v0: float = 6.0 # m/s over the edge: lands ~8 m out from the foot
+	var drop: float = out_top - pool_y
+	var t_end: float = sqrt(drop / 4.9)
+	var front: Array = []
+	var back: Array = []
+	# Out of the mouth.
+	front.append(row.call(lip - 0.05, out_top - 0.05, 0.0, 1.0, 0.0, hw - 0.05))
+	back.append(row.call(lip - 0.05, out_bot + 0.05, 0.0, 1.0, 0.0, hw - 0.05))
+	# The arc: thrown out at v0 and falling, the underside 15 % slower.
+	var n: int = 16
+	for k in range(1, n + 1):
+		var t: float = t_end * pow(float(k) / n, 0.8)
+		var f: float = float(k) / n
+		var yf: float = out_top - 0.05 - 4.9 * t * t
+		var yb: float = out_bot + 0.05 - 4.9 * t * t
+		var face_at: Callable = func(y: float) -> float: return zd + maxf(CREST_Y - y, 0.0) * 0.22 + 0.3
+		var w: float = hw - 0.05 + 1.5 * f
+		front.append(row.call(maxf(lip + v0 * t, face_at.call(yf) + 0.6), maxf(yf, pool_y - 0.2), f, 1.0, 0.25 * f, w))
+		back.append(row.call(maxf(lip + v0 * 0.85 * t, face_at.call(yb)), maxf(yb, pool_y - 0.2), f, 1.0, 0.0, w))
+	# Down through the pool's surface (ends under it).
+	for rows: Array in [front, back]:
+		var last: PackedVector3Array = rows[rows.size() - 1]
+		var under := PackedVector3Array()
+		for q: Vector3 in last:
+			var q2 := Vector3(q.x, pool_y - 0.6, q.z + 0.3)
+			under.append(q2)
+			col[q2] = col.get(q, Color(0, 1, 1))
+		rows.append(under)
+	var lf: PackedVector3Array = front[front.size() - 1]
+	_spill_land = Vector3(0.0, pool_y, lf[3].z)
+	geo.light_fn = func(_nn: Vector3, pp: Vector3) -> Color: return col.get(pp, Color(0, 1, 1))
+	geo.strip(back, "ml_spill")
+	geo.strip(front, "ml_spill")
+	geo.light_fn = Callable()
+	if Geo.unified_water:
+		_falls_mist(Vector3(0.0, pool_y + 1.0, _spill_land.z), Vector2(0, 1))
+
+## The plunge pool and the river below it as one ribbon of water
+## (2026-10-16, user: the pool was a square, the river looked buggy): a
+## round pool under the jet that narrows into the river, edges wobbling
+## a little, one surface following the floor's fall - no second water
+## plane to flicker against.
+func _river_rows() -> Array:
+	var zd: float = _dam_face_z(0.0) + 4.0
+	var za: float = zd + (CREST_Y - _gorge_floor(DAM_Z)) * 0.22 - 0.5
+	var zb: float = DAM_Z + 28.0
+	var rows: Array = []
+	var z: float = za
+	while z < 1200.0:
+		var t: float = clampf((z - za) / (zb - za), 0.0, 1.0)
+		var bulge: float = 4.8 * (1.0 - smoothstep(0.25, 1.0, t))
+		var cap: float = clampf((z - za) / 5.0, 0.0, 1.0)
+		var hw: float = (3.4 + bulge) * sqrt(1.0 - (1.0 - cap) * (1.0 - cap))
+		var cx: float = (_gorge_x(z) - 3.0) * smoothstep(DAM_Z + 4.0, DAM_Z + 40.0, z)
+		var y: float = _gorge_floor(maxf(z, DAM_Z)) + 0.3
+		var wob: float = 0.1 * (1.0 + bulge * 0.1)
+		var wl: float = hw * (1.0 + wob * sin(z * 0.37 + 1.0))
+		var wr: float = hw * (1.0 + wob * sin(z * 0.29 + 4.0))
+		rows.append(PackedVector3Array([Vector3(cx + wr, y, z), Vector3(cx - wl, y, z)]))
+		z += 1.0 if z < zb else 8.0
+	return rows
 
 ## The gorge under the dam: the river on its floor (its west side),
 ## foam where the spillway lands, the power station on the east side
 ## (a toilet inside - door toward the dam).
 func _gorge() -> void:
-	var path: Array[Vector3] = []
-	var z: float = DAM_Z + 6.0
-	while z < 1200.0:
-		path.append(Vector3(_gorge_x(z) - 3.0, _gorge_floor(z) + 0.3, z))
-		z += 8.0
 	geo.light_fn = func(nn: Vector3, p: Vector3) -> Color: return geo.shade(nn, p.y + 50.0) * Color(0.9, 0.95, 1.0)
-	geo.sweep(path, [Vector2(3.4, 0.0), Vector2(-3.4, 0.0)], "water", false, false, false)
+	geo.strip(_river_rows(), "water")
 	geo.light_fn = Callable()
-	var foam := Vector3(0, _gorge_floor(DAM_Z) + 0.36, _dam_face_z(0.0) + 4.0 + 37.0 * 0.22 + 7.0)
+	var foam := Vector3(0, _gorge_floor(DAM_Z) + 0.36, _spill_land.z + 2.0)
 	geo.light_fn = func(_nn: Vector3, _p: Vector3) -> Color: return Color(1.0, 1.02, 1.05)
-	geo.polygon([foam + Vector3(-5, 0, -3), foam + Vector3(4, 0, -3), foam + Vector3(3, 0, 5), foam + Vector3(-5, 0, 5)], "ml_foam", false)
+	# (2026-10-16, user: a flat white plate - now the falls' churning
+	# splash: boiling core, rings, drifting foam; over the plunge pool.)
+	if Geo.unified_water:
+		geo.add_material("ml_splash_dam", _splash_mat(Vector2(_spill_land.x, _spill_land.z), Vector2(0, 1)))
+		geo.material("ml_splash_dam").set_shader_parameter("fade_r", 5.0) # (gone before the patch's edge)
+		geo.light_fn = func(_nn: Vector3, _p: Vector3) -> Color: return Color.WHITE
+		var py: float = _spill_land.y + 0.06
+		var disc: Array[Vector3] = []
+		for k in range(20):
+			var an: float = TAU * k / 20.0
+			disc.append(Vector3(cos(an) * 5.4, py, _spill_land.z + 1.5 + sin(an) * 7.0 * (1.0 + 0.1 * sin(an * 3.0))))
+		geo.polygon(disc, "ml_splash_dam", false)
+	else:
+		geo.polygon([foam + Vector3(-5, 0, -3), foam + Vector3(4, 0, -3), foam + Vector3(3, 0, 5), foam + Vector3(-5, 0, 5)], "ml_foam", false)
 	geo.light_fn = Callable()
 	# The power station: 7 x 11 m, 5.5 m high, door (open) facing north.
 	var zc: float = DAM_Z + 30.0
@@ -1049,6 +1144,7 @@ func _splash_mat(centre: Vector2, flow: Vector2) -> ShaderMaterial:
 shader_type spatial;
 render_mode unshaded, blend_mix, cull_disabled, depth_draw_never;
 uniform vec2 centre;
+uniform float fade_r = 1000.0; // (fades out by this radius: a small patch must not end in a rim)
 uniform vec2 flow;
 uniform sampler2D noise : filter_linear_mipmap, repeat_enable;
 varying vec3 wpos;
@@ -1071,6 +1167,7 @@ void fragment() {
 	// Patches of foam drifting off.
 	float patch = smoothstep(0.66, 0.8, churn) * (1.0 - smoothstep(6.0, 18.0, r));
 	float a = max(core * (0.75 + churn * 0.25), max(ring * 0.32, patch * 0.65));
+	a *= 1.0 - smoothstep(fade_r * 0.55, fade_r, length(d));
 	ALBEDO = vec3(0.76, 0.87, 0.93);
 	ALPHA = clamp(a, 0.0, 0.97);
 }
@@ -1166,17 +1263,49 @@ void fragment() {
 	spray.visibility_aabb = AABB(Vector3(-15, -3, -15), Vector3(30, 15, 30))
 	node.add_child(spray)
 
-## The waterfall: the creek from the tarn across the pasture, then down
+## The creek (2026-10-15, user: the water above the falls wasn't clean;
+## start it at a spring): out of the rocks at the head of its gully, a
+## clear stream to the lip of the falls in the falls' own flowing water,
+## laid on the ground every metre along and across (the old ribbon cut in
+## and out of the 8 m terrain grid), a little meander, ragged banks.
+func _creek() -> void:
+	var col: Dictionary = {}
+	var L: float = SPRING.distance_to(FALL_TOP)
+	var dir: Vector2 = (FALL_TOP - SPRING) / L
+	var side := Vector2(-dir.y, dir.x)
+	var rows: Array = []
+	var d: float = 0.0
+	while d <= L + 0.01:
+		var k: float = d / L
+		var c: Vector2 = SPRING + dir * d + side * (2.2 * sin(d / 15.0) * smoothstep(0.0, 12.0, d) * smoothstep(L, L - 15.0, d))
+		var hw: float = lerpf(0.5, 2.4, smoothstep(0.0, 25.0, d)) + 0.3 * k
+		# (lifted to meet the falls' first row at the lip)
+		var lift: float = lerpf(0.1, 0.3, smoothstep(L - 6.0, L, d))
+		var row := PackedVector3Array()
+		for j in range(5):
+			var u: float = (j - 2) / 2.0
+			var q: Vector2 = c + side * (u * hw)
+			var p := Vector3(q.x, land.ground(q.x, q.y) + lift, q.y)
+			row.append(p)
+			col[p] = Color(1.0 - absf(u), 0.0, smoothstep(0.0, 2.5, d))
+		rows.append(row)
+		d += 1.0
+	geo.light_fn = func(_nn: Vector3, pp: Vector3) -> Color: return col.get(pp, Color(1, 0, 1))
+	geo.strip(rows, "ml_falls")
+	for k in range(0, rows.size() - 4, 4): # (no tree or rock in the creek)
+		var a0: Vector3 = rows[k][2]
+		var a1: Vector3 = rows[k + 4][2]
+		var al := Vector2(a1.x - a0.x, a1.z - a0.z)
+		geo.reserve(Vector2((a0.x + a1.x) * 0.5, (a0.z + a1.z) * 0.5), al.normalized(), Vector2(al.length() * 0.5 + 0.5, 3.2), minf(a0.y, a1.y) - 6.0, maxf(a0.y, a1.y) + 8.0)
+	geo.light_fn = Callable()
+	var gy: float = land.ground(SPRING.x, SPRING.y)
+	_views.append(["spring", Vector3(SPRING.x - 14.0, gy + 7.0, SPRING.y), Vector3(SPRING.x + 2.0, gy + 0.5, SPRING.y)])
+	_views.append(["creek", Vector3(SPRING.x - 20.0, gy + 30.0, SPRING.y + 40.0), Vector3(SPRING.x - 55.0, gy - 6.0, SPRING.y)])
+
+## The waterfall: the creek from its spring across the pasture, then down
 ## the gully in a white curtain, foam where it meets the lake.
 func _waterfall() -> void:
-	var creek: Array[Vector3] = []
-	var a := Vector2(TARN.x - 30.0, TARN.y + 8.0)
-	for k in range(25):
-		var q: Vector2 = a.lerp(FALL_TOP, k / 24.0)
-		creek.append(Vector3(q.x, land.ground(q.x, q.y) + 0.25, q.y))
-	geo.light_fn = func(nn: Vector3, p: Vector3) -> Color: return geo.shade(nn, p.y + 50.0) * Color(0.95, 1.0, 1.05)
-	geo.sweep(creek, [Vector2(1.6, 0.0), Vector2(-1.6, 0.0)], "water", false, false, false)
-	geo.light_fn = Callable()
+	_creek()
 	var rows: Array = []
 	var dirv: Vector2 = (FALL_FOOT - FALL_TOP).normalized()
 	var m: int = 24
@@ -1347,17 +1476,6 @@ func _fall_streams(dirv: Vector2) -> void:
 			_fall_main = out
 		else:
 			_fall_side.append(out)
-
-## The tarn: water in its hollow, a little under the lowest ground round it.
-func _tarn() -> void:
-	var lo: float = INF
-	for k in range(24):
-		var a: float = TAU * k / 24.0
-		lo = minf(lo, land.ground(TARN.x + cos(a) * 30.0, TARN.y + sin(a) * 30.0))
-	var c := Vector3(TARN.x, lo - 0.4, TARN.y)
-	geo.light_fn = func(nn: Vector3, p: Vector3) -> Color: return geo.shade(nn, p.y + 50.0)
-	geo.cylinder(c + Vector3(0, -0.2, 0), c, 30.0, "tr_water", 32, true)
-	geo.light_fn = Callable()
 
 ## Street furniture: the village's name boards, the bus stop at the
 ## cable car.

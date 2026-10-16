@@ -843,6 +843,8 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		_float_checked[map] = true
 		var fl: Array = (sc as BuiltMap).floating_pieces()
 		_check(fl.is_empty(), tag + ": nothing floats in the air", str(fl.slice(0, 3)))
+		var sgc: Array = (sc as BuiltMap).geo.sign_conflicts
+		_check(sgc.is_empty(), tag + ": no sign post stands inside a drawn piece", str(sgc.slice(0, 3)))
 		var lc: Array = (sc as BuiltMap).layout_conflicts()
 		_check(lc.is_empty(), tag + ": layout makes sense (no building on a road or rail, none in another)", "%d: %s" % [lc.size(), str(lc.slice(0, 4))])
 		var de: Array = (sc as BuiltMap).dead_ends()
@@ -1798,6 +1800,22 @@ func _test_tracks() -> void:
 						near[clampi(sb + k, 0, near.size() - 1)] = 1
 				var lb: PackedInt32Array = RaceCourse.blocked_points(space, course._line_pts, 0.1, [dr.get_rid()], near)
 				_check(lb.is_empty(), "tracks: %s track %d - the racing line runs through nothing" % [m.id, t], "%d points, first at %s" % [lb.size(), str(course._line_pts[lb[0]]) if not lb.is_empty() else ""])
+				# ... nor between its points (0.4 m apart: a thin deck or panel
+				# fits between two; the Gallery Run line went up through the
+				# gallery deck that way): a ray along every stretch, both ways.
+				var cut: Array = []
+				var lp: PackedVector3Array = course._line_pts
+				for i in range(1, lp.size()):
+					if near[i] == 1 or near[i - 1] == 1:
+						continue
+					for ab in [[lp[i - 1], lp[i]], [lp[i], lp[i - 1]]]:
+						var rq := PhysicsRayQueryParameters3D.create(ab[0], ab[1])
+						rq.exclude = [dr.get_rid()]
+						var hit: Dictionary = space.intersect_ray(rq)
+						if not hit.is_empty():
+							cut.append("%s (stretch %s -> %s)" % [hit.position, ab[0], ab[1]])
+							break
+				_check(cut.is_empty(), "tracks: %s track %d - no stretch of the racing line crosses anything" % [m.id, t], "%d stretches, first at %s" % [cut.size(), str(cut[0]) if not cut.is_empty() else ""])
 			var pos: Vector3 = dr.global_position
 			for g: Dictionary in course._gates + [course._gates[0]]:
 				for p: Vector3 in [g.xf * Vector3(0, 0, 2.0), g.xf * Vector3(0, 0, -2.0)]:
