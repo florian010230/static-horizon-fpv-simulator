@@ -198,6 +198,9 @@ func park(r: Rect2, y: float) -> void:
 			geo.box(bp + Vector3(0, 0.45, 0), Vector3(1.8, 0.1, 0.5), "boat_wood", 0.0, true, false)
 			geo.box(bp + Vector3(0, 0.22, 0), Vector3(1.6, 0.44, 0.3), "cty_dark", 0.0, false, false)
 
+## Off: car parks stay empty (Office: the city far below costs FPS, nobody sees cars there).
+var park_cars: bool = true
+
 ## Surface car park: bays in rows, cars in most of them, a few lamps.
 func car_park(r: Rect2, y: float, fill: float = 0.75) -> void:
 	geo.slab(r, y + 0.03, 0.1, "cty_lot", false)
@@ -206,7 +209,7 @@ func car_park(r: Rect2, y: float, fill: float = 0.75) -> void:
 		var x: float = r.position.x + 2.0
 		while x + 2.5 < r.end.x:
 			geo.box(Vector3(x, y + 0.035, z + 2.5), Vector3(0.12, 0.01, 5.0), "cty_bay", 0.0, false, false)
-			if rng.randf() < fill:
+			if park_cars and rng.randf() < fill:
 				var kind: String = ["sedan", "hatch", "suv", "estate", "hatch"][rng.randi() % 5]
 				var cp := Vector3(x + 1.25, y + 0.03, z + 2.5)
 				var yaw: float = 0.0 if rng.randf() < 0.5 else PI

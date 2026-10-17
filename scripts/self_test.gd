@@ -846,7 +846,7 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 		var sgc: Array = (sc as BuiltMap).geo.sign_conflicts
 		_check(sgc.is_empty(), tag + ": no sign post stands inside a drawn piece", str(sgc.slice(0, 3)))
 		var lc: Array = (sc as BuiltMap).layout_conflicts()
-		_check(lc.is_empty(), tag + ": layout makes sense (no building on a road or rail, none in another)", "%d: %s" % [lc.size(), str(lc.slice(0, 4))])
+		_check(lc.is_empty(), tag + ": layout makes sense (no building on a road or rail, none in another)", "%d: %s" % [lc.size(), str(lc.slice(0, 20 if OS.has_environment("SH_LAYOUT") else 4))])
 		var de: Array = (sc as BuiltMap).dead_ends()
 		_check(de.is_empty(), tag + ": no dead ends (every hollow you can fly into has a way out)", "%d: %s" % [de.size(), str(de.slice(0, 3))])
 		var ce: Array = (sc as BuiltMap).cut_off_entrances()
@@ -1805,15 +1805,34 @@ func _test_tracks() -> void:
 				# gallery deck that way): a ray along every stretch, both ways.
 				var cut: Array = []
 				var lp: PackedVector3Array = course._line_pts
+				# Next to a gate too (2026-10-16: Server Sprint's line cut
+				# through a rack beside a gate - those points were skipped);
+				# only a hit on a gate's own frame is passed through.
 				for i in range(1, lp.size()):
-					if near[i] == 1 or near[i - 1] == 1:
-						continue
+					var by_gate: bool = near[i] == 1 or near[i - 1] == 1
 					for ab in [[lp[i - 1], lp[i]], [lp[i], lp[i - 1]]]:
-						var rq := PhysicsRayQueryParameters3D.create(ab[0], ab[1])
-						rq.exclude = [dr.get_rid()]
-						var hit: Dictionary = space.intersect_ray(rq)
+						var from: Vector3 = ab[0]
+						var hit: Dictionary = {}
+						for _pass in range(6):
+							var rq := PhysicsRayQueryParameters3D.create(from, ab[1])
+							rq.exclude = [dr.get_rid()]
+							hit = space.intersect_ray(rq)
+							if hit.is_empty() or not (by_gate and _on_gate_frame(course, hit.position)):
+								break
+							from = (hit.position as Vector3) + ((ab[1] as Vector3) - from).normalized() * 0.03
+							hit = {}
 						if not hit.is_empty():
 							cut.append("%s (stretch %s -> %s)" % [hit.position, ab[0], ab[1]])
+							if OS.has_environment("SH_LINE_DEBUG"):
+								var co: Object = hit.collider
+								var ow: Object = (co as CollisionObject3D).shape_owner_get_owner((co as CollisionObject3D).shape_find_owner(hit.shape)) if co is CollisionObject3D else null
+								var bm: Node = get_tree().current_scene
+								if bm is BuiltMap:
+									for o: Array in (bm as BuiltMap).geo._obs:
+										var dd: Vector2 = Vector2(hit.position.x, hit.position.z) - (o[0] as Vector2)
+										if absf(dd.dot(o[1])) < o[2].x + 0.05 and absf(dd.dot(Vector2(-o[1].y, o[1].x))) < o[2].y + 0.05 and hit.position.y > o[3] - 0.05 and hit.position.y < o[4] + 0.05:
+											print("LINEOBS ", m.id, " ", hit.position, " ", o)
+								print("LINEHIT ", co, " ", ow, " ", (ow as Node3D).global_transform if ow is Node3D else "", " ", (ow as CollisionShape3D).shape if ow is CollisionShape3D else "", " ", ((ow as CollisionShape3D).shape as BoxShape3D).size if ow is CollisionShape3D and (ow as CollisionShape3D).shape is BoxShape3D else "")
 							break
 				_check(cut.is_empty(), "tracks: %s track %d - no stretch of the racing line crosses anything" % [m.id, t], "%d stretches, first at %s" % [cut.size(), str(cut[0]) if not cut.is_empty() else ""])
 			var pos: Vector3 = dr.global_position
@@ -2002,3 +2021,13 @@ func _test_race_migration() -> void:
 			f.store_string(keep[p])
 			f.close()
 	RaceCourse._migrated = false
+
+## Is p on a gate's own frame or stand (a thin slab round the gate plane)?
+func _on_gate_frame(course: RaceCourse, p: Vector3) -> bool:
+	for g: Dictionary in course._gates:
+		var l: Vector3 = (g.xf as Transform3D).affine_inverse() * p
+		var w: float = float(g.w) * 0.5 + 0.35
+		if absf(l.z) < 0.35 and absf(l.x) < w and absf(l.y) < float(g.get("h", g.w)) * 0.5 + 3.0: # (xf may be the opening's centre: stands below, hanging rods above)
+			return true
+	return false
+

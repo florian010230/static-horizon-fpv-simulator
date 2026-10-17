@@ -197,12 +197,13 @@ func _city() -> void:
 	rng.seed = 12
 	var roads := Roads.new(geo, rng, fleet)
 	var city := City.new(geo, rng, fleet)
+	city.park_cars = false
 	var y: float = -20.0
 	geo.add_material("ground_far", Geo.ground_mat(MapTextures.get_tex("asphalt"), Color.WHITE, 7.0, 0, 0.3))
 	geo.slab(Rect2(-3000, -3000, 6000, 6000), y, 0.5, "ground_far", false)
 	var xs: Array = [-150.0, -50.0, 50.0, 150.0]
 	var zs: Array = [-130.0, -40.0, 40.0, 130.0]
-	var blocks: Array[Rect2] = roads.grid(xs, zs, [12.0, 14.0, 14.0, 12.0], [12.0, 14.0, 14.0, 12.0], 3.0, y, {"n": 1500.0, "s": 1500.0, "w": 1500.0, "e": 1500.0}, {"traffic": 18.0, "lamps": 32.0, "detail": 300.0})
+	var blocks: Array[Rect2] = roads.grid(xs, zs, [12.0, 14.0, 14.0, 12.0], [12.0, 14.0, 14.0, 12.0], 3.0, y, {"n": 1500.0, "s": 1500.0, "w": 1500.0, "e": 1500.0}, {"traffic": 0.0, "lamps": 0.0, "parking": false, "detail": 150.0}) # (no cars or lamps down there: nobody sees them, they cost FPS - 2026-10-16)
 	for r: Rect2 in blocks:
 		if r.has_point(Vector2(0, 0)):
 			continue # this building's block
@@ -217,6 +218,8 @@ func _city() -> void:
 			var c := Vector2(i * 100.0 + 50.0, j * 90.0 + 45.0)
 			if absf(c.x) < 170.0 and absf(c.y) < 150.0:
 				continue
+			if not geo.claim_free(c, Vector2(1, 0), Vector2(38.0, 33.0), 0.0):
+				continue # the near grid's streets run on through here (2026-10-16: blocks stood on them)
 			city.filler_block(Rect2(c.x - 38.0, c.y - 33.0, 76.0, 66.0), y, 4, 12)
 	# This building's own shell below the office floor.
 	geo.box(Vector3(0, -10.2, 0), Vector3(36.4, 20, 22.4), "wall", 0.0, false, false)
@@ -348,7 +351,17 @@ func tracks() -> Array:
 		{"id": "server_sprint", "name": "Server Sprint", "level": "hard", "calls": [
 			["sized", Vector3(-9, 0.02, 1.5), E, 0.6, 0.6, 0.05, 0.3, "gate_dark"],
 			["sized", Vector3(13.3, 0.02, 7.6), E, 0.6, 0.6, 0.05, 0.4, "gate_a"], # rack aisle
+			# (the racing line round the rack ends, through open floor only - it cut through the north row,
+			# 2026-10-16: racks end at x 16.5, cooling unit x 17.2-17.9 z 7.4-8.6, plant x 16.55-17.45 z 9.55-10.45)
+			["via", Vector3(16.8, 0.7, 8.25)],
+			["via", Vector3(17.05, 0.7, 8.95)],
+			["via", Vector3(17.65, 0.7, 9.15)],
+			["via", Vector3(17.72, 0.7, 10.0)],
+			["via", Vector3(17.2, 0.7, 10.73)],
+			["via", Vector3(16.2, 0.7, 10.5)],
 			["sized", Vector3(14.5, 0.02, 10.45), W, 0.6, 0.6, 0.05, 0.4, "gate_b"], # behind the racks, after the hairpin (square: the aisle is 1.1 m)
+			["via", Vector3(12.35, 0.7, 10.4)], # (the line: past the racks' west end, x 12.8, before it turns for the door)
+			["via", Vector3(12.15, 0.7, 8.4)],
 			["sized", Vector3(10.8, 0.02, 7.5), W, 0.6, 0.6, 0.05, 0.4, "gate_a"], # out the door
 			["sized", Vector3(13.9, 0.02, 0.2), S, 0.6, 0.5, 0.04, 0.0, "gate_b"], # under the ping-pong table
 			["turn", Vector3(15.4, 0.02, -0.2), N, "right", "gate_a", K], # back up its east side

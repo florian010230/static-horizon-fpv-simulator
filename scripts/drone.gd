@@ -1132,7 +1132,7 @@ func _update_water(delta: float) -> bool:
 	_splash(Vector3(global_position.x, lvl, global_position.z), linear_velocity.length())
 	var ui: Node = get_parent().get_node_or_null("UI")
 	if ui and ui.has_method("flash_message"):
-		ui.flash_message("SPLASH - drone in the water", 1.4)
+		ui.flash_message("DRONE IN THE WATER", 1.4)
 	splashed.emit()
 	return true
 

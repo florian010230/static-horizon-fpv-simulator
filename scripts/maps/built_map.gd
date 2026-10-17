@@ -206,7 +206,8 @@ func blocked_lines() -> Array:
 func layout_conflicts() -> Array:
 	if from_cache:
 		push_warning("layout_conflicts(): %s came from the map cache - Geo holds nothing to check" % name)
-	return geo.layout_conflicts()
+	var b: Array = border()
+	return geo.layout_conflicts(40, b[4] if b.size() > 4 else Vector2.ZERO, b[1] + 100.0) # (map-drawn pieces: flight area + 100 m, like floating_pieces)
 
 func _plant_trees() -> void:
 	var kept: Array = []

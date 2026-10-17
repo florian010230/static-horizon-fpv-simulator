@@ -200,7 +200,7 @@ var sign_conflicts: Array = []
 var _lanes: Array = [] # [a: Vector2, b: Vector2, half width, surface y]
 var _lane_grid: Dictionary = {}
 
-func _obstacle(c: Vector2, ax: Vector2, half: Vector2, y0: float, y1: float, collide: bool = true) -> void:
+func _obstacle(c: Vector2, ax: Vector2, half: Vector2, y0: float, y1: float, collide: bool = true, exact: bool = true) -> void:
 	_support.append([c, ax.normalized(), half, y0, y1])
 	_grid_add(_sup_grid, c, minf(half.length(), 400.0), _support.size() - 1)
 	if not collide or y1 - y0 < 0.3:
@@ -210,6 +210,8 @@ func _obstacle(c: Vector2, ax: Vector2, half: Vector2, y0: float, y1: float, col
 		return # whole ground slabs
 	if _obj_cur >= 0:
 		_objects[_obj_cur].rects.append([c, ax.normalized(), half, y0, y1])
+	elif exact and half.x >= 1.5 and half.y >= 1.5 and y1 - y0 >= 2.5 and not _is_vehicle(_cell_key.get_slice("|", 0)):
+		_untagged.append([c, ax.normalized(), half, y0, y1]) # building-sized, outside begin_object
 	_obs.append([c, ax.normalized(), half, y0, y1, _cell_key.get_slice("|", 0)])
 	_grid_add(_obs_grid, c, r, _obs.size() - 1)
 
@@ -231,7 +233,7 @@ func _obstacle_points(pts: Array, collide: bool = true) -> void:
 		mx = mx.max(p)
 	if (mx.x - mn.x) * (mx.z - mn.z) > 600.0:
 		return # a long diagonal brace: its box would cover far too much
-	_obstacle(Vector2(mn.x + mx.x, mn.z + mx.z) * 0.5, Vector2(1, 0), Vector2(mx.x - mn.x, mx.z - mn.z) * 0.5, mn.y, mx.y, collide)
+	_obstacle(Vector2(mn.x + mx.x, mn.z + mx.z) * 0.5, Vector2(1, 0), Vector2(mx.x - mn.x, mx.z - mn.z) * 0.5, mn.y, mx.y, collide, false) # (a bounding box, too coarse for the untagged lane test)
 
 func _lane(a: Vector2, b: Vector2, half: float, y: float = 0.0) -> void:
 	_lanes.append([a, b, half, y])
@@ -434,6 +436,14 @@ func on_lane(p: Vector2, margin: float) -> bool:
 var _objects: Array = [] # {kind, label, rects: [[centre, axis, half, y0, y1], ...]}
 var _obj_depth: int = 0
 var _obj_cur: int = -1
+## Building-sized solid pieces drawn outside begin_object (a map's own
+## hand-drawn houses): layout_conflicts() tests them against the lanes too
+## (2026-10-16: Mountain Lake's hotel stood on its road and nothing saw it).
+var _untagged: Array = []
+
+## Vehicles (Vehicles: cars, trucks, trains, boats, site machines) belong on lanes.
+static func _is_vehicle(mat: String) -> bool:
+	return mat.begins_with("veh_") or mat.begins_with("train_") or mat.begins_with("boat_") or mat.begins_with("site_")
 
 func begin_object(kind: String, label: String = "") -> void:
 	if _obj_depth == 0:
@@ -471,7 +481,7 @@ func claim_free(c: Vector2, ax: Vector2, half: Vector2, margin: float = 1.0) -> 
 
 ## Every place where two objects overlap (more than touching) or an
 ## object stands on a road or rail lane: ["what", Vector2 where], up to `limit`.
-func layout_conflicts(limit: int = 40) -> Array:
+func layout_conflicts(limit: int = 40, centre: Vector2 = Vector2.ZERO, reach: float = INF) -> Array:
 	var out: Array = []
 	var grid: Dictionary = {}
 	var items: Array = [] # [object index, rect]
@@ -503,6 +513,14 @@ func layout_conflicts(limit: int = 40) -> Array:
 				if out.size() >= limit:
 					return out
 				break
+	for r: Array in _untagged:
+		if (r[0] as Vector2).distance_to(centre) > reach:
+			continue # backdrop far outside the flight area
+		var hit: String = _lane_hit(r, r[3], r[4])
+		if hit != "":
+			out.append(["an untagged piece at (%.0f, %.0f) stands on a %s%s" % [r[0].x, r[0].y, hit, _detail(r, [])], r[0]])
+			if out.size() >= limit:
+				return out
 	return out
 
 ## SH_LAYOUT=2: the pieces' sizes and heights, to tell what touches what.
@@ -535,7 +553,7 @@ func _rect_hit(a: Array, b: Array, slack: float) -> bool:
 ## A lane under a footprint that reaches down to it ("road"/"" ): only
 ## parts within 2.5 m of the lane's surface count (a pipe rack's beams or
 ## a bridge deck above a road are fine).
-func _lane_hit(r: Array, y0: float) -> String:
+func _lane_hit(r: Array, y0: float, y1: float = INF) -> String:
 	var c: Vector2 = r[0]
 	var reach: float = (r[2] as Vector2).length()
 	var seen: Dictionary = {}
@@ -546,8 +564,8 @@ func _lane_hit(r: Array, y0: float) -> String:
 					continue
 				seen[idx] = true
 				var l: Array = _lanes[idx]
-				if y0 > float(l[3]) + 2.5:
-					continue
+				if y0 > float(l[3]) + 2.5 or y1 < float(l[3]) + 0.3:
+					continue # above the lane (a bridge deck) or under it (a pier)
 				var a: Vector2 = l[0]
 				var b: Vector2 = l[1]
 				var steps: int = maxi(1, ceili(a.distance_to(b) / 0.75))

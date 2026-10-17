@@ -30,7 +30,7 @@ const CREST_Y: float = 3.2
 const ISLAND := Vector2(48, 18)
 const VILLAGE := Vector2(-262, 30)
 const VILLAGE_Y: float = 5.0
-const HOTEL := Vector2(-176, 136)
+const HOTEL := Vector2(-173, 129)
 const HOTEL_Y: float = 7.5
 const CAMP := Vector2(168, 96)
 ## The alpine farm on the hanging valley's pasture (TARN: where the tarn was, kept for the dev dump).
@@ -880,9 +880,11 @@ func _chalet(xf: Transform3D, L: float, B: float, floors: int, rng: RandomNumber
 func _hotel(lane: RoadCreator) -> void:
 	var rng := _local_rng(5)
 	var y: float = HOTEL_Y
-	var face: Vector2 = (Vector2(-40, 100) - HOTEL).normalized() # toward the lake
+	var face := Vector2(-1, 1).normalized() # front toward the valley road, long side along it (2026-10-16: a corner stood on it)
 	var yaw: float = atan2(face.x, face.y)
+	geo.begin_object("hotel", "Seeblick") # (the layout check sees it against roads and houses)
 	_chalet(Transform3D(Basis(Vector3.UP, yaw), Vector3(HOTEL.x, y, HOTEL.y)), 40.0, 15.0, 4, rng, "HOTEL SEEBLICK")
+	geo.end_object()
 	# Cars on the forecourt by the lane's turning circle.
 	var e: Vector3 = lane.line.pts[lane.line.pts.size() - 1]
 	# (on a paved lot: cars rest on it)
