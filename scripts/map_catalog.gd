@@ -34,7 +34,7 @@ const MAPS: Array[Dictionary] = [
 	 "text": "Slides, swings, a climbing frame and a tunnel tube - a whoop playground in a street of houses with gardens."},
 	{"id": "race_field", "race": true, "track": 2, "name": "Race Field", "scene": "res://scenes/maps/RaceField.tscn", "tier": "Low", "drone": "any",
 	 "color": Color("#1f6fe0"),
-	 "text": "A 12-gate MultiGP lap round the whole field: a climb through the ladder, two dive gates, a tower gate, hurdles and turn flags."},
+	 "text": "A 12-gate league-style lap round the whole field: a climb through the ladder, two dive gates, a tower gate, hurdles and turn flags."},
 	{"id": "race_arena", "race": true, "track": 2, "indoor": true, "name": "Race Arena", "scene": "res://scenes/maps/RaceArena.tscn", "tier": "Medium", "drone": "any",
 	 "color": Color("#c03fd0"),
 	 "text": "League night indoors: glowing LED gates in a dark hall, a tunnel, a ladder, a dive, a scaffold tower gate and a gate hung from the roof."},

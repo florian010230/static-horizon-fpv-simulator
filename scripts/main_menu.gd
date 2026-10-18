@@ -368,7 +368,7 @@ func _build_main_screen(root: Control) -> Control:
 	card_box.add_child(_spec_grid)
 	for st: String in ["Speed", "Punch", "Weight"]:
 		var l := Label.new()
-		l.text = st.to_upper()
+		l.text = ("Thrust" if st == "Punch" else st).to_upper()
 		l.add_theme_font_override("font", UIKit.oswald())
 		l.add_theme_font_size_override("font_size", 17)
 		l.add_theme_color_override("font_color", UIKit.MUTED_LIGHT)
@@ -605,7 +605,7 @@ func _build_about_screen(root: Control) -> Control:
 	var n_maps: int = MapCatalog.MAPS.filter(func(m: Dictionary) -> bool: return not m.get("dev", false)).size()
 	var words: Array = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen"]
 	var maps_word: String = words[n_maps] if n_maps < words.size() else str(n_maps)
-	intro.text = "A free FPV drone simulator that runs on weak hardware and flies with your radio over USB. " + maps_word + " maps for freestyle and racing, four quads whose mass, thrust and drag are taken from real ones, and a flight controller modelled on Betaflight - a simulation, so close but never quite the real thing."
+	intro.text = "Welcome to Static Horizon FPV! This free FPV drone simulator lets you learn and practise without risking a real drone, and it runs even on older computers. Fly with your own radio over USB across " + maps_word.to_lower() + " maps for freestyle and racing, with four quads whose mass, thrust and drag come from real ones and a flight controller modelled on Betaflight. Have fun, and crash as often as you like!"
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	content.add_child(intro)
 
@@ -619,9 +619,9 @@ func _build_about_screen(root: Control) -> Control:
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cols.add_child(right)
 	_about_section(left, "How it's made", [
-		"No image or sound files: every texture, motor sound, drone model and shadow is generated in code.",
 		"Flight model grounded in real data: Betaflight's rate curve, airmode and I-term relax; rotor drag measured by Faessler, Franchi & Scaramuzza (2018); real drone masses, thrust and top speeds.",
-		"Tested end to end by an automated self-test that plays the game like a pilot does.",
+		"No image or sound files: every texture, motor sound, drone model and shadow is generated in code. That keeps the download small and the game light on weak computers.",
+		"Tested by an automated self-test that flies the game like a pilot does.",
 	])
 	_about_section(right, "Controls", [
 		"Radio: USB Joystick mode - calibrate once in Settings, arm with any switch you assign.",
@@ -629,6 +629,7 @@ func _build_about_screen(root: Control) -> Control:
 		"Enter arm/disarm  ·  L acro/angle  ·  R reset  ·  Esc pause menu. Crashed on your back? It flips upright after 2 s.",
 	])
 	_about_section(right, "Credits", [
+		"Created by Florian Schmidt - statichorizonfpv.com",
 		"Godot Engine 4 (MIT licence) - godotengine.org",
 		"Oswald typeface (SIL Open Font License)",
 	])
@@ -667,7 +668,7 @@ func _fill_licences() -> void:
 		return
 	var t := "STATIC HORIZON FPV SIMULATOR\n"
 	t += "PolyForm Noncommercial License 1.0.0 - free to use, study, change and share for non-commercial purposes. Full text: https://polyformproject.org/licenses/noncommercial/1.0.0\n\n"
-	t += "OSWALD TYPEFACE\nCopyright The Oswald Project Authors. SIL Open Font License 1.1 (text below).\n\n"
+	t += "OSWALD TYPEFACE\n" + FontLicence.OSWALD + "\n\n"
 	t += "GODOT ENGINE\n" + Engine.get_license_text() + "\n\n"
 	t += "THIRD-PARTY COMPONENTS IN THE GODOT ENGINE\n"
 	for c in Engine.get_copyright_info():
