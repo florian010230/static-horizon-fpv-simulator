@@ -1588,6 +1588,16 @@ func _test_reset_switch() -> void:
 	var climbed2: float = d.global_position.y - y1
 	_check(climbed1 > 1.0 and back and climbed2 > 1.0, "radio: the reset switch resets the drone once and it takes off again, switch still on",
 		"first climb %.2f m, back at spawn %s, armed %s, climb after reset %.2f m" % [climbed1, back, InputManager.armed, climbed2])
+	# R must still reset while the switch stays ON (it did nothing, 2026-10-17).
+	var away: float = d.global_position.distance_to(d._spawn_transform.origin)
+	_key(KEY_R, true)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_key(KEY_R, false)
+	await _wait(0.1)
+	var back_r: float = d.global_position.distance_to(d._spawn_transform.origin)
+	_check(away > 1.0 and back_r < 1.0, "radio: R resets while the reset switch stays on",
+		"away %.2f m, after R %.2f m from spawn" % [away, back_r])
 	# A reset close to the spawn still voids a race run (the run used to
 	# reset only when the drone jumped more than 8 m in one frame).
 	Settings.game_mode = Settings.MODE_RACE

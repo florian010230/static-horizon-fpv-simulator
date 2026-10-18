@@ -184,7 +184,7 @@ const PROFILES: Dictionary = {
 		"collision_radius": 0.08,
 		"camera_near": 0.05, "camera_far": 2000.0,
 		"display": {"name": "Static Three", "tags": ["3 inch", "150 km/h", "245 g"],
-			"text": "3-inch freestyle quad - fast, seven times more thrust than weight."},
+			"text": "3-inch freestyle quad, fast and agile. Thrust-to-weight ratio 7:1."},
 		"visual": {
 			"body_radius": 0.035, "body_height": 0.02,
 			"arm_thickness": 0.012,
@@ -214,7 +214,7 @@ const PROFILES: Dictionary = {
 		"collision_radius": 0.1,
 		"camera_near": 0.05, "camera_far": 2000.0,
 		"display": {"name": "Static Five", "tags": ["5 inch", "210 km/h", "650 g"],
-			"text": "5-inch freestyle quad - big props, big speed, nine times more thrust than weight."},
+			"text": "5-inch freestyle quad, fast and powerful. Thrust-to-weight ratio 9:1."},
 		"visual": {
 			"body_radius": 0.045, "body_height": 0.03,
 			"arm_thickness": 0.016,
@@ -247,7 +247,7 @@ const PROFILES: Dictionary = {
 		"collision_radius": 0.095,
 		"camera_near": 0.05, "camera_far": 2000.0,
 		"display": {"name": "Static Race", "tags": ["5 inch", "170 km/h", "440 g"],
-			"text": "5-inch race quad - light, low and brutal: eleven times more thrust than weight."},
+			"text": "5-inch race quad, lightweight and agile. Thrust-to-weight ratio 11:1."},
 		"visual": {
 			"body_radius": 0.04, "body_height": 0.024,
 			"arm_thickness": 0.014,
@@ -282,7 +282,7 @@ const PROFILES: Dictionary = {
 		"collision_radius": 0.034,
 		"camera_near": 0.012, "camera_far": 400.0,
 		"display": {"name": "Static Whoop", "tags": ["75 mm", "70 km/h", "32 g"],
-			"text": "75 mm brushless ducted whoop - light and snappy, seven times more thrust than weight."},
+			"text": "75 mm brushless ducted whoop, light and snappy. Thrust-to-weight ratio 7:1."},
 		"visual": {
 			"body_radius": 0.013, "body_height": 0.009,
 			"arm_thickness": 0.004,
@@ -633,9 +633,13 @@ func _physics_process(delta: float) -> void:
 	# frame while it stays on: a reset on a two-position switch is left in
 	# the ON position, and the drone sat pinned to the spawn until the
 	# switch was flipped back (the user thought it was broken, 2026-10-06).
-	var reset_on: bool = InputManager.reset_key_pressed()
-	var reset_edge: bool = reset_on and not _reset_was_on
-	_reset_was_on = reset_on
+	# R and the switch have an edge each: a switch left ON used to hold the
+	# combined level up, so R did nothing until it was flipped back.
+	var key_on: bool = Input.is_key_pressed(KEY_R)
+	var switch_on: bool = InputManager.reset_control_on()
+	var reset_edge: bool = (key_on and not _reset_key_was_on) or (switch_on and not _reset_was_on)
+	_reset_key_was_on = key_on
+	_reset_was_on = switch_on
 	if reset_edge:
 		_splash_t = -1.0
 		reset_to_spawn()
@@ -1072,6 +1076,7 @@ func flip_upright() -> void:
 	_reset_controller()
 
 var _reset_was_on: bool = false
+var _reset_key_was_on: bool = false
 ## Emitted after every reset to the spawn (R, the radio's reset control,
 ## the world border) - a race run listens to void the lap.
 signal was_reset

@@ -725,6 +725,11 @@ func get_throttle() -> float:
 func reset_key_pressed() -> bool:
 	return Input.is_key_pressed(KEY_R) or _control_on("reset")
 
+## The radio's reset control alone (the drone keeps its own edge for it
+## and for R: a switch left ON must not swallow R, 2026-10-18).
+func reset_control_on() -> bool:
+	return _control_on("reset")
+
 ## Edge-triggered: true only on the frame KEY_V or the assigned
 ## line-of-sight control goes from off to on. Intended to be polled
 ## once a frame (e.g. by ui.gd, which currently reads KEY_V directly -
