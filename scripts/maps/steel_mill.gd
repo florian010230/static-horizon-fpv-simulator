@@ -369,7 +369,7 @@ func _blast_furnace(i: int) -> void:
 	geo.lathe(o, [Vector2(6.5, 0), Vector2(6.5, 7), Vector2(7.8, 12), Vector2(7.4, 15), Vector2(4.8, 32), Vector2(4.2, 35)], "rust", 24)
 	geo.box(o + Vector3(0, 35.5, 0), Vector3(16, 0.8, 16), "paint")
 	geo.cone(o + Vector3(0, 36, 0), o + Vector3(0, 41, 0), 4.0, 2.6, "rust_dark", 16)
-	geo.box(o + Vector3(-5.5, 43, 5.5), Vector3(5, 4, 5), "corrugated") # top house
+	geo.box(o + Vector3(-5.5, 37.9, 5.5), Vector3(5, 4, 5), "corrugated") # top house, on the platform (it hung 5 m above it)
 	for k in range(4):
 		var a: float = TAU * k / 4.0 + PI * 0.25
 		geo.cylinder(o + Vector3(cos(a) * 2.6, 40, sin(a) * 2.6), o + Vector3(cos(a) * 2.2, 48, sin(a) * 2.2), 0.7, "rust", 10)
