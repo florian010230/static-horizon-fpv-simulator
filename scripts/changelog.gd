@@ -7,6 +7,36 @@ extends RefCounted
 ## with every release (and bump config/version in project.godot).
 
 const ENTRIES: Array = [
+	["0.11.0", """# The Race Update
+
+# Race mode: six tracks per race map
+- Race Field, Race Arena and Office have six tracks each, from easy to hard: pick one from cards showing its layout, difficulty, gates, lap length and your best time with the drone you fly.
+- Races are 2 laps. Miss a gate and the game tells you which one and which way to turn - fly back through it and the race goes on.
+- A racing line shows the way to the next gates (Settings -> Flight: colour or off, Short / Medium / Long).
+- Turn flags, split-S ladders, hairpins; green and red rings on every gate show which way to fly through. New gates and flags; indoor LED gates keep their colour.
+- New finish card with your time, the difference to your best and the podium; a gold banner for a new track record.
+- Records are kept per track and per drone. Redesigned tracks start with fresh records; your old times stay in the save file.
+- Village courses: short timed laps through the village.
+
+# Maps
+- Rebuilt: Harbour, Race Field, Race Arena, Office, and the Construction Site as a company campus under construction.
+- Mountain Lake: a dam outlet and river, a spring and creek, a real waterfall into the lake; the hotel now stands along the road instead of in it.
+- Steel Mill: the blast furnaces' top houses no longer float in the air.
+- Nothing small floats any more either: hall lamps hang from cables, benches, tables and chairs have legs, railings have posts, torpedo wagons are joined up, window panes sit on walls.
+- Detailed cars and trains, new street lamps and road signs, entrances instead of turning circles, easter eggs on ten maps, a church clock that shows the real time.
+
+# Flight and settings
+- R always resets the drone, also while the radio's reset switch is on.
+- Optional water damage. Keyboard flying improved. Settings pages scroll.
+- The screen no longer dims during long flights with a radio.
+- "Full 3D resolution" replaces "Full screen resolution": menus and text always stay sharp; turning it off lowers only the 3D picture, at once, without a restart.
+- Four harder achievements: race every map, the hardest track of every race map, every track with every drone, and fly every drone.
+- Harbour: the high-speed train got a long, rounded nose.
+
+# Updates and privacy
+- A first-start card asks two things: check for updates (on, once a day, nothing about you is sent) and count my first start (off; if you turn it on, the game sends its version and your system once - no name, no IP address stored). Both can be changed under Updates.
+- From 0.11.0 the game can download and install updates itself (signed update packs). 0.10.1 has no update code, so coming from 0.10.1 please download 0.11.0 by hand once; automatic updates start from 0.11.0.
+"""],
 	["0.10.1", """# Fixes and a higher sky
 - A reset switch on the radio no longer keeps the drone pinned to the start while the switch stays on.
 - Resetting the drone close to the start gate now also restarts the race at the first gate.
