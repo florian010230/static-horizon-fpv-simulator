@@ -201,6 +201,9 @@ func _build_settings() -> Control:
 	UIKit.gap(g2, 6)
 	UIKit.toggle(g2, "VSync", Settings.vsync, func(v: bool): Settings.set_vsync(v))
 	_hint(g2, "On: smooth, at most your screen's refresh rate. Off: more FPS on a strong PC, but uneven or torn frames on a weak one.")
+	UIKit.gap(g2, 6)
+	UIKit.toggle(g2, "Count my first start", Settings.count_first_start, func(v: bool): Settings.count_first_start = v)
+	_hint(g2, "Once, send the game version and your operating system. No ID, no IP address is stored." if not Settings.first_start_pinged else "Already counted - nothing more is ever sent.")
 
 	# Camera & screen
 	var c1: VBoxContainer = _group(pages["Camera & screen"])

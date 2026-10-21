@@ -102,24 +102,36 @@ func _ready() -> void:
 	start_screen = "main"
 
 ## Shown once, at the very first start (also once after updating from
-## 0.10.x): what the game may send, both choices clearly visible. Nothing
-## is sent before Continue (Updater/FirstStartPing check first_run_done).
+## 0.10.x): the update check as a small switch, then one question with two
+## equal buttons (opt-in, user 2026-10-21). Nothing is sent before a button
+## is clicked (Updater/FirstStartPing check first_run_done); "No thanks"
+## leaves count_first_start off, so nothing is ever counted.
+var _count_yes: Button
+
 func _build_first_run_screen(root: Control) -> Control:
-	var parts: Array = UIKit.screen_card(root, "Welcome", "", 560, _finish_first_run, 900, "Continue  ›", "")
+	var parts: Array = UIKit.screen_card(root, "Welcome", "", 500, func(): pass, 900, "", "")
+	# No header button: the card is left only through Yes / No.
+	(parts[0].get_child(0).get_child(0).get_child(0).get_child(0) as Control).visible = false
 	var c: VBoxContainer = parts[1]
-	var intro := Label.new()
-	intro.text = "Before you fly: two choices about the internet. Both can be changed later under Updates."
-	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	c.add_child(intro)
 	UIKit.toggle(c, "Check for updates", Settings.check_updates, func(v: bool): Settings.check_updates = v)
 	c.add_child(_small_note("Once a day, ask GitHub whether a new version exists. Nothing about you is sent."))
-	UIKit.toggle(c, "Count my first start", Settings.count_first_start, func(v: bool): Settings.count_first_start = v)
-	c.add_child(_small_note("Once, send the game version and your system (Windows/macOS/Linux) so we know how many people try Static Horizon. No name, no IP address stored, nothing else."))
-	var go := UIKit.button("Continue", "PrimaryButton", 52)
-	go.custom_minimum_size = Vector2(220, 52)
-	go.size_flags_horizontal = Control.SIZE_SHRINK_END
-	go.pressed.connect(_finish_first_run)
-	c.add_child(go)
+	c.add_child(HSeparator.new())
+	var q := Label.new()
+	q.text = "We would like to know whether the game is being played. Static Horizon FPV can send one anonymous message, once: the game version and your operating system. No ID, no IP address is stored. You can change this later in Settings."
+	q.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	c.add_child(q)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	row.alignment = BoxContainer.ALIGNMENT_END
+	c.add_child(row)
+	var no := UIKit.button("No thanks", "GhostButton", 52)
+	no.custom_minimum_size = Vector2(200, 52)
+	no.pressed.connect(_finish_first_run.bind(false))
+	row.add_child(no)
+	_count_yes = UIKit.button("Yes, count me", "PrimaryButton", 52)
+	_count_yes.custom_minimum_size = Vector2(220, 52)
+	_count_yes.pressed.connect(_finish_first_run.bind(true))
+	row.add_child(_count_yes)
 	return parts[0]
 
 func _small_note(text: String) -> Label:
@@ -129,7 +141,8 @@ func _small_note(text: String) -> Label:
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return l
 
-func _finish_first_run() -> void:
+func _finish_first_run(count: bool) -> void:
+	Settings.count_first_start = count
 	Settings.first_run_done = true
 	_updater.check_on_start()
 	_ping.send_if_wanted()
@@ -161,7 +174,7 @@ func _show(screen: String) -> void:
 		_refresh_update_hint()
 	# Keyboard / gamepad: something is always focused, so arrows + Enter
 	# work everywhere without the mouse.
-	var first: Control = _first_focusable(_screens.get(screen))
+	var first: Control = _count_yes if screen == "firstrun" else _first_focusable(_screens.get(screen))
 	if first:
 		(func(): if first.is_inside_tree() and first.is_visible_in_tree(): first.grab_focus()).call_deferred()
 

@@ -2,8 +2,9 @@ class_name FirstStartPing
 extends Node
 
 ## The opt-in first-start counter: ONE HTTPS POST {version, platform},
-## no ID, no personal data, sent only if the player ticked the box on
-## the first-run card (Settings.count_first_start). Body {"v", "os"}. The flag
+## no ID, no personal data, sent only if the player clicked "Yes, count
+## me" on the first-run card or switched it on in Settings
+## (Settings.count_first_start). Body {"v", "os"}. The flag
 ## Settings.first_start_pinged is set only after the server answered
 ## 204, so an offline first start tries again on the next start - and
 ## once it went through, never again (shared across versions). Never in
@@ -20,8 +21,12 @@ var _http: HTTPRequest
 static var _tried_this_run: bool = false
 
 static func wanted() -> bool:
+	return allowed_by_player() and not _tried_this_run and not Updater.is_test_run()
+
+## The player's side: card answered with Yes (or switched on), not counted yet.
+static func allowed_by_player() -> bool:
 	return ENDPOINT != "" and Settings.first_run_done and Settings.count_first_start \
-		and not Settings.first_start_pinged and not _tried_this_run and not Updater.is_test_run()
+		and not Settings.first_start_pinged
 
 static func payload() -> String:
 	return JSON.stringify({"v": Updater.current_version(), "os": platform()})

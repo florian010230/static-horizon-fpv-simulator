@@ -208,7 +208,8 @@ var first_run_done: bool = false
 ## Windows) the 3D is drawn at half the pixels each way; menus, HUD and
 ## text stay sharp. Live, no restart (user, 2026-10-16).
 var low_res_3d: bool = false
-## Opt-in: send version + platform once, at the first start (FirstStartPing).
+## Opt-in ("Yes, count me" on the first-run card, or Settings): send
+## version + platform once, at the first start (FirstStartPing).
 var count_first_start: bool = false
 ## That one ping went through - never send it again (any version).
 var first_start_pinged: bool = false

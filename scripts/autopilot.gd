@@ -3,7 +3,7 @@ extends Node
 ## Trailer autopilot (dev tool, 2026-10-21): flies a race track like a
 ## human pilot, so a new version can be filmed without flying it by hand.
 ##   godot --path . --fixed-fps 60 --write-movie <new dir>/lap.avi -- --dev-preview autopilot
-##       [--map=race_field] [--track=1] [--laps=1] [--seed=1] [--skill=0.8] [--drone=race] [--line]
+##       [--map=race_field] [--track=1] [--laps=1] [--seed=1] [--skill=0.8] [--tilt=50] [--uptilt=35] [--drone=race] [--line] [--osd]
 ## tools/autopilot_record.sh makes the new folder and runs that. Only
 ## under --dev-preview (so records, ghosts and settings go to the test
 ## files, never the pilot's) - nothing of it is reachable from the menu.
@@ -32,6 +32,10 @@ var tree: SceneTree
 var rc: RaceCourse
 var drone: Drone
 var skill: float = 0.8
+## Most tilt from level, degrees (--tilt=): 50 keeps the view on the
+## horizon but turns and brakes gently; 70 is a racer's (faster, banks
+## hard - on small tracks the view fills with ground in every turn).
+var max_tilt_deg: float = 50.0
 var seed_value: int = 1
 var laps: int = 1
 var pts := PackedVector3Array()
@@ -43,7 +47,7 @@ var _i: int = 0 # nearest line point
 var _hist: Array = [] # [pos, vel] per physics frame, newest last
 var _stick := Vector4.ZERO # roll, pitch, yaw, throttle as sent
 var _raw_q: Array = [] # inner stick delay (a few frames)
-var _vz_i: float = 0.0
+var _spd_i: float = 0.0
 var _blip := Vector2.ZERO
 var _blip_t: float = 0.0
 var _jit: float = 0.0
@@ -51,6 +55,7 @@ var _stuck: float = 0.0
 var _phase := PackedFloat32Array()
 var _last_seen: float = -1.0
 var _t: float = 0.0
+var _gate_s := PackedFloat32Array() # distance along the lap of each gate
 var done: bool = false
 var lap_times: Array = []
 var resets: int = 0
@@ -79,12 +84,16 @@ func run(p_tree: SceneTree) -> void:
 	var forced: String = m.get("drone", "any")
 	Settings.selected_drone = forced if forced != "any" else arg("drone", "race")
 	Settings.graphics_quality = int(arg("quality", "2"))
+	Settings.camera_angle_deg = float(arg("uptilt", "35")) # a 5" racer's uptilt (default 25 is freestyle)
+	Settings.race_ghost = false # (the test runs' ghost would fly along)
+	Settings.osd_enabled = OS.get_cmdline_user_args().has("--osd") # (no THR/ALT/SPD in footage; --osd keeps it)
 	Settings.keyboard_help = false # (no keyboard guide in the footage; not saved under --dev-preview)
 	if not OS.get_cmdline_user_args().has("--line"):
 		Settings.race_line_hue = -1 # clean footage: no racing-line tube
 	tree.change_scene_to_file(m.scene)
 	for _k in range(30):
 		await tree.physics_frame
+	max_tilt_deg = float(arg("tilt", "50"))
 	var ok: bool = await fly(tree, int(arg("laps", "1")), float(arg("skill", "0.8")), int(arg("seed", "1")))
 	print("AUTOPILOT %s: laps %s, resets %d" % ["done" if ok else "FAILED", str(lap_times), resets])
 	for _k in range(90): # a moment on the results / after the line
@@ -105,12 +114,23 @@ func fly(p_tree: SceneTree, n: int, p_skill: float, p_seed: int) -> bool:
 		push_error("autopilot: no race course / drone in this scene")
 		return false
 	var lp: Dictionary = RaceCourse.line_path(rc._gates)
+	if not OS.has_environment("SH_AP_NOHOP"):
+		_hops(lp)
 	pts = RaceCourse.clear_path(lp.pts, lp.seg, drone.get_world_3d().direct_space_state, [drone.get_rid()], 0.15 if rc._gates.any(func(g: Dictionary) -> bool: return g.w < 1.0) else RaceCourse.LINE_CLEAR)
 	arc.resize(pts.size())
 	arc[0] = 0.0
 	for k in range(1, pts.size()):
 		arc[k] = arc[k - 1] + pts[k].distance_to(pts[k - 1])
 	total = arc[arc.size() - 1]
+	_gate_s.clear()
+	var sg: PackedInt32Array = lp.seg
+	for g in range(rc._gates.size()):
+		_gate_s.append(arc[mini(sg[g], arc.size() - 1)])
+	if OS.has_environment("SH_AP_LOG"):
+		var ys: Array = []
+		for k in range(0, pts.size(), 8):
+			ys.append(snappedf(pts[k].y, 0.1))
+		print("AP line y every 8 pts: ", ys)
 	_new_lap_line()
 	process_physics_priority = -100 # before the drone reads the sticks
 	tree.current_scene.add_child(self)
@@ -144,6 +164,31 @@ static func _find_drone(n: Node) -> Drone:
 		if r:
 			return r
 	return null
+
+## Pilots don't skim the grass between gates: on each stretch longer
+## than 34 m the line rises in a smooth hump (1..3.5 m, by the seed),
+## back down to the gate heights at both ends. Done before clear_path, so
+## a hump into a roof or a branch is pushed clear like the rest.
+func _hops(lp: Dictionary) -> void:
+	var p3: PackedVector3Array = lp.pts
+	var seg: PackedInt32Array = lp.seg
+	for g in range(seg.size() - 1):
+		var a: int = seg[g]
+		var b: int = seg[g + 1]
+		var length: float = 0.0
+		for k in range(a + 1, b + 1):
+			length += p3[k].distance_to(p3[k - 1])
+		if length < 34.0:
+			continue
+		var h: float = rng.randf_range(1.0, 3.5) * clampf((length - 34.0) / 25.0, 0.4, 1.0)
+		var run: float = 0.0
+		for k in range(a + 1, b):
+			run += p3[k].distance_to(p3[k - 1])
+			# Level for the last 9 m into a gate and the first 9 m out
+			# (lined up at gate height), ramping over the next 8 m.
+			var w: float = smoothstep(9.0, 17.0, run) * smoothstep(9.0, 17.0, length - run)
+			p3[k].y += h * w
+	lp.pts = p3
 
 ## A fresh wander for the line error each lap (a pilot never flies the
 ## same line twice).
@@ -226,24 +271,32 @@ func _physics_process(dt: float) -> void:
 	var delay: float = lerpf(0.15, 0.10, skill)
 	var k_back: int = clampi(int(round(delay / dt)), 0, _hist.size() - 1)
 	var seen: Array = _hist[_hist.size() - 1 - k_back]
-	var pp: Vector3 = seen[0] + seen[1] * delay * lerpf(0.6, 0.9, skill)
+	var pp: Vector3 = seen[0] + seen[1] * delay # (a pilot leads by what the quad does in that time)
 	var vv: Vector3 = seen[1]
 	_track(pp)
 	var s: float = arc[_i]
 	var speed: float = vv.length()
 	# Speed plan: as fast as the skill allows, slower before a turn
 	# (looks along the line, braking distance included).
-	var vmax: float = lerpf(7.0, 17.0, skill)
-	var a_lat: float = lerpf(9.0, 22.0, skill)
-	var a_brake: float = lerpf(5.0, 11.0, skill)
+	var vmax: float = lerpf(12.0, 36.0, skill) if not OS.has_environment("SH_AP_VMAX") else float(OS.get_environment("SH_AP_VMAX")) # (36 m/s = 130 km/h on a straight)
+	var g_tan: float = 9.81 * tan(deg_to_rad(max_tilt_deg)) # what that tilt can push sideways
+	var a_lat: float = g_tan * lerpf(0.4, 0.7, skill)
+	var a_brake: float = g_tan * lerpf(0.4, 0.62, skill)
 	var v_plan: float = vmax
 	var t0: Vector3 = _tangent(s)
-	for d in [4.0, 8.0, 12.0, 18.0, 26.0, 36.0]:
+	for d in [4.0, 8.0, 12.0, 18.0, 26.0, 36.0, 50.0, 66.0]:
 		var ta: Vector3 = _tangent(s + d - 2.0)
 		var tb: Vector3 = _tangent(s + d + 2.0)
 		var ang: float = ta.angle_to(tb)
 		var vc: float = vmax if ang < 0.01 else sqrt(a_lat * 4.0 / ang)
 		v_plan = minf(v_plan, sqrt(vc * vc + 2.0 * a_brake * maxf(d - 4.0, 0.0)))
+	# Into a gate at a speed that leaves room to be precise (a pilot
+	# lines it up, then lets go again).
+	var v_gate: float = lerpf(9.0, 17.0, skill)
+	for gs in _gate_s:
+		var dg: float = fposmod(gs - s, total)
+		if dg < 40.0:
+			v_plan = minf(v_plan, sqrt(v_gate * v_gate + 2.0 * a_brake * maxf(dg - 3.0, 0.0)))
 	if _t < 1.5:
 		v_plan = minf(v_plan, 3.0 + _t * 4.0) # lift off first
 	# Carrot a little ahead on the line, with the wandering error, plus a
@@ -255,15 +308,27 @@ func _physics_process(dt: float) -> void:
 	var lat: Vector3 = here - pp
 	lat -= t0 * lat.dot(t0)
 	var vd: Vector3 = (c - pp).normalized() * v_plan + lat * lerpf(0.8, 1.3, skill)
+	vd.y = clampf(vd.y, -5.0, 5.0) # climb and sink like a pilot, not a rocket
 	var acc: Vector3 = (vd - vv) * lerpf(1.8, 2.4, skill)
-	_vz_i = clampf(_vz_i + (vd.y - vv.y) * dt * 0.6, -4.0, 4.0)
-	acc.y += _vz_i
-	var a_max: float = lerpf(14.0, 26.0, skill)
-	if acc.length() > a_max:
-		acc = acc.normalized() * a_max
+	# Integral: the props lose thrust with airspeed and drag grows - a
+	# pilot just pushes harder until the speed comes.
+	# Only along the way it flies (sideways or up it would overshoot).
+	var dir: Vector3 = vd.normalized()
+	_spd_i = clampf(_spd_i + (vd.length() - vv.dot(dir)) * dt * 0.9, -3.0, 9.0)
+	acc += dir * _spd_i
+	var a_max: float = g_tan
+	# Height first: the horizontal push is limited on its own, so a climb
+	# is never scaled away by it.
+	var ah := Vector2(acc.x, acc.z).limit_length(a_max)
+	acc = Vector3(ah.x, clampf(acc.y, -9.0, 14.0), ah.y)
 	var f: Vector3 = acc + Vector3(0, 9.81, 0)
 	f.y = maxf(f.y, 2.0) # never ask for upside down
 	var up_d: Vector3 = f.normalized()
+	# Tilt at most max_tilt_deg from level.
+	var max_tilt: float = deg_to_rad(max_tilt_deg)
+	if up_d.angle_to(Vector3.UP) > max_tilt:
+		var hz := Vector3(up_d.x, 0, up_d.z).normalized()
+		up_d = (Vector3.UP * cos(max_tilt) + hz * sin(max_tilt)).normalized()
 	# Nose along where it flies (or where the line goes, when slow).
 	var head: Vector3 = vd if vd.length() > 1.0 else t0
 	head = (head - up_d * head.dot(up_d))
@@ -309,7 +374,7 @@ func _physics_process(dt: float) -> void:
 	_stick = Vector4(clampf(_stick.x, -1, 1), clampf(_stick.y, -1, 1), clampf(_stick.z, -1, 1), clampf(_stick.w, 0, 1))
 	InputManager.test_override = {"roll": _stick.x, "pitch": _stick.y, "yaw": _stick.z, "throttle": _stick.w}
 	if OS.has_environment("SH_AP_LOG") and int(_t * 120.0) % 30 == 0:
-		print("AP t %.1f s %.0f/%.0f v %.1f plan %.1f next %d lap %d off %.2f p %s" % [_t, s, total, v.length(), v_plan, rc._next, lap_times.size(), pts[_i].distance_to(p), str(p.snapped(Vector3.ONE * 0.1))])
+		print("AP t %.1f s %.0f/%.0f v %.1f plan %.1f vd %.1f acc %s tilt %.0f want %.0f thr %.2f frac %.2f next %d off %.2f p %s" % [_t, s, total, v.length(), v_plan, vd.length(), str(acc.snapped(Vector3.ONE * 0.1)), rad_to_deg(b.y.angle_to(Vector3.UP)), rad_to_deg(up_d.angle_to(Vector3.UP)), _stick.w, frac, rc._next, pts[_i].distance_to(p), str(p.snapped(Vector3.ONE * 0.1))])
 	# Stuck (a clip into something): give it a moment, then reset like R.
 	if _t > 3.0 and v.length() < 0.4:
 		_stuck += dt
