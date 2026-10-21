@@ -579,6 +579,17 @@ func _menu_shots() -> void:
 	_find_button(mn._screens["main"], "Updates").pressed.emit()
 	await get_tree().create_timer(0.3).timeout
 	_shot("preview_updates.png")
+	# The same screen up to date (no pretend release) - for the website.
+	Updater.latest = {"version": Updater.current_version(), "tag": "v" + Updater.current_version(), "url": Updater.RELEASES_PAGE,
+		"checked": int(Time.get_unix_time_from_system()), "body": ""}
+	Updater.status = "ok"
+	mn._show("main")
+	mn._refresh_update_hint()
+	await get_tree().create_timer(0.3).timeout
+	_shot("preview_menu_current.png")
+	_find_button(mn._screens["main"], "Updates").pressed.emit()
+	await get_tree().create_timer(0.3).timeout
+	_shot("preview_updates_current.png")
 	mn._show("achievements")
 	await get_tree().create_timer(0.3).timeout
 	_shot("preview_achievements.png")
@@ -665,6 +676,8 @@ func _map_shots(scene: String, prefix: String, views: Array, pause_shots: bool =
 	var ui: Node = get_tree().root.find_child("UI", true, false)
 	if ui and "_panel_visible" in ui:
 		ui._panel_visible = false
+	if ui and OS.has_environment("SH_CLEAN"): # website shots: no HUD at all
+		ui.visible = false
 	if views.is_empty() and get_tree().current_scene.has_method("preview_views"):
 		var sc: Node = get_tree().current_scene
 		views = sc.views() if sc is BuiltMap else sc.preview_views()

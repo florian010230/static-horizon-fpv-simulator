@@ -34,7 +34,7 @@ const ENTRIES: Array = [
 - Harbour: the high-speed train got a long, rounded nose.
 
 # Updates and privacy
-- A first-start card asks two things: check for updates (on, once a day, nothing about you is sent) and whether it may count your first start ("Yes, count me" / "No thanks"; with Yes the game sends its version and operating system once - no ID, no IP address stored). The update check can be changed under Updates, the count in Settings.
+- A first-start card asks two things: check for updates (on, once a day; the game sends no personal data, GitHub sees your IP address as with any website) and whether it may count your first start ("Yes, count me" / "No thanks"; with Yes the game sends its version and operating system once - no ID, no IP address stored). The update check can be changed under Updates, the count in Settings.
 - From 0.11.0 the game can download and install updates itself (signed update packs). 0.10.1 has no update code, so coming from 0.10.1 please download 0.11.0 by hand once; automatic updates start from 0.11.0.
 """],
 	["0.10.1", """# Fixes and a higher sky

@@ -196,8 +196,10 @@ is an optional extra (see above).
   release exists and shows a small "Version x available" hint in the
   bottom-right corner - no popup. The **Updates** screen shows what's
   new. To switch it off: the Updates screen has a "Check for updates
-  when the game starts" toggle (this is the only network request the
-  sim ever makes, and it sends nothing about you). The Updates screen can
+  when the game starts" toggle (the game sends no personal data; GitHub
+  sees your IP address, as with any website). The only other request is
+  the optional first-start count (version and operating system, once,
+  only after "Yes, count me"). The Updates screen can
   install a signed update pack (checked with a built-in public key) when a
   release provides one; otherwise it links to the release page.
 - **Faster loading**: a generated map is built once and cached

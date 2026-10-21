@@ -109,12 +109,12 @@ func _ready() -> void:
 var _count_yes: Button
 
 func _build_first_run_screen(root: Control) -> Control:
-	var parts: Array = UIKit.screen_card(root, "Welcome", "", 500, func(): pass, 900, "", "")
+	var parts: Array = UIKit.screen_card(root, "Welcome", "", 540, func(): pass, 900, "", "")
 	# No header button: the card is left only through Yes / No.
 	(parts[0].get_child(0).get_child(0).get_child(0).get_child(0) as Control).visible = false
 	var c: VBoxContainer = parts[1]
 	UIKit.toggle(c, "Check for updates", Settings.check_updates, func(v: bool): Settings.check_updates = v)
-	c.add_child(_small_note("Once a day, ask GitHub whether a new version exists. Nothing about you is sent."))
+	c.add_child(_small_note("Once a day, ask GitHub whether a new version exists. The game sends no personal data; GitHub sees your IP address, as with any website."))
 	c.add_child(HSeparator.new())
 	var q := Label.new()
 	q.text = "We would like to know whether the game is being played. Static Horizon FPV can send one anonymous message, once: the game version and your operating system. No ID, no IP address is stored. You can change this later in Settings."

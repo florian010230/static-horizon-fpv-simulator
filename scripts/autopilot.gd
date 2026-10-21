@@ -94,11 +94,27 @@ func run(p_tree: SceneTree) -> void:
 	for _k in range(30):
 		await tree.physics_frame
 	max_tilt_deg = float(arg("tilt", "50"))
+	if OS.has_environment("SH_AP_SHOTS"):
+		_timed_shots(map_id, OS.get_environment("SH_AP_SHOTS").split(","))
 	var ok: bool = await fly(tree, int(arg("laps", "1")), float(arg("skill", "0.8")), int(arg("seed", "1")))
 	print("AUTOPILOT %s: laps %s, resets %d" % ["done" if ok else "FAILED", str(lap_times), resets])
 	for _k in range(90): # a moment on the results / after the line
 		await tree.process_frame
 	tree.quit(0 if ok else 1)
+
+## SH_AP_SHOTS="4,9,14": screenshots that many seconds into the flight
+## (previews/, or SH_SHOT_DIR) - in-flight race shots with the real HUD.
+func _timed_shots(map_id: String, at: PackedStringArray) -> void:
+	var t0: int = Time.get_ticks_msec()
+	for s in at:
+		while (Time.get_ticks_msec() - t0) / 1000.0 < float(s):
+			await tree.process_frame
+		var ui: Node = tree.current_scene.find_child("UI", true, false)
+		if ui and ui.get("_hud_label") and ui._hud_label.visible:
+			ui._hud_label.visible = false # (no ARMED/FPS status line on website shots)
+			await tree.process_frame
+			await tree.process_frame
+		tree.root.get_node("DevPreviewCapture")._shot("race_%s_t%s_%ss.png" % [map_id, arg("track", "1"), s])
 
 ## Flies `n` laps on the current scene's race course. True when they
 ## were all completed (also the self-test's lap check).
