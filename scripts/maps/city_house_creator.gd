@@ -329,6 +329,9 @@ func _lod() -> void:
 
 ## Walls: one box per part; with an archway the ground floor leaves a
 ## passage open front to back (lined, with a lit vault).
+## Sides (-1 / +1) whose ground-floor wall is (nearly) all passage: no
+## side windows there (they hung in the passage's air, 2026-10-21).
+var _gf_open: Array = []
 func _body(arch: bool, arch_x: float, bay: float) -> void:
 	var aw: float = minf(bay, 3.4)
 	var ah: float = minf(gf - 0.4, 3.6)
@@ -338,6 +341,10 @@ func _body(arch: bool, arch_x: float, bay: float) -> void:
 		var x1: float = W * 0.5
 		var a0: float = arch_x - aw * 0.5
 		var a1: float = arch_x + aw * 0.5
+		if a0 - x0 < 1.0:
+			_gf_open.append(-1.0)
+		if x1 - a1 < 1.0:
+			_gf_open.append(1.0)
 		if a0 - x0 > 0.05:
 			_box(Vector3((x0 + a0) * 0.5, gf * 0.5, -D * 0.5), Vector3(a0 - x0, gf, D), "ch_plaster")
 		if x1 - a1 > 0.05:
@@ -641,6 +648,8 @@ func _flat_roof() -> void:
 func _side_windows(sd: float) -> void:
 	var n: int = maxi(1, int((D - 2.0) / 3.2))
 	for fi in range(floors):
+		if fi == 0 and sd in _gf_open:
+			continue
 		var y0: float = 0.0 if fi == 0 else gf + (fi - 1) * fl
 		var stor_h: float = gf if fi == 0 else fl
 		var w: float = 1.2 if style != "modern" else 1.8

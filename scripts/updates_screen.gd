@@ -76,6 +76,13 @@ func build(root: Control, updater: Updater, on_back: Callable) -> Control:
 	hint.text = "One small request to GitHub, at most once a day. You can keep playing any older version - nothing here forces an update."
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	c.add_child(hint)
+	if not Settings.first_start_pinged:
+		UIKit.toggle(c, "Count my first start", Settings.count_first_start, func(v: bool): Settings.count_first_start = v)
+		var ph := Label.new()
+		ph.theme_type_variation = "Small"
+		ph.text = "Once, send the game version and your system (Windows/macOS/Linux). No name, no IP address stored, nothing else."
+		ph.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		c.add_child(ph)
 	c.add_child(HSeparator.new())
 	_notes = VBoxContainer.new()
 	_notes.add_theme_constant_override("separation", 6)

@@ -158,7 +158,9 @@ func _direction(geo: Geo, xf: Transform3D, w: float, h: float, dz: float, rw: fl
 ## pillowed - thicker in the middle), white piping round the opening, a
 ## dark sponsor patch on the top panel, and the PVC tube frame showing at
 ## the outer edge.
-func _frame(geo: Geo, xf: Transform3D, w: float, h: float, mat: String) -> void:
+## `bottom` false: the frame sits on another one (a stack) - that one's top
+## panel is this one's bottom, drawn once (twice, they flickered).
+func _frame(geo: Geo, xf: Transform3D, w: float, h: float, mat: String, bottom: bool = true) -> void:
 	var p: float = PANEL
 	var d: float = 0.09
 	var led: bool = mat.begins_with("led_")
@@ -172,6 +174,8 @@ func _frame(geo: Geo, xf: Transform3D, w: float, h: float, mat: String) -> void:
 	var pal: Dictionary = _pal_for(mat)
 	for side in [[Vector3(0, h * 0.5 + p * 0.5, 0), Vector3(w + 2 * p, p, d)], [Vector3(0, -h * 0.5 - p * 0.5, 0), Vector3(w + 2 * p, p, d)],
 			[Vector3(-w * 0.5 - p * 0.5, 0, 0), Vector3(p, h, d)], [Vector3(w * 0.5 + p * 0.5, 0, 0), Vector3(p, h, d)]]:
+		if not bottom and side[0].y < -h * 0.5:
+			continue
 		geo.box_xf(xf * Transform3D(Basis(), side[0]), side[1], pm)
 		if st > 0:
 			continue # (flat panels: the printed skin goes on them)
@@ -185,18 +189,24 @@ func _frame(geo: Geo, xf: Transform3D, w: float, h: float, mat: String) -> void:
 		pipe = pal.led
 	if st == 3:
 		geo.tint = pal.main
-	for e in [[Vector3(0, h * 0.5 + t * 0.5, 0), Vector3(w + 2 * t, t, d * 1.25)], [Vector3(0, -h * 0.5 - t * 0.5, 0), Vector3(w + 2 * t, t, d * 1.25)],
-			[Vector3(-w * 0.5 - t * 0.5, 0, 0), Vector3(t, h, d * 1.25)], [Vector3(w * 0.5 + t * 0.5, 0, 0), Vector3(t, h, d * 1.25)]]:
+	# (5 mm into the opening, so its inner face isn't flush with the panels')
+	var ti: float = t + 0.01
+	for e in [[Vector3(0, h * 0.5 + t * 0.5 - 0.005, 0), Vector3(w + 2 * t, ti, d * 1.25)], [Vector3(0, -h * 0.5 - t * 0.5 + 0.005, 0), Vector3(w + 2 * t, ti, d * 1.25)],
+			[Vector3(-w * 0.5 - t * 0.5 + 0.005, 0, 0), Vector3(ti, h - 0.01, d * 1.25)], [Vector3(w * 0.5 + t * 0.5 - 0.005, 0, 0), Vector3(ti, h - 0.01, d * 1.25)]]:
 		geo.box_xf(xf * Transform3D(Basis(), e[0]), e[1], pipe, false, false)
 	geo.tint = Color.WHITE
 	# Outer PVC frame.
 	for e in [[Vector3(0, h * 0.5 + p, 0), Vector3(w + 2 * p + 0.05, 0.05, 0.05)], [Vector3(0, -h * 0.5 - p, 0), Vector3(w + 2 * p + 0.05, 0.05, 0.05)],
 			[Vector3(-w * 0.5 - p, 0, 0), Vector3(0.05, h + 2 * p, 0.05)], [Vector3(w * 0.5 + p, 0, 0), Vector3(0.05, h + 2 * p, 0.05)]]:
+		if not bottom and e[0].y < -h * 0.5:
+			continue
 		geo.box_xf(xf * Transform3D(Basis(), e[0]), e[1], "gate_pole", false, false)
 	if st > 0:
+		_skip_below = -INF if bottom else -h * 0.5 - 0.001
 		_gate_skin(geo, xf, w, h, pal, st)
+		_skip_below = -INF
 	elif not led and w > 1.0:
-		if OS.has_environment("SH_GATE_BRAND"): # (2026-10-14 preview: the brand on the top panel)
+		if OS.get_environment("SH_GATE_BRAND") != "0": # (the brand on the top panel; approved 2026-10-20, SH_GATE_BRAND=0 shows the plain bar)
 			_brand(geo, xf * Transform3D(Basis(), Vector3(0, h * 0.5 + p * 0.5, 0)), w + 2 * p, p, d * 1.7)
 		else:
 			geo.box_xf(xf * Transform3D(Basis(), Vector3(0, h * 0.5 + p * 0.5, 0)), Vector3(w * 0.45, p * 0.6, d * 1.7), "gate_dark", false, false)
@@ -254,7 +264,7 @@ static func pick_style(map: Node) -> void:
 		STYLE = STYLE_BY_ID[m.id]
 		return
 	STYLE = 2 if m.get("indoor", false) or INDOOR_IDS.has(m.get("id", "")) else 3
-const LZ: Array = [0.0035, 0.007, 0.0105, 0.014]
+const LZ: Array = [0.005, 0.01, 0.015, 0.02] # (5 mm apart: 3.5 mm flickered)
 const TZ: float = 0.0185
 const INK_DARK := Color(0.06, 0.07, 0.09)
 const INK_LIGHT := Color(0.97, 0.97, 0.97)
@@ -274,7 +284,13 @@ static func _pal(mat: String) -> Dictionary:
 	return {"main": BRAND_BLUE, "c1": Color(0.97, 0.97, 0.97), "c2": Color(1.0, 0.82, 0.08), "led": "led_blue", "led2": "led_white"}
 
 ## A flat plate (points in `face`'s XY plane, `z` out of it).
+## Printed parts lying wholly below this (face y) are left out: the bottom
+## panel of a stacked frame (_frame's `bottom`).
+static var _skip_below: float = -INF
+
 static func _pl(geo: Geo, face: Transform3D, z: float, pts: Array, col: Color, mat: String = "gate_trim") -> void:
+	if _skip_below > -INF and pts.all(func(q: Vector2) -> bool: return q.y <= _skip_below):
+		return
 	geo.tint = col if not mat.begins_with("led_") else Color.WHITE
 	geo.plate(face * Transform3D(Basis(), Vector3(0, 0, z)), pts, mat)
 	geo.tint = Color.WHITE
@@ -569,7 +585,7 @@ func gate(geo: Geo, pos: Vector3, yaw: float, stack: int = 1, lift: float = 0.0,
 		var cy: float = maxf(lift, FOOT) + PANEL + GATE * 0.5 + i * (GATE + PANEL)
 		var xf := Transform3D(basis, pos + Vector3(0, cy, 0))
 		var alt: String = {"gate_a": "gate_b", "gate_b": "gate_a", "led_blue": "led_orange", "led_orange": "led_blue"}.get(mat, mat)
-		_frame(geo, xf, GATE, GATE, mat if i % 2 == 0 else alt)
+		_frame(geo, xf, GATE, GATE, mat if i % 2 == 0 else alt, i == 0)
 		if i == through:
 			_register(xf, GATE, GATE)
 			_direction(geo, xf, GATE, GATE, 0.0625, 0.07)

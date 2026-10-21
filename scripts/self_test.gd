@@ -129,6 +129,8 @@ func _run() -> void:
 			await _test_race()
 		if only.has("tracks"):
 			await _test_tracks()
+		if only.has("autopilot"):
+			await _test_autopilot()
 		if only.has("video"):
 			await _test_video_link()
 		if only.has("gnomes"):
@@ -193,6 +195,7 @@ func _run() -> void:
 	for c in cases:
 		await _test_map(c[0], c[1], false)
 	await _test_race()
+	await _test_autopilot()
 	await _test_tracks()
 	await _test_realism()
 	await _test_video_link()
@@ -279,6 +282,17 @@ func _test_menu_flow() -> void:
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
 	await _wait(0.8)
 	var menu: Node = get_tree().current_scene
+	# First-run card: never shown in tests; Continue sets the flag; the
+	# first-start ping sends nothing in tests and its body is {v, os}.
+	_check(menu._screens.has("firstrun") and not menu._screens["firstrun"].visible and menu._screens["main"].visible, "menu: first-run card built, skipped in tests")
+	var frd: bool = Settings.first_run_done
+	Settings.first_run_done = false
+	menu._show("firstrun")
+	menu._finish_first_run()
+	_check(Settings.first_run_done and menu._screens["main"].visible, "menu: first-run Continue sets the flag and opens the menu")
+	Settings.first_run_done = frd
+	var pj: Variant = JSON.parse_string(FirstStartPing.payload())
+	_check(pj is Dictionary and pj.has("v") and pj.has("os") and pj.size() == 2 and not FirstStartPing.wanted(), "first-start ping: body {v, os} only, never sent in tests", FirstStartPing.payload())
 	var next: Button = _find_button(menu, "next_drone")
 	var before: String = Settings.selected_drone
 	if next:
@@ -432,6 +446,13 @@ func _test_menu_flow() -> void:
 	_check(Engine.max_fps == Settings.max_fps, "menu: FPS cap restored in game", "max_fps=%d" % Engine.max_fps)
 	# "Full screen resolution" off works through this override file.
 	_check(ProjectSettings.get_setting("application/config/project_settings_override", "") == Settings.DISPLAY_OVERRIDE, "settings: the reduced-resolution file is the project's settings override")
+	var lr: bool = Settings.low_res_3d
+	Settings.low_res_3d = true
+	var half: float = Settings.render_scale(2)
+	Settings.low_res_3d = false
+	var full: float = Settings.render_scale(2)
+	Settings.low_res_3d = lr
+	_check(full == 1.0 and half == (0.5 if Settings.high_density_screen() else 1.0), "settings: \"Full 3D resolution\" off halves only the 3D on a high-density screen", "%.2f / %.2f" % [full, half])
 	# Unlimited must also switch VSync off, or the screen's refresh rate
 	# caps it anyway (60 FPS in 0.10.0). Headless has no real VSync.
 	if DisplayServer.get_name() != "headless":
@@ -542,6 +563,16 @@ func _test_update_pack() -> void:
 	c = make.call("1.4.0")
 	var err4: String = UpdatePack.install(root, c[0], sign.call(c[0], key), c[1], pub, base, eng)
 	_check(err4 == "" and UpdatePack.installed(root) == ["1.4.0", "1.2.0"], "update pack: keeps the newest two installed", str(UpdatePack.installed(root)))
+	# A pack that crashed twice before the menu is skipped (1.2.0 was
+	# tampered above, so nothing is left); clearing the count brings it back.
+	var d14: String = root.path_join("1.4.0")
+	UpdatePack._set_boot_failures(d14, UpdatePack.MAX_BOOT_FAILURES)
+	var skipped: Dictionary = UpdatePack.find_loadable(root, pub, base, eng)
+	DirAccess.remove_absolute(d14.path_join(UpdatePack.BOOT_FILE))
+	var back: Dictionary = UpdatePack.find_loadable(root, pub, base, eng)
+	_check(skipped.is_empty() and back.get("version", "") == "1.4.0", "update pack: a pack that failed to start twice is skipped", "%s / %s" % [skipped, back])
+	_check(UpdatePack.valid_version("1.4.0") and UpdatePack.valid_version("0.11") and not UpdatePack.valid_version("../1.0") and not UpdatePack.valid_version("1.0/x") and not UpdatePack.valid_version(""),
+		"update pack: the version must be digits and dots (it names a folder)")
 	_rm_tree(root)
 
 ## A Village course (VillageCourse): idle until START is flown, then one
@@ -705,6 +736,16 @@ func _test_collectibles() -> void:
 		if a.name == "Map cleared":
 			done = a.done
 	_check(done, "achievements: all gnomes on a map")
+	Settings.selected_drone = "race"
+	Achievements.note_flight("village")
+	var names: Array = []
+	var hangar: String = ""
+	for a in Achievements.list():
+		names.append(a.name)
+		if a.name == "Hangar":
+			hangar = a.progress
+	_check(names.has("Race every map") and names.has("Hardest lines") and names.has("All-rounder") and int(hangar.split("/")[0]) >= 1 and hangar.ends_with("/%d" % Drone.PROFILE_ORDER.size()),
+		"achievements: the harder ones are listed, a flight counts its drone", hangar)
 	Collectibles.reset()
 
 var _float_checked: Dictionary = {}
@@ -806,6 +847,28 @@ func _test_flow_all() -> void:
 		for e: Array in de:
 			print("  DEADEND %s: %s, open only at (%.1f, %.1f, %.1f), inner radius %.1f m" % [nm, e[0], e[1].x, e[1].y, e[1].z, e[2]])
 		_check(de.is_empty(), nm + ": no dead ends (every hollow you can fly into has a way out)", "%d of %d hollows" % [de.size(), sc.geo.hollows.size()])
+
+## SH_SELFTEST_ONLY=autopilot: the trailer autopilot (Autopilot) flies one
+## lap of Race Field's first track through the real input path - a
+## regression check for the flight model, rates and race timing: a
+## change that makes it miss the lap, crash or get much slower shows here.
+func _test_autopilot() -> void:
+	var saved_drone: String = Settings.selected_drone
+	var saved_track: int = Settings.race_track
+	Settings.selected_drone = "race"
+	Settings.game_mode = Settings.MODE_RACE
+	Settings.race_track = 1
+	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
+	await _wait(2.0)
+	var ap := Autopilot.new()
+	var ok: bool = await ap.fly(get_tree(), 1, 0.8, 1)
+	_check(ok, "autopilot: one lap of Race Field track 1", "laps %s" % str(ap.lap_times))
+	_check(ap.resets == 0, "autopilot: no reset on the way", "%d resets" % ap.resets)
+	_check(ok and ap.lap_times[0] < 22.0, "autopilot: lap under 22 s (about 17 s on 2026-10-21)", str(ap.lap_times))
+	ap.queue_free()
+	Settings.selected_drone = saved_drone
+	Settings.race_track = saved_track
+	Settings.game_mode = Settings.MODE_FREESTYLE
 
 ## SH_SELFTEST_ONLY=zfight: every generated map built with its faces
 ## recorded, the z-fight list printed (SH_TEXT_MAPS picks maps too).

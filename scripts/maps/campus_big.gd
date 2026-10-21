@@ -74,7 +74,7 @@ func _hall() -> void:
 			geo.box(Vector3(dx + s * 3.1, 2.6, z0 - 0.05), Vector3(0.14, 5.2, 0.16), "in_paint", 0.0, false)
 		geo.box(Vector3(dx, 5.1, z0 + 0.5), Vector3(5.8, 0.5, 0.5), "in_clad", 0.0, false)
 	geo.box(Vector3(xr + 0.15, 5.55, c.z), Vector3(0.5, 0.9, 6.6), "in_paint")
-	geo.box(Vector3(xr - 0.7, 5.1, c.z), Vector3(0.5, 0.5, 5.8), "in_clad", 0.0, false)
+	geo.box(Vector3(xr - 0.45, 5.1, c.z), Vector3(0.5, 0.5, 5.8), "in_clad", 0.0, false) # (against the wall, as on the north doors: it stood 25 cm off)
 	geo.tint = Color.WHITE
 	# Portal frames every 7.9 m: columns, rafters.
 	var nb: int = 12
@@ -195,7 +195,13 @@ func _hall() -> void:
 	for row in range(3):
 		for i in range(11):
 			var lx: float = xl + 5.0 + i * 8.4
-			geo.box(Vector3(lx, 11.6, c.z - 12.0 + row * 12.0), Vector3(1.4, 0.12, 0.35), "in_lamp", 0.0, false, false)
+			var lz: float = c.z - 12.0 + row * 12.0
+			geo.box(Vector3(lx, 11.6, lz), Vector3(1.4, 0.12, 0.35), "in_lamp", 0.0, false, false)
+			# Its cable up to the roof (the lamps hung in the air).
+			# (To the purlin over it, which runs 0.25 m off the lamp row's line.)
+			var cz: float = lz + signf(c.z - lz) * 0.17
+			var ry: float = eave + (ridge - eave) * (1.0 - absf(cz - c.z) / ((z1 - z0) * 0.5)) + 0.05
+			geo.box(Vector3(lx, (11.66 + ry) * 0.5, cz), Vector3(0.03, ry - 11.66, 0.03), "in_steel", 0.0, false, false)
 	geo.end_object()
 	k.map.register_entrance(Vector3(door_n[0], 0.0, z0 - 0.5), "hall door")
 	k.map.register_entrance(Vector3(door_n[1], 0.0, z0 - 0.5), "hall door")
@@ -280,6 +286,7 @@ func _warehouse() -> void:
 	for row in range(4):
 		for i in range(12):
 			geo.box(Vector3(xl + 4.0 + i * 6.2, top - 0.5, 12.0 + row * 9.0), Vector3(1.4, 0.12, 0.35), "in_lamp", 0.0, false, false)
+			geo.box(Vector3(xl + 4.0 + i * 6.2, top - 0.22, 12.0 + row * 9.0), Vector3(0.03, 0.44, 0.03), "in_steel", 0.0, false, false) # its cable
 	geo.end_object()
 	# The truck yard: concrete pad onto the south loop road, two trucks backed
 	# in at docks 2 and 5.

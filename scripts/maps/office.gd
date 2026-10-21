@@ -179,6 +179,9 @@ func _meeting_room(rr: Rect2) -> void:
 	for i in range(4):
 		for s in [-1.3, 1.3]:
 			geo.box(c + Vector3(-1.8 + i * 1.2, 0.46, s), Vector3(0.5, 0.08, 0.5), "accent")
+			# Its column and foot (the seats hung in the air).
+			geo.box(c + Vector3(-1.8 + i * 1.2, 0.22, s), Vector3(0.05, 0.4, 0.05), "metal", 0.0, false)
+			geo.box(c + Vector3(-1.8 + i * 1.2, 0.02, s), Vector3(0.42, 0.04, 0.42), "metal", 0.0, false)
 	geo.box(Vector3(rr.end.x - 0.15, 1.5, c.z), Vector3(0.05, 1.2, 2.4), "desk") # whiteboard
 
 func _kitchen() -> void:

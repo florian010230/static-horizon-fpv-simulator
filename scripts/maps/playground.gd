@@ -127,6 +127,8 @@ func _play_tower(o: Vector3) -> void:
 		geo.box(a.lerp(b, t) - Vector3(0, sag, 0), Vector3(0.28, 0.05, 0.9), "wood")
 	for dz in [-0.5, 0.5]:
 		geo.beam(a + Vector3(0, 0.8, dz), b + Vector3(0, 0.8, dz), Vector2(0.04, 0.04), "rope")
+		for e: Vector3 in [a, b]: # a post at each end holds the rail (it hung in the air)
+			geo.box(e + Vector3(0, 0.42, dz), Vector3(0.07, 0.84, 0.07), "wood")
 	# Slide off the east tower.
 	var s0: Vector3 = o + Vector3(6.9, plat_y, 0)
 	var s1: Vector3 = o + Vector3(10.4, 0.35, 0)
@@ -210,6 +212,8 @@ func _shelter(o: Vector3) -> void:
 			geo.box(o + Vector3(dx, 1.2, dz), Vector3(0.15, 2.4, 0.15), "wood")
 	geo.box(o + Vector3(0, 2.5, 0), Vector3(4.2, 0.12, 3.2), "roof")
 	geo.box(o + Vector3(0, 0.75, 0), Vector3(3.0, 0.06, 1.0), "wood")
+	for dx in [-1.2, 1.2]: # the table's legs (its top hung in the air)
+		geo.box(o + Vector3(dx, 0.36, 0), Vector3(0.08, 0.72, 0.8), "wood")
 
 ## The street north of the playground: through the neighbourhood and on
 ## out of the map both ways, a side street south along the park's east

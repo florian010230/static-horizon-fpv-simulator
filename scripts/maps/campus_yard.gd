@@ -70,7 +70,7 @@ static func gate(kit: CampusKit, c: Vector3, out: Vector3, gw: float) -> void:
 	foot.y = 0.0
 	SignCreator.post(geo, foot, atan2(along.x, along.z), [["no_drones", "Kran hat Vorfahrt"], ["speed", "10"]])
 	# A site board on the hoarding beside the gate.
-	var bf: Transform3D = CampusKit.out_frame(c + out * 0.6 + along * (gw * 0.5 + 6.0), out)
+	var bf: Transform3D = CampusKit.out_frame(c + out * 0.08 + along * (gw * 0.5 + 6.0), out)
 	_site_board(kit, bf)
 
 static func _site_board(kit: CampusKit, f: Transform3D) -> void:

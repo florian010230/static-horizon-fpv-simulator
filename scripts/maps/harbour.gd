@@ -280,6 +280,8 @@ func _station() -> void:
 				geo.box(Vector3(px + 4.0, 2.0, pz), Vector3(0.12, 2.4, 0.12), "steel")
 			if k % 2 == 0:
 				geo.box(Vector3(px + 9.0, 1.2, pz), Vector3(2.0, 0.08, 0.5), "boat_wood", 0.0, true, false)
+				for lx in [-0.8, 0.8]: # its legs (the seat hung in the air)
+					geo.box(Vector3(px + 9.0 + lx, 0.96, pz), Vector3(0.08, 0.4, 0.4), "steel", 0.0, false, false)
 		# Stairs down to the passenger tunnel (a dark opening).
 		geo.box(Vector3(-300, 0.77, pz), Vector3(10.0, 0.02, 2.8), "cty_dark", 0.0, false, false)
 	# Trains at the platforms.

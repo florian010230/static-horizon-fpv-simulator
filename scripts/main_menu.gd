@@ -30,6 +30,7 @@ const WEBSITE := "https://statichorizonfpv.com/"
 var _settings: SettingsScreens
 var _updater: Updater
 var _updates: UpdatesScreen
+var _ping: FirstStartPing
 var _achievements: AchievementsScreen
 var _update_hint: Button
 
@@ -86,6 +87,10 @@ func _ready() -> void:
 	Updater.note_launch()
 	_refresh_update_hint()
 	_updater.check_on_start()
+	_ping = FirstStartPing.new()
+	add_child(_ping)
+	_ping.send_if_wanted()
+	_screens["firstrun"] = _build_first_run_screen(root)
 	# Settings is a shared component (also opened from the in-game pause
 	# menu); from here, closing it returns to the home screen.
 	_settings = SettingsScreens.new()
@@ -93,8 +98,42 @@ func _ready() -> void:
 	_settings.closed.connect(func():
 		_refresh_preview_labels() # units may have changed
 		_show("main"))
-	_show(start_screen)
+	_show(start_screen if Settings.first_run_done or Updater.is_test_run() else "firstrun")
 	start_screen = "main"
+
+## Shown once, at the very first start (also once after updating from
+## 0.10.x): what the game may send, both choices clearly visible. Nothing
+## is sent before Continue (Updater/FirstStartPing check first_run_done).
+func _build_first_run_screen(root: Control) -> Control:
+	var parts: Array = UIKit.screen_card(root, "Welcome", "", 560, _finish_first_run, 900, "Continue  ›", "")
+	var c: VBoxContainer = parts[1]
+	var intro := Label.new()
+	intro.text = "Before you fly: two choices about the internet. Both can be changed later under Updates."
+	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	c.add_child(intro)
+	UIKit.toggle(c, "Check for updates", Settings.check_updates, func(v: bool): Settings.check_updates = v)
+	c.add_child(_small_note("Once a day, ask GitHub whether a new version exists. Nothing about you is sent."))
+	UIKit.toggle(c, "Count my first start", Settings.count_first_start, func(v: bool): Settings.count_first_start = v)
+	c.add_child(_small_note("Once, send the game version and your system (Windows/macOS/Linux) so we know how many people try Static Horizon. No name, no IP address stored, nothing else."))
+	var go := UIKit.button("Continue", "PrimaryButton", 52)
+	go.custom_minimum_size = Vector2(220, 52)
+	go.size_flags_horizontal = Control.SIZE_SHRINK_END
+	go.pressed.connect(_finish_first_run)
+	c.add_child(go)
+	return parts[0]
+
+func _small_note(text: String) -> Label:
+	var l := Label.new()
+	l.theme_type_variation = "Small"
+	l.text = text
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return l
+
+func _finish_first_run() -> void:
+	Settings.first_run_done = true
+	_updater.check_on_start()
+	_ping.send_if_wanted()
+	_show("main")
 
 func _exit_tree() -> void:
 	Settings.apply_fps_cap(Settings.max_fps)

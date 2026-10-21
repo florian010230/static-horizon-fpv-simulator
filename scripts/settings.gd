@@ -200,8 +200,18 @@ var throttle_mid: float = 0.5
 var throttle_expo: float = 0.0
 var lens_fisheye: int = 0
 ## Ask GitHub on menu start whether a newer release exists (Updater);
-## a quiet line in the menu, never a popup. Default on.
+## a quiet line in the menu, never a popup. Default on (user, 2026-10-21), asked on the first-run card.
 var check_updates: bool = true
+## The first-run card (main menu) was shown: nothing is sent before it.
+var first_run_done: bool = false
+## "Full 3D resolution" off: on a high-density screen (Retina, scaled
+## Windows) the 3D is drawn at half the pixels each way; menus, HUD and
+## text stay sharp. Live, no restart (user, 2026-10-16).
+var low_res_3d: bool = false
+## Opt-in: send version + platform once, at the first start (FirstStartPing).
+var count_first_start: bool = false
+## That one ping went through - never send it again (any version).
+var first_start_pinged: bool = false
 
 ## Betaflight's throttle curve (rc.c, thrMid/thrExpo): identity at MID
 ## 0.5 / EXPO 0, flatter around MID with expo.
@@ -234,7 +244,7 @@ const SAVED_FIELDS: Array[String] = ["crosshair_enabled", "shadows_enabled", "gr
 	"max_fps", "vsync", "camera_angle_deg", "camera_fov_deg", "view_distance", "rates_type", "rates_roll", "rates_pitch", "rates_yaw",
 	"selected_drone", "game_mode", "osd_enabled", "battery_enabled", "video_effect", "wind_level", "units",
 	"stick_overlay", "prop_wash", "throttle_mid", "throttle_expo", "lens_fisheye",
-	"prop_damage", "water_damage", "race_ghost", "race_strict", "keyboard_strength", "keyboard_help", "race_line_hue", "race_line_length", "check_updates", "camera_look", "rate_profile", "rate_profiles"]
+	"prop_damage", "water_damage", "race_ghost", "race_strict", "keyboard_strength", "keyboard_help", "race_line_hue", "race_line_length", "check_updates", "first_run_done", "low_res_3d", "count_first_start", "first_start_pinged", "camera_look", "rate_profile", "rate_profiles"]
 var _persist: bool = true
 var _last_saved: String = ""
 var _save_timer: float = 0.0
@@ -245,6 +255,7 @@ func _ready() -> void:
 	_persist = not (args.has("--selftest") or args.has("--dev-preview"))
 	if _persist:
 		_load()
+		_migrate_display_override()
 	apply_fps_cap(max_fps)
 	_last_saved = _snapshot()
 
@@ -381,27 +392,34 @@ func apply_graphics_settings() -> void:
 func render_scale(q: int) -> float:
 	var sc: float = QUALITY_RENDER_SCALE[clampi(q, 0, 2)]
 	if reduced_resolution_active() and DisplayServer.screen_get_dpi() >= 150:
-		sc = minf(1.0, sc * 2.0)
+		sc = minf(1.0, sc * 2.0) # (a window started without HiDPI by an old override file)
+	elif low_res_3d and high_density_screen():
+		sc *= 0.5
 	return sc
 
-## "Full screen resolution" (Settings -> Screen). Off writes this file,
-## which project.godot names as its project_settings_override: the next
-## start opens the window without HiDPI - on a Retina Mac or a scaled
-## Windows screen the whole game is then drawn at half the pixels.
+static func high_density_screen() -> bool:
+	return DisplayServer.screen_get_dpi() >= 150
+
+## Until 0.10.x "Full screen resolution" off wrote DISPLAY_OVERRIDE (the
+## whole window without HiDPI, from the next start). Now HiDPI is always
+## on and the choice lives in low_res_3d: carry it over, drop the file.
+func _migrate_display_override() -> void:
+	if FileAccess.file_exists(DISPLAY_OVERRIDE):
+		low_res_3d = true
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(DISPLAY_OVERRIDE))
+
+## The old "Full screen resolution" switch's file (0.10.x), named in
+## project.godot as project_settings_override; only read to migrate it
+## (_migrate_display_override). With it the next start opened the window
+## without HiDPI - the whole game at half the pixels.
 ## Measured on the dev Mac (Iris 6100, 2880x1800), Village on Low:
 ## 43 fps with full resolution, 62 fps without. Read only at startup.
 const DISPLAY_OVERRIDE: String = "user://display_override.cfg"
 
-func full_resolution() -> bool:
-	return not FileAccess.file_exists(DISPLAY_OVERRIDE)
-
-func set_full_resolution(on: bool) -> void:
-	if on:
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(DISPLAY_OVERRIDE))
-	else:
-		var f := FileAccess.open(DISPLAY_OVERRIDE, FileAccess.WRITE)
-		if f:
-			f.store_string("[display]\n\nwindow/dpi/allow_hidpi=false\n")
+## Sets low_res_3d and applies it right away (the menu's preview too).
+func set_low_res_3d(on: bool) -> void:
+	low_res_3d = on
+	get_viewport().scaling_3d_scale = render_scale(graphics_quality)
 
 ## A race map's shadow map holds its track's gates: one cached file per
 ## track (and the track's rev).

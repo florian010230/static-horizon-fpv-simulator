@@ -488,6 +488,11 @@ func _dam() -> void:
 	geo.beam(fb0, fb1, Vector2(1.6, 0.25), "ml_steel")
 	for sx in [-0.8, 0.8]:
 		geo.beam(fb0 + Vector3(sx, 1.0, 0), fb1 + Vector3(sx, 1.0, 0), Vector2(0.06, 0.06), "ml_steel", false)
+		# Its posts (the rails hung in the air over the deck).
+		var np: int = maxi(1, ceili(fb0.distance_to(fb1) / 2.0))
+		for k in range(np + 1):
+			var pp: Vector3 = fb0.lerp(fb1, float(k) / np) + Vector3(sx, 0.57, 0)
+			geo.box(pp, Vector3(0.05, 0.9, 0.05), "ml_steel", 0.0, false)
 	_spillway()
 	_views.append(["spillway", Vector3(6, -24, 248), Vector3(0, -10, DAM_Z)])
 	_views.append(["pool_top", Vector3(0, -8, DAM_Z + 14.0), Vector3(0, -34, DAM_Z + 14.1)])

@@ -29,6 +29,10 @@ extends RefCounted
 const ROOT: String = "user://update"
 const MANIFEST: String = "update-manifest.json"
 const KEEP: int = 2 ## installed versions kept (newest + one to fall back on)
+## Starts of a pack that never reached the main menu (a crash, or quit while
+## loading) before it is skipped and the older pack / the base build is used.
+const MAX_BOOT_FAILURES: int = 2
+const BOOT_FILE: String = "boot_attempts"
 
 ## The version of the installed build (before any pack) and the pack
 ## loaded at start ({version, path} or {}).
@@ -87,6 +91,11 @@ static func is_newer(a: String, b: String) -> bool:
 			return x > y
 	return false
 
+## "1.2.3" style only - the version names the install folder.
+static func valid_version(v: String) -> bool:
+	var r := RegEx.create_from_string("^[0-9]{1,4}(\\.[0-9]{1,4}){1,3}$")
+	return r.search(v) != null
+
 ## Checks a manifest and its signature: {ok, error, manifest, pack}.
 ## `pack` is this platform's entry.
 static func check_manifest(bytes: PackedByteArray, sig: PackedByteArray, key: CryptoKey, base: String, engine: String) -> Dictionary:
@@ -102,6 +111,8 @@ static func check_manifest(bytes: PackedByteArray, sig: PackedByteArray, key: Cr
 	var m: Variant = JSON.parse_string(bytes.get_string_from_utf8())
 	if typeof(m) != TYPE_DICTIONARY or not m.has("version") or typeof(m.get("packs")) != TYPE_DICTIONARY:
 		out.error = "bad manifest"
+	elif not valid_version(str(m.version)):
+		out.error = "bad version" # (it names a folder: digits and dots only)
 	elif not is_newer(str(m.version), base):
 		out.error = "not newer"
 	elif str(m.get("engine", "")) != engine:
@@ -141,6 +152,7 @@ static func install(root: String, manifest: PackedByteArray, sig: PackedByteArra
 			return "can't write"
 		w.store_buffer(e[1])
 	DirAccess.remove_absolute(dir.path_join("game.pck"))
+	DirAccess.remove_absolute(dir.path_join(BOOT_FILE)) # a fresh install gets fresh tries
 	if DirAccess.rename_absolute(pck_tmp, dir.path_join("game.pck")) != OK:
 		return "can't write"
 	_prune(root)
@@ -170,7 +182,7 @@ static func find_loadable(root: String, key: CryptoKey, base: String, engine: St
 	for v in installed(root):
 		var dir: String = root.path_join(v)
 		var c: Dictionary = check_manifest(FileAccess.get_file_as_bytes(dir.path_join(MANIFEST)), FileAccess.get_file_as_bytes(dir.path_join(MANIFEST + ".sig")), key, base, engine)
-		if not c.ok or str(c.manifest.version) != v:
+		if not c.ok or str(c.manifest.version) != v or boot_failures(dir) >= MAX_BOOT_FAILURES:
 			continue
 		var pck: String = dir.path_join("game.pck")
 		if _size(pck) == int(c.pack.get("size", -1)) and file_sha256(pck) == str(c.pack.get("sha256", "")).to_lower():
@@ -190,7 +202,23 @@ static func load_at_startup() -> void:
 	var found: Dictionary = find_loadable(ROOT, public_key(), base_version, engine_version())
 	if found.is_empty():
 		return
+	var dir: String = found.path.get_base_dir()
+	_set_boot_failures(dir, boot_failures(dir) + 1) # cleared by boot_ok() at the menu
 	if ProjectSettings.load_resource_pack(found.path, true):
 		loaded = found
 		ProjectSettings.set_setting("application/config/version", found.version)
 		print("Update pack %s loaded over %s" % [found.version, base_version])
+
+## Failed starts recorded for an installed version's folder.
+static func boot_failures(dir: String) -> int:
+	return int(FileAccess.get_file_as_string(dir.path_join(BOOT_FILE)))
+
+static func _set_boot_failures(dir: String, n: int) -> void:
+	var f := FileAccess.open(dir.path_join(BOOT_FILE), FileAccess.WRITE)
+	if f:
+		f.store_string(str(n))
+
+## The main menu came up: the loaded pack works, forget its failed starts.
+static func boot_ok() -> void:
+	if not loaded.is_empty():
+		DirAccess.remove_absolute(str(loaded.path).get_base_dir().path_join(BOOT_FILE))

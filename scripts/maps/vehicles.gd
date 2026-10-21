@@ -394,6 +394,21 @@ static func _windows(geo: Geo, b: Transform3D, z0: float, z1: float, y0: float, 
 ## = its front (the way it faces along the track): "loco", "shunter",
 ## "ice_head" (nose at the front), "ice_tail" (nose at the back), "ice",
 ## "coach", "tank", "box", "hopper", "flat", "flat_empty", "torpedo".
+## One block of a train nose loft between sections s0 and s1 ([z, half
+## width, shoulder y, top y, top half width]): the lower part (from y0 to
+## the shoulder) or the upper part (shoulder to top, narrower on top).
+static func _nose_block(geo: Geo, b: Transform3D, s0: Array, s1: Array, y0: float, upper: bool) -> void:
+	var lo: Array = s0 if s0[0] < s1[0] else s1
+	var hi: Array = s1 if s0[0] < s1[0] else s0
+	var pts: Array = []
+	for i in range(8):
+		var sec: Array = hi if i & 4 else lo
+		var top: bool = (i & 2) != 0
+		var hw: float = (sec[4] if top else sec[1]) if upper else sec[1]
+		var yy: float = (sec[3] if top else sec[2]) if upper else (sec[2] if top else y0)
+		pts.append(b * Vector3(hw * (1.0 if i & 1 else -1.0), yy, sec[0]))
+	geo.hexa(pts, "train_white")
+
 static func rail_xf(geo: Geo, b: Transform3D, kind: String, rng: RandomNumberGenerator, container_mats: Array = []) -> float:
 	ensure_materials(geo)
 	var L: float = RAIL_LENGTH[kind]
@@ -456,19 +471,36 @@ static func rail_xf(geo: Geo, b: Transform3D, kind: String, rng: RandomNumberGen
 			_windows(geo, b, lo + 0.6, hi - 0.6, 2.45, 3.3, 1.8, 0.45, "train_white")
 			_long(geo, b, lo, hi, ROOF_SEC, "train_white")
 			_bx(geo, b, Vector3(0, 1.75, (lo + hi) * 0.5), Vector3(3.0, 0.28, hi - lo - 0.04), "train_red", false, false) # (3 cm proud of the body, 2 cm short at the ends: flush, it flickered)
-			# The nose: a wedge from the full body section to a low tip.
+			# The nose: a long tapered loft (generic high-speed train, no
+			# brand): 7 sections from the full body to a low rounded tip,
+			# each a lower block (skirt to shoulder) and an upper one with a
+			# narrower top (the rounded roof edge).
 			var zt: float = sn * (L * 0.5)
-			var pts: Array = []
-			for i in range(8):
-				var tip: bool = ((i & 4) != 0) == (sn > 0.0)
-				var hw: float = (0.55 if tip else 1.47) * (1.0 if i & 1 else -1.0)
-				var yy: float = 0.9 if not (i & 2) else (1.75 if tip else 4.15)
-				pts.append(b * Vector3(hw, yy, zt if tip else zb))
-			geo.hexa(pts, "train_white")
-			var wf: Vector3 = b * Vector3(0, 3.35, zb + sn * 1.35)
-			geo.box_xf(Transform3D(b.basis * Basis(Vector3.RIGHT, -sn * 0.62), wf), Vector3(2.0, 0.06, 1.7), "veh_glass", false, false)
-			for sx in [-0.6, 0.6]:
-				_bx(geo, b, Vector3(sx * 0.9, 1.6, zt - sn * 0.35), Vector3(0.3, 0.1, 0.3), "veh_head")
+			var secs: Array = [] # [z, half width, shoulder y, top y, top half width]
+			for k in range(8):
+				var t: float = k / 7.0
+				var hw: float = 1.47 - 1.0 * pow(t, 2.2)
+				var top: float = 1.55 + 2.6 * pow(1.0 - pow(t, 1.5), 0.75)
+				var sh: float = minf(lerpf(2.45, 1.3, t), top - 0.15)
+				secs.append([lerpf(zb, zt, t), hw, sh, top, hw * lerpf(0.82, 0.55, t)])
+			for k in range(7):
+				var s0: Array = secs[k]
+				var s1: Array = secs[k + 1]
+				_nose_block(geo, b, s0, s1, 0.9, false)
+				_nose_block(geo, b, s0, s1, 0.9, true)
+			# Raked windscreen on the slope: one pane per loft segment (2-3,
+			# 3-4), each lying on its segment's top face.
+			for k in [2, 3]:
+				var w0: Array = secs[k]
+				var w1: Array = secs[k + 1]
+				var dzw: float = absf(w1[0] - w0[0])
+				var ang: float = atan2(w0[3] - w1[3], dzw)
+				geo.box_xf(Transform3D(b.basis * Basis(Vector3.RIGHT, sn * ang), b * Vector3(0, (w0[3] + w1[3]) * 0.5 + 0.03, (w0[0] + w1[0]) * 0.5)),
+					Vector3(minf(w0[4], w1[4]) * 1.85, 0.06, dzw * 1.04 / cos(ang)), "veh_glass", false, false)
+			# Headlights low on the nose, near the tip.
+			var hl: Array = secs[6]
+			for sx in [-1.0, 1.0]:
+				_bx(geo, b, Vector3(sx * hl[1] * 0.62, 1.35, hl[0] - sn * 0.05), Vector3(0.32, 0.1, 0.3), "veh_head")
 			geo.beam(b * Vector3(0, 4.2, -sn * 2.0), b * Vector3(0, 5.2, -sn * 0.8), Vector2(0.07, 0.07), "veh_steel", false)
 			_bx(geo, b, Vector3(0, 5.22, -sn * 0.8), Vector3(1.8, 0.05, 0.25), "veh_steel")
 		"ice", "coach":
@@ -526,7 +558,7 @@ static func rail_xf(geo: Geo, b: Transform3D, kind: String, rng: RandomNumberGen
 			# Torpedo ladle car: a refractory-lined vessel carrying hot
 			# metal from the blast furnace, on two big bogie groups.
 			for ez in [-1.0, 1.0]:
-				_bx(geo, b, Vector3(0, 1.5, ez * 9.0), Vector3(2.8, 0.8, 5.0), "veh_black", true)
+				_bx(geo, b, Vector3(0, 1.5, ez * 9.65), Vector3(2.8, 0.8, 6.3), "veh_black", true) # (out to the buffer beam: it hung 1.3 m clear)
 			var prof: Array = [Vector2(0.4, 0), Vector2(1.3, 1.8), Vector2(1.8, 5.0), Vector2(1.9, 8.0), Vector2(1.8, 11.0), Vector2(1.3, 14.2), Vector2(0.4, 16.0)]
 			var shell: String = "veh_rust"
 			var a: Vector3 = b * Vector3(0, 3.6, -8.0)

@@ -111,6 +111,9 @@ static func plant(map: Node3D, geo: Geo, trees: Array) -> Dictionary:
 					extra = e
 					break
 		if extra != "none" and sp in EXTRA_ON.get(extra, []):
+			# The crown and branches hold what hangs in them (swing, kite).
+			var cc: Vector3 = xf * v.crown
+			geo.hold(Vector2(cc.x, cc.z), Vector2.ONE * (v.crown_r * sc + 0.3), cc.y - v.crown_h * sc * 0.6, cc.y + v.crown_h * sc * 0.5)
 			var spot: Array = _extra(geo, xf, v, extra, rng)
 			extras.append([extra, spot[0], spot[1]])
 	for key in chunks:

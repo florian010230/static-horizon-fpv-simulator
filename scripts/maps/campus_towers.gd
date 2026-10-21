@@ -314,6 +314,7 @@ func _walkway(a: Vector3, b: Vector3) -> void:
 	geo.box(Vector3(mx, y + Ht + 0.2, a.z), Vector3(L + 0.4, 0.06, W + 0.5), "cabin", 0.0, true, false)
 	# A guard rail across the open end, a light.
 	geo.box(Vector3(mx, y + Ht - 0.3, a.z), Vector3(1.2, 0.1, 0.1), "lamp", 0.0, false, false)
+	geo.box(Vector3(mx, y + Ht - 0.02, a.z), Vector3(0.03, 0.46, 0.03), "steel_blue", 0.0, false, false) # its hanger (it hung free)
 
 # --- cranes ---------------------------------------------------------------------------------------------------------
 

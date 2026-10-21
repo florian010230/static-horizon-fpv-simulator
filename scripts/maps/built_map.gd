@@ -331,8 +331,19 @@ func _ready() -> void:
 		for e: Array in f:
 			kinds["%s %s" % [e[3], e[1]]] = kinds.get("%s %s" % [e[3], e[1]], 0) + 1
 		print("  by kind: ", kinds)
-		for k in range(mini(f.size(), 60)):
-			print("  float ", f[k])
+		if OS.has_environment("SH_FLOAT_NEAR"):
+			for spot in OS.get_environment("SH_FLOAT_NEAR").split(";"):
+				var at: PackedFloat64Array = spot.split_floats(",")
+				print("  near ", spot, ":")
+				for e: Array in geo.supports_near(Vector2(at[0], at[1])):
+					if e[0] != "":
+						print("  near ", e)
+		var shown: Dictionary = {} # up to 4 of each kind, so a rare kind isn't buried
+		for e: Array in f:
+			var kk: String = "%s %s" % [e[3], e[1]]
+			shown[kk] = shown.get(kk, 0) + 1
+			if shown[kk] <= 4:
+				print("  float ", e)
 	if Geo.record_thin:
 		var keys: Array = geo.thin_log.keys()
 		keys.sort_custom(func(x: String, y: String) -> bool: return geo.thin_log[x][0] > geo.thin_log[y][0])

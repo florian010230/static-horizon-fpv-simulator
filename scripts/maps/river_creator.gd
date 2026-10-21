@@ -178,6 +178,7 @@ func draw(geo: Geo, rect: Rect2, rng: RandomNumberGenerator) -> Dictionary:
 		var c: Vector3 = seg[k] + right * (w + rng.randf_range(0.9, 1.6)) + tan * rng.randf_range(-3, 3)
 		for _r in range(rng.randi_range(8, 16)):
 			var p: Vector3 = c + Vector3(rng.randf_range(-1.2, 1.2), -0.1, rng.randf_range(-1.2, 1.2))
+			p.y = minf(p.y, land.ground(p.x, p.z)) # rooted where the bank dips below the water line (they stood in the air)
 			geo.tint = Color(1, 1, 1) * rng.randf_range(0.8, 1.15)
 			geo.cone(p, p + Vector3(rng.randf_range(-0.2, 0.2), rng.randf_range(1.2, 2.0), rng.randf_range(-0.2, 0.2)), 0.04, 0.005, "rvd_reed", 4, false)
 		geo.tint = Color.WHITE

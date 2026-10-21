@@ -352,6 +352,9 @@ func _go() -> void:
 		await _lab_shots()
 		get_tree().quit()
 		return
+	if OS.get_cmdline_user_args().has("autopilot"):
+		await Autopilot.new().run(get_tree()) # (quits when done)
+		return
 	if OS.get_cmdline_user_args().has("cine"):
 		var ca := OS.get_cmdline_user_args()
 		var shot: String = ca[ca.find("cine") + 1] if ca.find("cine") + 1 < ca.size() else ""
@@ -579,6 +582,9 @@ func _menu_shots() -> void:
 	mn._show("achievements")
 	await get_tree().create_timer(0.3).timeout
 	_shot("preview_achievements.png")
+	mn._show("firstrun")
+	await get_tree().create_timer(0.3).timeout
+	_shot("preview_first_run.png")
 	Updater.latest = {}
 	Collectibles.reset()
 
@@ -1129,6 +1135,7 @@ func _perf_detail() -> void:
 		["base", func(): pass, func(): pass],
 		["no fisheye", func(): Settings.lens_fisheye = 0, func(): Settings.lens_fisheye = 1],
 		["scale 0.35", func(): get_viewport().scaling_3d_scale = 0.35, func(): get_viewport().scaling_3d_scale = Settings.render_scale(Settings.graphics_quality)],
+		["low 3D", func(): Settings.set_low_res_3d(true), func(): Settings.set_low_res_3d(false)],
 		["medium", func(): _set_q(1), func(): _set_q(0)],
 		["high", func(): _set_q(2), func(): _set_q(0)],
 		["no UI", func(): sc.get_node("UI").visible = false, func(): sc.get_node("UI").visible = true],

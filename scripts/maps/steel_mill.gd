@@ -286,6 +286,9 @@ func _station() -> void:
 	for s in [-1.5, 1.5]:
 		geo.box(Vector3(fx + s, 9.2, MAIN_Z), Vector3(0.15, 1.4, 32.0), "paint")
 	geo.box(Vector3(fx, 10.4, MAIN_Z), Vector3(3.4, 0.2, 32.0), "corrugated")
+	for s in [-1.5, 1.5]: # roof posts on the parapets (the roof hung 40 cm over them)
+		for k in range(9):
+			geo.box(Vector3(fx + s, 10.1, MAIN_Z - 16.0 + k * 4.0), Vector3(0.12, 0.4, 0.12), "paint", 0.0, false)
 	# Station building between platform and road.
 	_hall(Vector3(205, 0, 194), Vector3(40, 10, 12), "brick", {"n": [[0.0, 4.0, 4.0]], "s": [[0.0, 4.0, 4.0]]}, 0.05)
 
@@ -1181,7 +1184,9 @@ func _whoop_in_chimney() -> void:
 	var gy: float = _height(base.x, base.z)
 	var a: float = deg_to_rad(20.0)
 	var p := Vector3(base.x + cos(a) * 1.1, gy + 3.7, base.z + sin(a) * 1.1)
+	geo.airborne = true # (it hovers on purpose)
 	EggProps.whoop(geo, Transform3D(Basis.from_euler(Vector3(0.14, 0.9, -0.1)), p), true, true)
+	geo.airborne = false
 	_views.append(["egg_whoop", Vector3(base.x + 6.0, gy + 2.6, base.z + 3.0), p])
 
 static func _local_rng(s: int) -> RandomNumberGenerator:

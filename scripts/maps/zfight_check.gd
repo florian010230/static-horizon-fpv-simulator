@@ -85,6 +85,8 @@ static func run(geo: Geo, centre: Vector2 = Vector2.ZERO, radius: float = INF) -
 					continue # inside something else: nobody sees it
 				if nrm[i].y < -0.5 and geo.floor_fn.is_valid() and r[1].y < float(geo.floor_fn.call(r[1].x, r[1].z)) + 0.02:
 					continue # facing down into the ground (Geo.box_on sinks feet into it)
+				if nrm[i].y < -0.5 and geo.support_at(r[1] + nrm[i] * 0.03):
+					continue # facing down into a slab (a hall floor on the quay)
 				if r[0] >= MIN_AREA:
 					out.append([r[1], "%s / %s" % [geo.face_mat_names[geo.face_mat[i]], geo.face_mat_names[geo.face_mat[j]]], absf(dist[i] - dist[j]), r[0]])
 	out.sort_custom(func(p: Array, q: Array) -> bool: return p[3] > q[3])

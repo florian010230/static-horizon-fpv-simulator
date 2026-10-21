@@ -200,8 +200,18 @@ var sign_conflicts: Array = []
 var _lanes: Array = [] # [a: Vector2, b: Vector2, half width, surface y]
 var _lane_grid: Dictionary = {}
 
+## Radius of the next _obstacle when it is round and upright (a vertical
+## cylinder, cone or lathe): the floating check then treats its footprint
+## as the circle, not its bounding square - a cone's square corner once
+## "held up" a furnace top house hanging 5 m above its platform.
+var _round: float = 0.0
+## True while drawing something meant to fly (the Steel Mill's hovering
+## whoop): the floating check never judges it.
+var airborne: bool = false
 func _obstacle(c: Vector2, ax: Vector2, half: Vector2, y0: float, y1: float, collide: bool = true, exact: bool = true) -> void:
-	_support.append([c, ax.normalized(), half, y0, y1])
+	_support.append([c, ax.normalized(), half, y0, y1, _round])
+	_round = 0.0
+	_sup_kind.append("" if airborne else _cell_key.get_slice("|", 0))
 	_grid_add(_sup_grid, c, minf(half.length(), 400.0), _support.size() - 1)
 	if not collide or y1 - y0 < 0.3:
 		return # flat: paving, kerbs, markings
@@ -231,8 +241,19 @@ func _obstacle_points(pts: Array, collide: bool = true) -> void:
 	for p: Vector3 in pts:
 		mn = mn.min(p)
 		mx = mx.max(p)
-	if (mx.x - mn.x) * (mx.z - mn.z) > 600.0:
-		return # a long diagonal brace: its box would cover far too much
+	var box_area: float = (mx.x - mn.x) * (mx.z - mn.z)
+	if box_area > 600.0:
+		# A long diagonal brace: its box would cover far too much. A big
+		# roof fills its box, though - keep that (a chimney stands on it).
+		var flat := PackedVector2Array()
+		for p: Vector3 in pts:
+			flat.append(Vector2(p.x, p.z))
+		var hull: PackedVector2Array = Geometry2D.convex_hull(flat)
+		var area: float = 0.0
+		for i in range(hull.size() - 1):
+			area += hull[i].cross(hull[i + 1])
+		if absf(area) * 0.5 < box_area * 0.6:
+			return
 	_obstacle(Vector2(mn.x + mx.x, mn.z + mx.z) * 0.5, Vector2(1, 0), Vector2(mx.x - mn.x, mx.z - mn.z) * 0.5, mn.y, mx.y, collide, false) # (a bounding box, too coarse for the untagged lane test)
 
 func _lane(a: Vector2, b: Vector2, half: float, y: float = 0.0) -> void:
@@ -584,11 +605,28 @@ func _lane_hit(r: Array, y0: float, y1: float = INF) -> String:
 
 ## Everything solid, flat or not (for the floating-object check).
 var _support: Array = []
+var _sup_kind: PackedStringArray = [] # material per _support entry ("" = a route sweep)
 var _sup_grid: Dictionary = {}
+## Also judge the small parts (2026-10-21): pieces without collision and
+## ones under 0.3 m tall (mirrors, lamps, trim, roof houses on decks) -
+## before, only colliding pieces of 0.3 m and more were judged.
+var small_parts: bool = true
 
 func _overlaps(a: Array, b: Array) -> bool:
 	# a's footprint rectangle against b's: separating-axis test on both
 	# rectangles' axes, with 0.15 m slack (a support only has to touch).
+	# Round upright pieces (entry [5] > 0) are their circle.
+	var ra: float = a[5] if a.size() > 5 and a[5] is float else 0.0 # (_obs entries carry their material there)
+	var rb: float = b[5] if b.size() > 5 and b[5] is float else 0.0
+	if ra > 0.0 and rb > 0.0:
+		return (a[0] as Vector2).distance_to(b[0]) <= ra + rb + 0.15
+	if ra > 0.0 or rb > 0.0:
+		var circ: Array = a if ra > 0.0 else b
+		var rect: Array = b if ra > 0.0 else a
+		var d: Vector2 = (circ[0] as Vector2) - (rect[0] as Vector2)
+		var ax: Vector2 = rect[1]
+		var e := Vector2(maxf(absf(d.dot(ax)) - rect[2].x, 0.0), maxf(absf(d.dot(Vector2(-ax.y, ax.x))) - rect[2].y, 0.0))
+		return e.length() <= maxf(ra, rb) + 0.15
 	for r in [a, b]:
 		var ax: Vector2 = r[1]
 		for axis in [ax, Vector2(-ax.y, ax.x)]:
@@ -650,6 +688,22 @@ func floating(ground: Callable, centre: Vector2 = Vector2.ZERO, radius: float = 
 		var gap: Vector3 = _gap(o, ground)
 		if gap.x != INF:
 			out.append([Vector3(gap.x, o[3], gap.y), o[5], o[2], "gap", snappedf(gap.z, 0.01)])
+	if small_parts:
+		var judged: Dictionary = {}
+		for o: Array in _obs:
+			var j: int = _support_index(o)
+			if j >= 0:
+				judged[j] = true
+		for j in range(_support.size()):
+			var q: Array = _support[j]
+			if judged.has(j) or _sup_kind[j] == "" or (q[2] as Vector2).length() > 120.0:
+				continue
+			if (q[0] as Vector2).distance_to(centre) > radius:
+				continue
+			if not state.has(j):
+				_settle(j, ground, state)
+			if not state[j]:
+				out.append([Vector3(q[0].x, q[3], q[0].y), _sup_kind[j], q[2], "loose small"])
 	return out
 
 ## Does piece q stand on the ground (its bottom within gap_limit of it
@@ -786,6 +840,34 @@ func solid_below(p: Vector2, y0: float, y1: float) -> bool:
 ## Marks an area as taken (parked cars, so trees and other cars avoid them).
 func reserve(c: Vector2, ax: Vector2, half: Vector2, y0: float, y1: float) -> void:
 	_obstacle(c, ax, half, y0, y1)
+
+## Is point p inside a recorded footprint's volume (ground slabs too)?
+## ZFightCheck: a face looking into one is never seen.
+func support_at(p: Vector3) -> bool:
+	for j: int in _sup_grid.get(Vector2i(floori(p.x / OBS_CELL), floori(p.z / OBS_CELL)), []):
+		var q: Array = _support[j]
+		if p.y < q[3] - 0.01 or p.y > q[4] + 0.01 or _sup_kind[j] == "":
+			continue
+		var d := Vector2(p.x, p.z) - (q[0] as Vector2)
+		var ax: Vector2 = q[1]
+		if absf(d.dot(ax)) <= q[2].x and absf(d.dot(Vector2(-ax.y, ax.x))) <= q[2].y:
+			return true
+	return false
+
+## SH_FLOAT_NEAR="x,z": the footprints recorded within 3 m (dev aid).
+func supports_near(p: Vector2, r: float = 3.0) -> Array:
+	var out: Array = []
+	for j in range(_support.size()):
+		if (_support[j][0] as Vector2).distance_to(p) < r + (_support[j][2] as Vector2).length():
+			out.append([_sup_kind[j]] + _support[j])
+	return out
+
+## Something drawn elsewhere (a Forest tree's crown) that holds pieces up
+## for the floating check only: no scatter footprint, never judged itself.
+func hold(c: Vector2, half: Vector2, y0: float, y1: float) -> void:
+	_support.append([c, Vector2(1, 0), half, y0, y1, 0.0])
+	_sup_kind.append("")
+	_grid_add(_sup_grid, c, minf(half.length(), 400.0), _support.size() - 1)
 
 # --- primitives --------------------------------------------------------------
 
@@ -939,6 +1021,7 @@ func lathe(base: Vector3, profile: Array, mat: String, sides: int = 24, wall: fl
 		var rmax: float = 0.0
 		for q: Vector2 in profile:
 			rmax = maxf(rmax, q.x)
+		_round = rmax
 		_obstacle(Vector2(base.x, base.z), Vector2(1, 0), Vector2(rmax, rmax), base.y + profile[0].y, base.y + profile[profile.size() - 1].y, collide)
 	var pts := PackedVector3Array()
 	for layer in ([0.0, wall] if wall > 0.0 else [0.0]):
@@ -1075,6 +1158,7 @@ func sweep(path: Array[Vector3], profile: Array, mat: String, closed: bool = fal
 		var yl: float = minf(path[i].y, path[i + 1].y) + pmin
 		var yh: float = maxf(path[i].y, path[i + 1].y) + pmax
 		_support.append([(a2 + b2) * 0.5, ax2, Vector2(a2.distance_to(b2) * 0.5 + 0.2, pw), yl, yh])
+		_sup_kind.append("") # route sweeps only hold things up
 		_grid_add(_sup_grid, (a2 + b2) * 0.5, a2.distance_to(b2) * 0.5 + pw, _support.size() - 1)
 	if mat.begins_with("rd_asphalt") or mat.begins_with("rw_ballast"):
 		var half: float = 0.0
@@ -1348,6 +1432,7 @@ func release_records() -> void:
 	_lane_grid.clear()
 	_objects.clear()
 	_support.clear()
+	_sup_kind.clear()
 	_sup_grid.clear()
 	_lcache.clear()
 	_mat_cell.clear()
@@ -1372,6 +1457,7 @@ func _tube(a: Vector3, b: Vector3, r0: float, r1: float, wall: float, mat: Strin
 		var lo: float = minf(a.y, b.y) - (rr if absf(d.y) < length * 0.7 else 0.0)
 		var hi: float = maxf(a.y, b.y) + (rr if absf(d.y) < length * 0.7 else 0.0)
 		if flat.length() < 0.01:
+			_round = rr
 			_obstacle(Vector2(a.x, a.z), Vector2(1, 0), Vector2(rr, rr), lo, hi, collide)
 		else:
 			var ax := Vector2(flat.x, flat.z).normalized()

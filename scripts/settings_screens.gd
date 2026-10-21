@@ -183,17 +183,8 @@ func _build_settings() -> Control:
 	UIKit.section(g2, "Screen")
 	UIKit.toggle(g2, "Fullscreen", Settings.is_fullscreen(), func(v: bool): Settings.set_fullscreen(v))
 	UIKit.gap(g2, 6)
-	var res_hint := _hint_label()
-	var restart_btn := UIKit.button("Restart now", "PrimaryButton", 44)
-	UIKit.toggle(g2, "Full screen resolution", Settings.full_resolution(), func(v: bool):
-		Settings.set_full_resolution(v)
-		res_hint.text = _res_hint_text()
-		restart_btn.visible = _res_restart_pending())
-	res_hint.text = _res_hint_text()
-	g2.add_child(res_hint)
-	restart_btn.pressed.connect(Settings.restart_game)
-	restart_btn.visible = _res_restart_pending()
-	g2.add_child(restart_btn)
+	UIKit.toggle(g2, "Full 3D resolution", not Settings.low_res_3d, func(v: bool): Settings.set_low_res_3d(not v))
+	_hint(g2, "Off: on Retina and other high-resolution screens the 3D picture is drawn with half the pixels each way - more FPS on weak graphics. Menus, HUD and text stay sharp.")
 	UIKit.gap(g2, 6)
 	var fps_initial: float = clamp(Settings.max_fps if Settings.max_fps > 0 else FPS_MAX, FPS_MIN, FPS_MAX)
 	_fps_value_label = UIKit.slider(g2, "Frame rate limit", FPS_MIN, FPS_MAX, 5, fps_initial, func(v: float):
@@ -364,15 +355,6 @@ func _hint_label() -> Label:
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.add_theme_color_override("font_color", UIKit.MUTED_LIGHT)
 	return l
-
-func _res_hint_text() -> String:
-	var t: String = "Off: on Retina and other high-resolution screens the game is drawn with half the pixels each way - often twice the FPS on weak graphics. Text is a little softer; on Low the 3D picture keeps its detail."
-	if _res_restart_pending():
-		t += " Takes effect when the game restarts (a few seconds)."
-	return t
-
-func _res_restart_pending() -> bool:
-	return Settings.full_resolution() == Settings.reduced_resolution_active()
 
 ## The racing line: one slider, far left Off, then the colour wheel in
 ## 5 degree steps; beside the label a live sample - a piece of the line

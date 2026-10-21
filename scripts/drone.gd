@@ -401,6 +401,11 @@ var flight_time: float = 0.0
 @onready var _camera: Camera3D = $CameraMount/Camera3D
 
 func _ready() -> void:
+	# A radio isn't "user input" to the OS: a tester's Chromebook dimmed
+	# after ~20 min of flying (0.10.1). Godot's keep_screen_on project
+	# setting is on, but ask again explicitly whenever a flight starts.
+	if DisplayServer.get_name() != "headless":
+		DisplayServer.screen_set_keep_on(true)
 	camera_angle_deg = Settings.camera_angle_deg
 	camera_fov_deg = Settings.camera_fov_deg
 	Settings.camera_changed.connect(func():

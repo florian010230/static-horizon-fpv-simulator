@@ -134,6 +134,7 @@ static func show_whats_new_hint() -> bool:
 static func note_launch() -> void:
 	if seen_version() == "" and not is_test_run():
 		mark_seen()
+	UpdatePack.boot_ok()
 
 func _ready() -> void:
 	_http = HTTPRequest.new()
@@ -147,8 +148,8 @@ func _ready() -> void:
 ## run, and the cached answer is older than a day.
 func check_on_start() -> void:
 	_load_cache()
-	if not Settings.check_updates or _asked_this_run or is_test_run():
-		return
+	if not Settings.check_updates or not Settings.first_run_done or _asked_this_run or is_test_run():
+		return # (nothing goes out before the first-run card was shown)
 	if not latest.is_empty() and int(Time.get_unix_time_from_system()) - int(latest.get("checked", 0)) < MAX_AGE_SECONDS:
 		status = "ok"
 		return
@@ -188,9 +189,13 @@ static func can_install() -> bool:
 func progress() -> float:
 	return clampf(float(_dl.get_downloaded_bytes()) / _pack_size, 0.0, 1.0) if _pack_size > 0 else 0.0
 
-func _fetch(url: String, to_file: String = "") -> Array:
+func _fetch(url: String, to_file: String = "", max_bytes: int = 1 << 20) -> Array:
 	_dl.download_file = to_file
-	_dl.timeout = 0.0 if to_file != "" else 15.0
+	# A cap on every download (the pack: its signed size) and a long but
+	# finite timeout, so a bad server can neither fill the disk nor leave
+	# the screen on "downloading" forever.
+	_dl.body_size_limit = max_bytes
+	_dl.timeout = 1800.0 if to_file != "" else 15.0
 	if _dl.request(url, ["User-Agent: StaticHorizonFPV/" + current_version()]) != OK:
 		return [HTTPRequest.RESULT_CANT_CONNECT, 0, PackedByteArray()]
 	var r: Array = await _dl.request_completed
@@ -229,7 +234,7 @@ func install_latest() -> void:
 	DirAccess.make_dir_recursive_absolute(UpdatePack.ROOT)
 	var tmp: String = UpdatePack.ROOT.path_join(".download.part")
 	_pack_size = int(c.pack.get("size", 0))
-	var p: Array = await _fetch(a[file], tmp)
+	var p: Array = await _fetch(a[file], tmp, _pack_size + 1024)
 	if p[0] != HTTPRequest.RESULT_SUCCESS or p[1] != 200:
 		DirAccess.remove_absolute(tmp)
 		_fail("could not download")
