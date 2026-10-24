@@ -204,10 +204,13 @@ var lens_fisheye: int = 0
 var check_updates: bool = true
 ## The first-run card (main menu) was shown: nothing is sent before it.
 var first_run_done: bool = false
-## "Full 3D resolution" off: on a high-density screen (Retina, scaled
-## Windows) the 3D is drawn at half the pixels each way; menus, HUD and
-## text stay sharp. Live, no restart (user, 2026-10-16).
-var low_res_3d: bool = false
+## "Low-res window": on a high-density screen (Retina, scaled Windows)
+## the whole window - 3D, HUD, menus - runs at half the pixels each way,
+## from the next start (DISPLAY_OVERRIDE). Back in 0.11.1 (user,
+## 2026-10-22): 0.11.0's live "Full 3D resolution" halved only the 3D,
+## which looked worse and gave no FPS (the 3D is not pixel-bound on the
+## dev Mac; presenting the Retina window is).
+var low_res_window: bool = false
 ## Opt-in ("Yes, count me" on the first-run card, or Settings): send
 ## version + platform once, at the first start (FirstStartPing).
 var count_first_start: bool = false
@@ -245,24 +248,28 @@ const SAVED_FIELDS: Array[String] = ["crosshair_enabled", "shadows_enabled", "gr
 	"max_fps", "vsync", "camera_angle_deg", "camera_fov_deg", "view_distance", "rates_type", "rates_roll", "rates_pitch", "rates_yaw",
 	"selected_drone", "game_mode", "osd_enabled", "battery_enabled", "video_effect", "wind_level", "units",
 	"stick_overlay", "prop_wash", "throttle_mid", "throttle_expo", "lens_fisheye",
-	"prop_damage", "water_damage", "race_ghost", "race_strict", "keyboard_strength", "keyboard_help", "race_line_hue", "race_line_length", "check_updates", "first_run_done", "low_res_3d", "count_first_start", "first_start_pinged", "camera_look", "rate_profile", "rate_profiles"]
+	"prop_damage", "water_damage", "race_ghost", "race_strict", "keyboard_strength", "keyboard_help", "race_line_hue", "race_line_length", "check_updates", "first_run_done", "low_res_window", "count_first_start", "first_start_pinged", "camera_look", "rate_profile", "rate_profiles"]
 var _persist: bool = true
 var _last_saved: String = ""
 var _save_timer: float = 0.0
 var _fullscreen_saved: bool = false
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS # (F11 in the pause menu too)
 	var args := OS.get_cmdline_user_args()
-	_persist = not (args.has("--selftest") or args.has("--dev-preview"))
+	# (Also not for a `-s <script>` dev run: it must not save either.)
+	_persist = not (args.has("--selftest") or args.has("--dev-preview") or OS.get_cmdline_args().has("-s") or OS.get_cmdline_args().has("--script"))
 	if _persist:
 		_load()
-		_migrate_display_override()
 	apply_fps_cap(max_fps)
 	_last_saved = _snapshot()
+	if _persist and not FileAccess.file_exists(DISPLAY_OVERRIDE):
+		_last_saved = "" # (the first save writes it - from 0.11.0 or a first start)
 
 func _process(delta: float) -> void:
 	_update_far_with_height()
-	if not _persist:
+	_settle_window_mode()
+	if not _persist or _want_fullscreen >= 0:
 		return
 	_save_timer += delta
 	if _save_timer < 1.0:
@@ -290,10 +297,14 @@ func _save(path: String = SETTINGS_PATH) -> void:
 		cfg.set_value("settings", f, get(f))
 	cfg.set_value("settings", "fullscreen", is_fullscreen())
 	cfg.save(path)
+	# (Not from a --record-all dev session: 0.11.0 would read the file.)
+	if path == SETTINGS_PATH and not TakeRecorder.active():
+		write_display_override(DISPLAY_OVERRIDE)
 
 func _load() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SETTINGS_PATH) != OK:
+		_first_window.call_deferred()
 		return
 	for f in SAVED_FIELDS:
 		if cfg.has_section_key("settings", f):
@@ -319,8 +330,18 @@ func _load() -> void:
 	_ensure_rate_profiles()
 	if not Drone.PROFILES.has(selected_drone):
 		selected_drone = "seeker3"
-	if cfg.get_value("settings", "fullscreen", false):
-		set_fullscreen.call_deferred(true)
+	# 0.11.0's "Full 3D resolution" off, and 0.10.x's override file
+	# (0.11.0 deleted that file and set low_res_3d instead).
+	if not cfg.has_section_key("settings", "low_res_window"):
+		var old := ConfigFile.new()
+		low_res_window = cfg.get_value("settings", "low_res_3d", false) == true or \
+			(old.load(DISPLAY_OVERRIDE) == OK and old.get_value("display", "window/dpi/allow_hidpi", true) == false)
+	# The saved choice both ways (until 0.11.0 only fullscreen was
+	# re-applied; a windowed pilot got fullscreen at every start).
+	if cfg.has_section_key("settings", "fullscreen"):
+		_want_fullscreen = 1 if cfg.get_value("settings", "fullscreen") == true else 0
+	else:
+		_first_window.call_deferred()
 
 ## Camera angle / FOV changed (Settings screen or pause menu): the drone
 ## and every open slider follow.
@@ -393,34 +414,74 @@ func apply_graphics_settings() -> void:
 func render_scale(q: int) -> float:
 	var sc: float = QUALITY_RENDER_SCALE[clampi(q, 0, 2)]
 	if reduced_resolution_active() and DisplayServer.screen_get_dpi() >= 150:
-		sc = minf(1.0, sc * 2.0) # (a window started without HiDPI by an old override file)
-	elif low_res_3d and high_density_screen():
-		sc *= 0.5
+		sc = minf(1.0, sc * 2.0)
 	return sc
 
 static func high_density_screen() -> bool:
 	return DisplayServer.screen_get_dpi() >= 150
 
-## Until 0.10.x "Full screen resolution" off wrote DISPLAY_OVERRIDE (the
-## whole window without HiDPI, from the next start). Now HiDPI is always
-## on and the choice lives in low_res_3d: carry it over, drop the file.
-func _migrate_display_override() -> void:
-	if FileAccess.file_exists(DISPLAY_OVERRIDE):
-		low_res_3d = true
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(DISPLAY_OVERRIDE))
-
-## The old "Full screen resolution" switch's file (0.10.x), named in
-## project.godot as project_settings_override; only read to migrate it
-## (_migrate_display_override). With it the next start opened the window
-## without HiDPI - the whole game at half the pixels.
+## Named in project.godot as project_settings_override: the engine reads
+## it before the window opens, so the window starts in the pilot's mode
+## (fullscreen or not) and, with "Low-res window", without HiDPI - the
+## whole game at half the pixels. Written with every settings save.
 ## Measured on the dev Mac (Iris 6100, 2880x1800), Village on Low:
-## 43 fps with full resolution, 62 fps without. Read only at startup.
+## 43 fps with full resolution, 62 fps without (0.10.x).
 const DISPLAY_OVERRIDE: String = "user://display_override.cfg"
 
-## Sets low_res_3d and applies it right away (the menu's preview too).
-func set_low_res_3d(on: bool) -> void:
-	low_res_3d = on
-	get_viewport().scaling_3d_scale = render_scale(graphics_quality)
+func write_display_override(path: String) -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("display", "window/size/mode", DisplayServer.WINDOW_MODE_FULLSCREEN if is_fullscreen() else DisplayServer.WINDOW_MODE_WINDOWED)
+	if low_res_window:
+		cfg.set_value("display", "window/dpi/allow_hidpi", false)
+	cfg.save(path)
+
+## "Low-res window" differs from how this window was opened: the change
+## waits for a restart.
+func low_res_restart_pending() -> bool:
+	return low_res_window != reduced_resolution_active()
+
+## The saved window mode (-1 = none). macOS ignores a mode change while
+## the window is still entering project.godot's fullscreen, so it is
+## re-applied until it holds (for the first 5 s of frames only).
+var _want_fullscreen: int = -1
+var _settle_t: int = 0
+var _settle_start: int = 0
+func _settle_window_mode() -> void:
+	if _want_fullscreen < 0:
+		return
+	var now: int = Time.get_ticks_msec()
+	if _settle_start == 0:
+		_settle_start = now
+	if now - _settle_start > 5000:
+		_want_fullscreen = -1
+		return
+	if is_fullscreen() != (_want_fullscreen == 1) and now - _settle_t > 500:
+		_settle_t = now
+		if _want_fullscreen == 1:
+			set_fullscreen(true)
+		else:
+			_first_window()
+
+## The very first start (no saved settings): a window at ~80% of the
+## screen, centred, instead of project.godot's fullscreen (user,
+## 2026-10-21) - from then on the override file opens it as left.
+func _first_window() -> void:
+	_want_fullscreen = 0
+	set_fullscreen(false)
+	var r: Rect2i = DisplayServer.screen_get_usable_rect()
+	var sz := Vector2i(Vector2(r.size) * 0.8)
+	DisplayServer.window_set_size(sz)
+	DisplayServer.window_set_position(r.position + (r.size - sz) / 2)
+
+## F11, Alt+Enter (and macOS's Ctrl+Cmd+F) toggle fullscreen anywhere.
+func _input(event: InputEvent) -> void:
+	var k := event as InputEventKey
+	if k == null or not k.pressed or k.echo:
+		return
+	if k.keycode == KEY_F11 or (k.keycode in [KEY_ENTER, KEY_KP_ENTER] and k.alt_pressed) or (k.keycode == KEY_F and k.ctrl_pressed and k.meta_pressed):
+		_want_fullscreen = -1
+		set_fullscreen(not is_fullscreen())
+		get_viewport().set_input_as_handled()
 
 ## A race map's shadow map holds its track's gates: one cached file per
 ## track (and the track's rev).
@@ -428,8 +489,8 @@ func _shadow_suffix(scene: Node) -> String:
 	var rc: RaceCourse = scene.get_node_or_null("RaceCourse") as RaceCourse
 	return "-shadow.bin" if rc == null else "-shadow-t%d-r%d.bin" % [rc.track, rc.rev]
 
-## Closes the game and starts it again (settings saved first) - the
-## window's resolution mode can only change at startup.
+## Closes the game and starts it again (settings and the override file
+## saved first) - the window's resolution mode can only change at startup.
 func restart_game() -> void:
 	if _persist:
 		_save()

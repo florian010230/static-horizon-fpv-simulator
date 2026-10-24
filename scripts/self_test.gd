@@ -458,15 +458,23 @@ func _test_menu_flow() -> void:
 	var scene: Node = get_tree().current_scene
 	_check(scene != null and scene.scene_file_path == "res://scenes/maps/Village.tscn", "menu: Play -> Village loads the map")
 	_check(Engine.max_fps == Settings.max_fps, "menu: FPS cap restored in game", "max_fps=%d" % Engine.max_fps)
-	# "Full screen resolution" off works through this override file.
-	_check(ProjectSettings.get_setting("application/config/project_settings_override", "") == Settings.DISPLAY_OVERRIDE, "settings: the reduced-resolution file is the project's settings override")
-	var lr: bool = Settings.low_res_3d
-	Settings.low_res_3d = true
-	var half: float = Settings.render_scale(2)
-	Settings.low_res_3d = false
-	var full: float = Settings.render_scale(2)
-	Settings.low_res_3d = lr
-	_check(full == 1.0 and half == (0.5 if Settings.high_density_screen() else 1.0), "settings: \"Full 3D resolution\" off halves only the 3D on a high-density screen", "%.2f / %.2f" % [full, half])
+	# The window mode and "Low-res window" reach the engine through this
+	# override file (read before the window opens).
+	_check(ProjectSettings.get_setting("application/config/project_settings_override", "") == Settings.DISPLAY_OVERRIDE, "settings: the display file is the project's settings override")
+	var lrw: bool = Settings.low_res_window
+	var tmp: String = "user://selftest_display_override.cfg"
+	var got: Array = []
+	for on in [false, true]:
+		Settings.low_res_window = on
+		Settings.write_display_override(tmp)
+		var oc := ConfigFile.new()
+		oc.load(tmp)
+		got.append([oc.get_value("display", "window/size/mode", -1), oc.get_value("display", "window/dpi/allow_hidpi", true)])
+	Settings.low_res_window = lrw
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp))
+	var want_mode: int = DisplayServer.WINDOW_MODE_FULLSCREEN if Settings.is_fullscreen() else DisplayServer.WINDOW_MODE_WINDOWED
+	_check(got[0] == [want_mode, true] and got[1] == [want_mode, false], "settings: display file holds the window mode, and HiDPI off only with \"Low-res window\"", str(got))
+	_check(Settings.render_scale(2) == 1.0 and Settings.render_scale(0) == Settings.QUALITY_RENDER_SCALE[0], "settings: 3D scale per quality, unchanged at full resolution", "%.2f" % Settings.render_scale(0))
 	# Unlimited must also switch VSync off, or the screen's refresh rate
 	# caps it anyway (60 FPS in 0.10.0). Headless has no real VSync.
 	if DisplayServer.get_name() != "headless":
@@ -1133,9 +1141,19 @@ func _test_video_link() -> void:
 	Settings.camera_look = 0
 	await _wait(0.2)
 	_check(get_viewport().get_camera_3d() == cam and v.link_quality == -1, "video: Clean is the drone camera, no link model")
-	# The video pass presents the 3D view: the window's own 3D is off, the
-	# view's camera follows the window's current camera.
+	# Clean without a lens at full 3D resolution: no video pass, the
+	# window draws the 3D itself (below full resolution the pass scales).
+	var fish0: int = Settings.lens_fisheye
+	Settings.lens_fisheye = 0
+	await _wait(0.2)
+	var full_res: bool = Settings.render_scale(Settings.graphics_quality) >= 0.999
+	_check(v.presenting != full_res and get_tree().root.disable_3d != full_res, "video: Clean without fisheye skips the video pass only at full 3D resolution", "full res %s, presenting %s" % [full_res, v.presenting])
+	# With a lens the video pass presents the 3D view: the window's own 3D
+	# is off, the view's camera follows the window's current camera.
+	Settings.lens_fisheye = 1
+	await _wait(0.2)
 	_check(v.presenting and get_tree().root.disable_3d and v._view_cam.global_position.distance_to(cam.get_global_transform_interpolated().origin) < 0.01, "video: the 3D view is drawn through the video pass, from the current camera")
+	Settings.lens_fisheye = fish0
 	# The world extras (LooksFx): glare and grass outdoors, none of them
 	# on Low; no dust anywhere (removed in 0.10.1).
 	var sc: Node = get_tree().current_scene

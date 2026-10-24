@@ -45,6 +45,9 @@ const RAY_INTERVAL: float = 0.15
 const PILOT_HEIGHT: float = 1.5
 const LOOK_NAMES: Array[String] = ["Clean", "Analog", "Digital", "HDZero"]
 
+## Dev aid: true keeps the video pass on even where it changes nothing
+## (perfdetail's before/after pictures, SH_PERFD_PASSDIFF).
+static var force_pass: bool = false
 ## Dev/test aid: >= 0 forces the link quality (1 - badness) for every look.
 static var force_quality: float = -1.0
 
@@ -112,11 +115,12 @@ func _ready() -> void:
 	_mat.set_shader_parameter("view", _view.get_texture())
 
 ## Copies the window's current camera into the view (or hands the 3D
-## back to the window while this layer is hidden).
-func _present() -> void:
+## back to the window while this layer is hidden or the pass would change
+## nothing).
+func _present(needed: bool = true) -> void:
 	var root: Window = get_tree().root
 	var src: Camera3D = root.get_camera_3d()
-	var on: bool = is_visible_in_tree() and src != null
+	var on: bool = needed and is_visible_in_tree() and src != null
 	if on != presenting:
 		presenting = on
 		root.disable_3d = on
@@ -202,7 +206,13 @@ func _process(delta: float) -> void:
 	_mat.set_shader_parameter("flash", clampf(_flash_t * 8.0, 0.0, 1.0))
 	_mat.set_shader_parameter("tear", _tear)
 	_mat.set_shader_parameter("roll", _roll)
-	_present()
+	# Clean without a lens at full 3D resolution changes nothing: the
+	# window then draws the 3D itself (same picture, SunGlare its own
+	# glare) - this full-screen pass cost ~2.7 ms a frame on the dev Mac's
+	# Retina screen (Village, High). Below full resolution the pass stays:
+	# it scales the 3D up cheaper than the window does (Low/Medium were
+	# 10-20 % slower without it).
+	_present(force_pass or look != 0 or fish > 0.0 or Settings.render_scale(Settings.graphics_quality) < 0.999)
 
 # --- the link --------------------------------------------------------------------
 

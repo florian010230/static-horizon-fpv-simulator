@@ -457,7 +457,7 @@ func can_arm() -> bool:
 ## (so a keyboard disarm with the switch still on stays disarmed until the
 ## switch is cycled), button mode toggles on each press.
 func _handle_arm_toggle() -> void:
-	var key_pressed := Input.is_key_pressed(KEY_ENTER)
+	var key_pressed := Input.is_key_pressed(KEY_ENTER) and not Input.is_key_pressed(KEY_ALT) # (Alt+Enter = fullscreen)
 	if key_pressed and not _prev_arm_key:
 		if armed:
 			armed = false

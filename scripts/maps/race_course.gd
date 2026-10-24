@@ -29,6 +29,9 @@ static func save_path(file: String) -> String:
 	if args.has("--selftest") or args.has("--dev-preview"):
 		DirAccess.make_dir_recursive_absolute("user://selftest")
 		return "user://selftest/" + file
+	if TakeRecorder.active(): # (trailer takes: the real records stay untouched)
+		DirAccess.make_dir_recursive_absolute(TakeRecorder.DIR + "/race_saves")
+		return TakeRecorder.DIR + "/race_saves/" + file
 	return "user://" + file
 const GATE: float = 1.52 ## MultiGP standard opening, 5 ft
 const PANEL: float = 0.28 ## frame panel width
@@ -53,6 +56,7 @@ var _best: float = -1.0
 var _prev_pos: Vector3
 var _marker: Node3D
 var _time: float = 0.0
+var _bob_t: float = 0.0 ## next-gate arrow bob (game time)
 
 ## Ghost of the best lap: the current lap is sampled at GHOST_HZ; when a
 ## lap beats the best, its samples become the ghost, which then flies
@@ -238,7 +242,7 @@ func _brand(geo: Geo, xf: Transform3D, pw: float, ph: float, th: float) -> void:
 		# The name in the rest of the band, as big as fits.
 		var x0: float = -bw * 0.5 + 2.0 * r + bh * 0.24
 		var x1: float = bw * 0.5 - bh * 0.12
-		StreetKit._label(geo, "STATIC HORIZON FPV", face * Transform3D(Basis(), Vector3((x0 + x1) * 0.5, 0, 0.006)), bh * 0.62 / 64.0 * 1.3, Color(0.97, 0.97, 0.97), x1 - x0)
+		StreetKit._label(geo, "STATIC HORIZON FPV", face * Transform3D(Basis(), Vector3((x0 + x1) * 0.5, 0, 0.006)), bh * 0.62 / 64.0 * 1.3, Color(0.97, 0.97, 0.97), x1 - x0, Color.BLACK, 0.0, BANNER_RANGE)
 
 # --- gate styles (2026-10-14) ------------------------------------------------
 # 1 Chevron, 2 LED race, 3 Pro banner. Gates and the turn flags share one
@@ -357,10 +361,11 @@ static func _area(pts: Array) -> float:
 		sum += p.cross(q)
 	return sum * 0.5
 
+## One label with an outline 4 mm wide (until 0.11.0 five stacked labels -
+## five draw calls a banner, 250 in Village). Unreadable past BANNER_RANGE.
+const BANNER_RANGE: float = 150.0
 static func _label_edged(geo: Geo, text: String, xf: Transform3D, px: float, col: Color, edge: Color, max_w: float) -> void:
-	for o in [Vector3(0.004, 0, 0), Vector3(-0.004, 0, 0), Vector3(0, 0.004, 0), Vector3(0, -0.004, 0)]:
-		StreetKit._label(geo, text, xf * Transform3D(Basis(), o + Vector3(0, 0, -0.003)), px, edge, max_w)
-	StreetKit._label(geo, text, xf, px, col, max_w)
+	StreetKit._label(geo, text, xf, px, col, max_w, edge, 0.008, BANNER_RANGE)
 
 ## The Static Horizon mark (white ring, blue sky over orange ground, the
 ## horizon bar - as icon.png) with an outline disc behind it. `ink` is
@@ -1402,12 +1407,15 @@ func _place_marker() -> void:
 	arrow.scale = Vector3.ONE * sc
 	arrow.position = Vector3(0, h * 0.5 + 0.9 * sc, 0)
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_update_line()
+	# Game time, not the wall clock: a slowed session (--time-scale) or a
+	# movie-maker render (slower than real time) bobbed it far too fast.
+	_bob_t += delta
 	if _marker:
 		var arrow: Node3D = _marker.get_node("Arrow")
 		if not _gates.is_empty():
-			arrow.position.y = _gates[_next].h * 0.5 + (0.9 + sin(Time.get_ticks_msec() * 0.004) * 0.15) * arrow.scale.y
+			arrow.position.y = _gates[_next].h * 0.5 + (0.9 + sin(_bob_t * 4.0) * 0.15) * arrow.scale.y
 
 ## The racing line: a thin see-through tube through every opening in
 ## lap order, each stretch a Hermite curve along the gates' pass

@@ -182,9 +182,19 @@ func _build_settings() -> Control:
 	_hint(g1, "Real shadows from every building, tree and crane. Cheap - computed once per map.")
 	UIKit.section(g2, "Screen")
 	UIKit.toggle(g2, "Fullscreen", Settings.is_fullscreen(), func(v: bool): Settings.set_fullscreen(v))
+	_hint(g2, "F11 or Alt+Enter switches at any time.")
 	UIKit.gap(g2, 6)
-	UIKit.toggle(g2, "Full 3D resolution", not Settings.low_res_3d, func(v: bool): Settings.set_low_res_3d(not v))
-	_hint(g2, "Off: on Retina and other high-resolution screens the 3D picture is drawn with half the pixels each way - more FPS on weak graphics. Menus, HUD and text stay sharp.")
+	var res_hint := _hint_label()
+	var restart_btn := UIKit.button("Restart now", "PrimaryButton", 44)
+	UIKit.toggle(g2, "Low-res window", Settings.low_res_window, func(v: bool):
+		Settings.low_res_window = v
+		res_hint.text = _res_hint_text()
+		restart_btn.visible = Settings.low_res_restart_pending())
+	res_hint.text = _res_hint_text()
+	g2.add_child(res_hint)
+	restart_btn.pressed.connect(Settings.restart_game)
+	restart_btn.visible = Settings.low_res_restart_pending()
+	g2.add_child(restart_btn)
 	UIKit.gap(g2, 6)
 	var fps_initial: float = clamp(Settings.max_fps if Settings.max_fps > 0 else FPS_MAX, FPS_MIN, FPS_MAX)
 	_fps_value_label = UIKit.slider(g2, "Frame rate limit", FPS_MIN, FPS_MAX, 5, fps_initial, func(v: float):
@@ -408,6 +418,12 @@ func _race_line_row(parent: Control) -> void:
 	slider.value_changed.connect(show)
 	show.call(initial)
 	_hint(parent, "A see-through line to the next gates; the part behind you disappears. Far left: off.")
+
+func _res_hint_text() -> String:
+	var t: String = "On: on Retina and other high-resolution screens the whole game is drawn with half the pixels each way - often much more FPS on weak graphics. Text is a little softer; on Low the 3D keeps its detail."
+	if Settings.low_res_restart_pending():
+		t += " Takes effect when the game restarts (a few seconds)."
+	return t
 
 func _hint(parent: Control, text: String) -> void:
 	var l := _hint_label()

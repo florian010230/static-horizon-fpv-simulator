@@ -14,9 +14,36 @@ extends Node
 ## present, so it's always available without costing anything normally.
 
 func _ready() -> void:
+	set_process(OS.has_environment("SH_HITCH"))
+	if TakeRecorder.active():
+		add_child(TakeRecorder.new())
 	if not OS.get_cmdline_user_args().has("--dev-preview"):
 		return
 	call_deferred("_go")
+
+## SH_HITCH=<ms>: prints every frame longer than that (default 80) with
+## where it went - script vs. physics vs. the rest (rendering, shader
+## compiles), what changed (video memory, objects) and where the drone is.
+var _hitch_vmem: float = 0.0
+var _hitch_objs: float = 0.0
+var _hitch_scene: Node = null
+var _hitch_t0: int = 0
+func _process(delta: float) -> void:
+	var sc: Node = get_tree().current_scene
+	if sc != _hitch_scene:
+		_hitch_scene = sc
+		_hitch_t0 = Time.get_ticks_msec()
+	var vmem: float = Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0
+	var objs: float = Performance.get_monitor(Performance.OBJECT_COUNT)
+	var lim: float = float(OS.get_environment("SH_HITCH")) if OS.get_environment("SH_HITCH").is_valid_float() else 80.0
+	if delta * 1000.0 > lim and sc:
+		var dr := sc.get_node_or_null("Drone") as Node3D
+		print("HITCH %s t=%.1fs frame=%dms process=%.1fms physics=%.1fms vmem%+.1fMB objs%+d draws=%d pos=%s" % [sc.name, (Time.get_ticks_msec() - _hitch_t0) / 1000.0,
+			int(delta * 1000.0), Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0,
+			vmem - _hitch_vmem, int(objs - _hitch_objs), RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+			str(dr.global_position.round()) if dr else "-"])
+	_hitch_vmem = vmem
+	_hitch_objs = objs
 
 ## Optional section names after the flag limit the run to those parts,
 ## e.g. `godot --path . -- --dev-preview village school` - much faster
@@ -152,7 +179,10 @@ func _drone_shots() -> void:
 	# The menu's container stretches the viewport to its own 360x340 -
 	# switch that off, or the 680x450 picture comes out stretched.
 	(vp.get_parent() as SubViewportContainer).stretch = false
-	vp.size = Vector2i(1360, 900)
+	# SH_DRONE_W=2400: a bigger picture (rendered at twice its size).
+	var ow: int = int(OS.get_environment("SH_DRONE_W")) if OS.has_environment("SH_DRONE_W") else 680
+	var oh: int = roundi(ow * 450.0 / 680.0)
+	vp.size = Vector2i(ow * 2, oh * 2)
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	var before: String = Settings.selected_drone
 	for id in ["seeker3", "five", "race", "whoop"]:
@@ -177,10 +207,10 @@ func _drone_shots() -> void:
 		var h: float = w * 450.0 / 680.0
 		var rect := Rect2i(int(c.x - w / 2.0), int(c.y - h / 2.0), int(w), int(h)).intersection(Rect2i(Vector2i.ZERO, out.get_size()))
 		out = out.get_region(rect)
-		out.resize(680, 450, Image.INTERPOLATE_LANCZOS)
+		out.resize(ow, oh, Image.INTERPOLATE_LANCZOS)
 		var ddir: String = OS.get_environment("SH_SHOT_DIR") if OS.has_environment("SH_SHOT_DIR") else ProjectSettings.globalize_path("res://previews")
 		DirAccess.make_dir_recursive_absolute(ddir)
-		out.save_png(ddir.path_join("drone_%s.png" % id))
+		out.save_png(ddir.path_join(("drone_%s.png" % id) if ow == 680 else ("drone_%s_%d.png" % [id, ow])))
 		print("DRONE ", id)
 	Settings.selected_drone = before
 
@@ -355,6 +385,10 @@ func _go() -> void:
 	if OS.get_cmdline_user_args().has("autopilot"):
 		await Autopilot.new().run(get_tree()) # (quits when done)
 		return
+	if OS.get_cmdline_user_args().has("ghostcam"):
+		await GhostCine.new().run(get_tree())
+		get_tree().quit()
+		return
 	if OS.get_cmdline_user_args().has("cine"):
 		var ca := OS.get_cmdline_user_args()
 		var shot: String = ca[ca.find("cine") + 1] if ca.find("cine") + 1 < ca.size() else ""
@@ -433,6 +467,10 @@ func _go() -> void:
 		return
 	if OS.get_cmdline_user_args().has("raceui"):
 		await _raceui_shots()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("trailerstills"):
+		await _trailer_stills()
 		get_tree().quit()
 		return
 	if OS.get_cmdline_user_args().has("flags"):
@@ -1099,7 +1137,9 @@ func _perf_detail() -> void:
 			m = mm
 	Settings.selected_drone = m.drone if m.get("drone", "any") != "any" else OS.get_environment("SH_PERFD_DRONE") if OS.has_environment("SH_PERFD_DRONE") else "whoop"
 	Settings.graphics_quality = int(OS.get_environment("SH_PERFD_Q")) if OS.has_environment("SH_PERFD_Q") else 0
-	Settings.shadows_enabled = false
+	Settings.shadows_enabled = OS.has_environment("SH_PERFD_SHADOWS")
+	if OS.has_environment("SH_PERFD_VIEW"):
+		Settings.view_distance = float(OS.get_environment("SH_PERFD_VIEW"))
 	Settings.lens_fisheye = 1
 	Settings.camera_look = 0
 	Settings.set_fullscreen(true)
@@ -1125,6 +1165,42 @@ func _perf_detail() -> void:
 			await get_tree().create_timer(0.5).timeout
 			_shot("spawn_whoop_%s_%d.png" % [id, k])
 		return
+	if OS.has_environment("SH_PERFD_MATS"):
+		# Batches (mesh instances) per material, all and within 300 m of
+		# the drone - which materials cost the draw calls.
+		var all_n: Dictionary = {}
+		var near_n: Dictionary = {}
+		var dpos: Vector3 = (sc.get_node("Drone") as Node3D).global_position
+		for mi in sc.find_children("*", "MeshInstance3D", true, false):
+			var m3 := mi as MeshInstance3D
+			if m3.mesh == null or not m3.is_visible_in_tree():
+				continue
+			for si in range(m3.mesh.get_surface_count()):
+				var mat: Material = m3.get_active_material(si)
+				var key: String = (mat.resource_name if mat and mat.resource_name != "" else str(mat.get_class() if mat else "none")) + ("/" + (mat as ShaderMaterial).shader.resource_path.get_file() if mat is ShaderMaterial and (mat as ShaderMaterial).shader else "")
+				all_n[key] = all_n.get(key, 0) + 1
+				if (m3.global_transform * m3.get_aabb()).get_center().distance_to(dpos) < 300.0:
+					near_n[key] = near_n.get(key, 0) + 1
+		var keys: Array = near_n.keys()
+		keys.sort_custom(func(x, y): return near_n[x] > near_n[y])
+		print("PERFD mats %s: %d materials, %d batches near, %d all" % [id, all_n.size(), near_n.values().reduce(func(a2, b2): return a2 + b2, 0), all_n.values().reduce(func(a2, b2): return a2 + b2, 0)])
+		for k in keys.slice(0, 40):
+			print("PERFD mat %-40s near %4d  all %4d" % [k, near_n[k], all_n[k]])
+		return
+	if OS.has_environment("SH_PERFD_PASSDIFF"):
+		# The same frozen view with and without the video pass, per
+		# quality: pass_<map>_q<q>_on.png / _off.png (compare them).
+		Settings.lens_fisheye = 0
+		(sc.get_node("Drone") as RigidBody3D).freeze = true
+		for q in range(3):
+			_set_q(q)
+			for on in [true, false]:
+				FpvVideo.force_pass = on
+				await get_tree().create_timer(1.0).timeout
+				await _drawn_frames(3)
+				_shot("pass_%s_q%d_%s.png" % [id, q, "on" if on else "off"])
+		FpvVideo.force_pass = false
+		return
 	if OS.has_environment("SH_PERFD_NEAR"):
 		var cam3: Camera3D = get_viewport().get_camera_3d()
 		print("PERFD cam ", cam3.get_path(), " pos ", cam3.global_position, " near ", cam3.near, " far ", cam3.far, " mask ", cam3.cull_mask)
@@ -1140,17 +1216,65 @@ func _perf_detail() -> void:
 				print("PERFD OVER ", v3.get_path(), " aabb ", ab)
 		return
 	print("PERFD screen scale %.2f max %.2f size %s dpi %d win %s" % [DisplayServer.screen_get_scale(), DisplayServer.screen_get_max_scale(), DisplayServer.screen_get_size(), DisplayServer.screen_get_dpi(), DisplayServer.window_get_size()])
+	if OS.has_environment("SH_PERFD_TOUR"):
+		# A flight with no pilot (SH_HITCH logs the long frames): the drone,
+		# frozen, goes round the spawn in growing circles, 20 m up, 25 m/s,
+		# for SH_PERFD_TOUR seconds.
+		var dr2: RigidBody3D = sc.get_node("Drone")
+		dr2.freeze = true
+		var c0: Vector3 = dr2.global_position
+		var a: float = 0.0
+		var t_end: int = Time.get_ticks_msec() + int(float(OS.get_environment("SH_PERFD_TOUR")) * 1000.0)
+		var f_start: int = Engine.get_frames_drawn()
+		var t_start: int = Time.get_ticks_msec()
+		while Time.get_ticks_msec() < t_end:
+			var dt: float = get_process_delta_time()
+			var rad: float = 60.0 + a * 40.0
+			a += 25.0 * dt / rad
+			var p: Vector3 = c0 + Vector3(cos(a) * rad - 60.0, 20.0, sin(a) * rad)
+			var tan: Vector3 = Vector3(-sin(a), 0, cos(a))
+			dr2.global_transform = Transform3D(Basis.looking_at(tan, Vector3.UP), p)
+			await get_tree().process_frame
+		print("PERFD tour %s: %.1f fps average" % [id, (Engine.get_frames_drawn() - f_start) * 1000.0 / maxf(Time.get_ticks_msec() - t_start, 1)])
+		return
+	if OS.has_environment("SH_PERFD_GROUPS"):
+		# Draw calls per part of the scene: hide one node at a time
+		# (SH_PERFD_GROUPS=<node path> looks inside that node instead).
+		var root: Node = sc.get_node(OS.get_environment("SH_PERFD_GROUPS")) if OS.get_environment("SH_PERFD_GROUPS") != "1" else sc
+		await _drawn_frames(3)
+		var all: int = RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
+		print("PERFD groups in %s: %d draws" % [root.name, all])
+		for ch in root.get_children():
+			if not (ch is Node3D or ch is CanvasItem) or not ch.visible:
+				continue
+			ch.visible = false
+			await _drawn_frames(3)
+			var d: int = all - RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
+			ch.visible = true
+			await _drawn_frames(2)
+			if d != 0:
+				print("PERFD group %-32s %4d draws  (%d children)" % [ch.name, d, ch.get_child_count()])
+		return
 	if OS.has_environment("SH_PERFD_HOLD"):
 		print("PERFD hold pid %d" % OS.get_process_id())
 		await get_tree().create_timer(float(OS.get_environment("SH_PERFD_HOLD"))).timeout
 		return
+	var q0: int = Settings.graphics_quality
+	var shadows0: bool = Settings.shadows_enabled
 	var variants: Array = [
 		["base", func(): pass, func(): pass],
 		["no fisheye", func(): Settings.lens_fisheye = 0, func(): Settings.lens_fisheye = 1],
 		["scale 0.35", func(): get_viewport().scaling_3d_scale = 0.35, func(): get_viewport().scaling_3d_scale = Settings.render_scale(Settings.graphics_quality)],
-		["low 3D", func(): Settings.set_low_res_3d(true), func(): Settings.set_low_res_3d(false)],
-		["medium", func(): _set_q(1), func(): _set_q(0)],
-		["high", func(): _set_q(2), func(): _set_q(0)],
+		["low", func(): _set_q(0), func(): _set_q(q0)],
+		["medium", func(): _set_q(1), func(): _set_q(q0)],
+		["high", func(): _set_q(2), func(): _set_q(q0)],
+		["no video pass", func(): _video(sc, false), func(): _video(sc, true)],
+		["no video no HUD", func(): _video(sc, false); _hud_text(sc, false), func(): _video(sc, true); _hud_text(sc, true)],
+		["no video no glare", func(): _video(sc, false); _ui_part(sc, "SunGlare", false), func(): _video(sc, true); _ui_part(sc, "SunGlare", true)],
+		["no grass", func(): _grass(sc, false), func(): _grass(sc, true)],
+		["no detail", func(): RenderingServer.global_shader_parameter_set("sh_detail", 0.0), func(): WorldShading.set_detail(q0)],
+		["no water", func(): _water(sc, false), func(): _water(sc, true)],
+		["no shadows", func(): Settings.shadows_enabled = false; Settings.apply_shadow_setting(), func(): Settings.shadows_enabled = shadows0; Settings.apply_shadow_setting()],
 		["no UI", func(): sc.get_node("UI").visible = false, func(): sc.get_node("UI").visible = true],
 		["no generated", func(): _child_vis(sc, "Generated", false), func(): _child_vis(sc, "Generated", true)],
 		["no terrain", func(): _child_vis(sc, "Terrain", false), func(): _child_vis(sc, "Terrain", true)],
@@ -1305,6 +1429,28 @@ func _set_q(q: int) -> void:
 	Settings.graphics_quality = q
 	Settings.apply_graphics_settings()
 	Settings.set_max_fps(0)
+
+func _video(sc: Node, on: bool) -> void:
+	for c in (sc.get_node("UI")._root as Control).get_children():
+		if c is FpvVideo:
+			(c as CanvasItem).visible = on
+
+func _grass(sc: Node, on: bool) -> void:
+	var g: Node = sc.get_node_or_null("GrassTufts")
+	if g is Node3D:
+		(g as Node3D).visible = on
+
+## Water surfaces: Geo batches whose material name starts with "water".
+func _water(n: Node, on: bool) -> void:
+	if n is MeshInstance3D and (n as MeshInstance3D).mesh:
+		var m: Mesh = (n as MeshInstance3D).mesh
+		for i in range(m.get_surface_count()):
+			var mat: Material = m.surface_get_material(i)
+			if mat and (String(mat.resource_name).begins_with("water") or String(n.name).to_lower().contains("water")):
+				(n as Node3D).visible = on
+				break
+	for c in n.get_children():
+		_water(c, on)
 
 func _child_vis(sc: Node, n: String, on: bool) -> void:
 	for c in sc.get_children():
@@ -1773,6 +1919,66 @@ func _raceui_shots() -> void:
 	await _drawn_frames(3)
 	_shot("raceui_hud_missed.png")
 	Settings.race_track = 1
+
+## `-- --dev-preview trailerstills`: clean stills for a trailer -> SH_SHOT_DIR
+## trailer_*.png: the first-start card, the track list, the race bar with
+## the next-gate marker in view, the finish card. No status line, OSD or
+## key guide. Writes Collectibles/first-run state: run it in a test copy.
+func _trailer_stills() -> void:
+	Settings.keyboard_help = false
+	Settings.osd_enabled = false
+	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+	await get_tree().create_timer(1.0).timeout
+	var mn: Node = get_tree().current_scene
+	mn._show("firstrun")
+	await get_tree().create_timer(0.5).timeout
+	await _drawn_frames(3)
+	_shot("trailer_first_run.png")
+	Settings.game_mode = Settings.MODE_RACE
+	for mm in MapCatalog.MAPS:
+		if mm.id == "race_field":
+			mn._open_tracks(mm)
+	await get_tree().create_timer(0.5).timeout
+	await _drawn_frames(3)
+	_shot("trailer_tracks.png")
+	WorldBorder.disabled = true
+	Settings.race_track = 3
+	get_tree().change_scene_to_file("res://scenes/maps/RaceField.tscn")
+	await get_tree().create_timer(2.5).timeout
+	var root: Node = get_tree().current_scene
+	var course: RaceCourse = root.course
+	var ui := root.find_child("UI", true, false) as CanvasLayer
+	ui._hud_label.visible = false
+	var drone := root.find_child("Drone", true, false) as RigidBody3D
+	drone.freeze = true
+	# 16 m before the gate, nose down by the camera's uptilt: a level view
+	# with the gate and its marker in the middle of the frame.
+	var gi: int = int(OS.get_environment("SH_STILL_GATE")) if OS.has_environment("SH_STILL_GATE") else 1
+	var g: Dictionary = course._gates[gi]
+	var b := Basis.looking_at(-g.xf.basis.z, Vector3.UP)
+	b = b * Basis(Vector3.RIGHT, -deg_to_rad(Settings.camera_angle_deg))
+	drone.global_transform = Transform3D(b, g.xf * Vector3(0, 0, float(OS.get_environment("SH_STILL_DIST")) if OS.has_environment("SH_STILL_DIST") else 9.0))
+	course._best = 41.02
+	course._time = 100.0
+	course._lap_start = course._time - 23.4
+	course._lap = 2
+	course._next = gi
+	course._delta_text = "-0.38"
+	course._delta_t = 30.0
+	course._prev_pos = drone.global_position
+	course._place_marker()
+	await get_tree().create_timer(0.8).timeout
+	await _drawn_frames(3)
+	_shot("trailer_race_hud.png")
+	var res := {"track": "Club Loop", "level": "medium", "drone": "Static Race", "total": 81.94, "prev_best": 83.12,
+		"laps": [41.38, 40.56], "top": [[81.94, 40.56, "2026-10-21"], [83.12, 41.02, "2026-10-19"], [84.37, 41.46, "2026-10-18"]],
+		"you": 0, "record": true, "new_best": false}
+	ui.show_race_finish(res)
+	await get_tree().create_timer(0.6).timeout
+	await _drawn_frames(3)
+	_shot("trailer_finish.png")
+	Settings.race_track = 1
+	Settings.game_mode = Settings.MODE_FREESTYLE
 
 ## `-- --dev-preview tracks [map id]`: every race track of a map, top-down
 ## and from behind the start gate -> previews/preview_tracks_<map>_<t>_*.png.

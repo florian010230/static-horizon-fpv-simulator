@@ -132,6 +132,8 @@ func fly(p_tree: SceneTree, n: int, p_skill: float, p_seed: int) -> bool:
 	var lp: Dictionary = RaceCourse.line_path(rc._gates)
 	if not OS.has_environment("SH_AP_NOHOP"):
 		_hops(lp)
+	if arg("miss", "") != "":
+		_miss(lp, int(arg("miss", "")))
 	pts = RaceCourse.clear_path(lp.pts, lp.seg, drone.get_world_3d().direct_space_state, [drone.get_rid()], 0.15 if rc._gates.any(func(g: Dictionary) -> bool: return g.w < 1.0) else RaceCourse.LINE_CLEAR)
 	arc.resize(pts.size())
 	arc[0] = 0.0
@@ -204,6 +206,33 @@ func _hops(lp: Dictionary) -> void:
 			# (lined up at gate height), ramping over the next 8 m.
 			var w: float = smoothstep(9.0, 17.0, run) * smoothstep(9.0, 17.0, length - run)
 			p3[k].y += h * w
+	lp.pts = p3
+
+## --miss=<gate> (1-based, trailer shot): the line swings 2.8 m to the
+## side of that gate and back, a clear miss past the frame and its feet,
+## so the game's missed-gate message shows. Every lap - a filming run
+## ends after it anyway.
+func _miss(lp: Dictionary, gate: int) -> void:
+	var p3: PackedVector3Array = lp.pts
+	var seg: PackedInt32Array = lp.seg
+	if gate < 1 or gate >= seg.size():
+		return
+	var c: int = seg[gate]
+	var g: Dictionary = rc._gates[gate]
+	var side: Vector3 = (g.xf.basis.x as Vector3)
+	side.y = 0.0
+	side = side.normalized()
+	var d := PackedFloat32Array()
+	d.resize(p3.size())
+	for k in range(p3.size()):
+		d[k] = 0.0
+	for k in range(c + 1, p3.size()):
+		d[k] = d[k - 1] + p3[k].distance_to(p3[k - 1])
+	for k in range(c - 1, -1, -1):
+		d[k] = d[k + 1] + p3[k].distance_to(p3[k + 1])
+	for k in range(p3.size()):
+		# Full offset within 3 m of the gate, eased out over 14 m.
+		p3[k] += side * 2.8 * (1.0 - smoothstep(3.0, 17.0, d[k]))
 	lp.pts = p3
 
 ## A fresh wander for the line error each lap (a pilot never flies the

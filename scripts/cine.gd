@@ -97,6 +97,13 @@ const SHOTS: Dictionary = {
 	"v2_harbour": {"map": "harbour", "speed": 16.0, "fov": 75.0, "clear": 2.0, "ray_up": 0.5, "yaw_off": -10.0, "yaw_off_to": -34.0, "pts": [
 		Vector3(-30, 6, -430), Vector3(-75, 3.6, -421), Vector3(-110, 2.8, -417), Vector3(-200, 2.6, -416.6), Vector3(-300, 2.8, -416.6),
 		Vector3(-400, 3.2, -416.6), Vector3(-450, 4.0, -418)]},
+	# --- "The Race Update" opening candidates (free flight, intro_*). ---
+	# Low over the lake's southern arm toward the dam, up over its crest.
+	"intro_dam": {"map": "mountain_lake", "speed": 12.0, "fov": 70.0, "clear": 2.0, "pts": [
+		Vector3(8, 2.5, 130), Vector3(3, 2.8, 160), Vector3(0, 5.0, 195), Vector3(0, 10, 220)]},
+	# Rising out of the wheat toward the village and its church.
+	"intro_village": {"map": "village", "speed": 14.0, "fov": 68.0, "clear": 2.5, "look": Vector3(40, 14, -74), "pts": [
+		Vector3(215, 3, 250), Vector3(185, 8, 195), Vector3(160, 16, 150)]},
 }
 
 const MAX_PITCH: float = 0.26

@@ -27,10 +27,13 @@ static func ensure_materials(g: Geo) -> void:
 	g.add_material("sk_wood", Geo.tex_mat(MapTextures.get_tex("wood"), Color(0.85, 0.7, 0.55), 1.2))
 	g.detail_prefixes.append("sk_")
 
-## Labels to add when the geo commits: [text, transform, pixel size, colour].
+## Labels to add when the geo commits: [text, transform, pixel size, colour,
+## outline colour, outline size, range]. edge_w: outline width (m).
 ## max_w > 0: the text is made smaller to fit that width (m) - a long
 ## place name must not run past its sign (TextCheck in the self-test).
-static func _label(g: Geo, text: String, xf: Transform3D, px: float, col: Color, max_w: float = 0.0) -> void:
+## Every Label3D is its own draw call: a text that repeats a lot (the gate
+## banners) gets a shorter range_end.
+static func _label(g: Geo, text: String, xf: Transform3D, px: float, col: Color, max_w: float = 0.0, edge: Color = Color.BLACK, edge_w: float = 0.0, range_end: float = Geo.DETAIL_RANGE) -> void:
 	if max_w > 0.0:
 		var w: float = UIKit.oswald_font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 64).x * px
 		if w > max_w:
@@ -44,16 +47,17 @@ static func _label(g: Geo, text: String, xf: Transform3D, px: float, col: Color,
 				lb.text = e[0]
 				lb.font = UIKit.oswald_font()
 				lb.font_size = 64
-				lb.outline_size = 0
+				lb.outline_size = e[5]
+				lb.outline_modulate = e[4]
 				lb.modulate = e[3]
 				lb.pixel_size = e[2]
 				lb.transform = e[1]
 				lb.double_sided = false
-				lb.visibility_range_end = Geo.DETAIL_RANGE
+				lb.visibility_range_end = e[6]
 				lb.set_meta("geo_detail", true)
 				holder.add_child(lb)
 			g.remove_meta("sk_labels"))
-	(g.get_meta("sk_labels") as Array).append([text, xf, px, col])
+	(g.get_meta("sk_labels") as Array).append([text, xf, px, col, edge, maxi(1, roundi(edge_w / px)) if edge_w > 0.0 else 0, range_end])
 
 ## A post from the ground at p (x, z of p; its foot reaching into the
 ## real ground) up to height top over p.y.
