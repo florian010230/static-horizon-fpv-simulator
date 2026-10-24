@@ -376,6 +376,48 @@ func _test_menu_flow() -> void:
 	var widths: Array = settings._tab_buttons.map(func(b: Button) -> int: return roundi(b.size.x))
 	_check(not sizes.is_empty() and sizes.all(func(v: Vector2) -> bool: return v == sizes[0]) and widths.all(func(w: int) -> bool: return absi(w - widths[0]) <= 1),
 		"settings: tabs all one width, the window one size on every tab", "%s %s" % [str(widths), str(sizes)])
+	# Every switch and slider on every tab does something: flipping it (a
+	# slider to its other end) changes a setting, and flipping it back
+	# restores it. (Fullscreen / Low-res window are left alone: they
+	# resize the test window or ask for a restart.)
+	var dead: Array = []
+	var n_ctl: int = 0
+	if tab_ok:
+		for i in range(stabs.get_tab_count()):
+			stabs.current_tab = i
+			await get_tree().process_frame
+			for ctl in stabs.get_child(i).find_children("*", "", true, false):
+				if not (ctl is CheckButton or ctl is HSlider) or not (ctl as Control).is_visible_in_tree():
+					continue
+				var label: String = (ctl as CheckButton).text if ctl is CheckButton else str(ctl.get_parent().get_child(0).get("text")) if ctl.get_parent().get_child_count() > 0 else ctl.name
+				if ctl is HSlider and ctl.get_parent() and ctl.get_parent().get_parent():
+					var lbls: Array = ctl.get_parent().get_parent().find_children("*", "Label", true, false)
+					if not lbls.is_empty():
+						label = (lbls[0] as Label).text
+				# Window modes restart the window; "Pitch follows roll" only links two sliders
+				if label.contains("Fullscreen") or label.contains("Low-res") or ctl.has_meta("rates_link"):
+					continue
+				n_ctl += 1
+				var snap0: String = _settings_snapshot()
+				var v0: float = (ctl as HSlider).value if ctl is HSlider else 0.0
+				if ctl is CheckButton:
+					(ctl as CheckButton).button_pressed = not (ctl as CheckButton).button_pressed
+				else:
+					var sl := ctl as HSlider
+					sl.value = sl.min_value if v0 > (sl.min_value + sl.max_value) * 0.5 else sl.max_value
+				await get_tree().process_frame
+				var changed: bool = _settings_snapshot() != snap0
+				if ctl is CheckButton:
+					(ctl as CheckButton).button_pressed = not (ctl as CheckButton).button_pressed
+				else:
+					(ctl as HSlider).value = v0
+				await get_tree().process_frame
+				if _settings_snapshot() != snap0:
+					dead.append("%s/%s (not restored)" % [SettingsScreens.TAB_NAMES[i], label])
+				if not changed:
+					dead.append("%s/%s" % [SettingsScreens.TAB_NAMES[i], label])
+		stabs.current_tab = 0
+	_check(n_ctl >= 10 and dead.is_empty(), "settings: every switch and slider changes a setting", "%d controls, dead: %s" % [n_ctl, str(dead)])
 	# Racing line: one slider, far left Off, then hues; orange by default.
 	var line_sl := settings.find_child("RaceLineSlider", true, false) as HSlider
 	var hue0: int = Settings.race_line_hue
@@ -474,6 +516,17 @@ func _test_menu_flow() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp))
 	var want_mode: int = DisplayServer.WINDOW_MODE_FULLSCREEN if Settings.is_fullscreen() else DisplayServer.WINDOW_MODE_WINDOWED
 	_check(got[0] == [want_mode, true] and got[1] == [want_mode, false], "settings: display file holds the window mode, and HiDPI off only with \"Low-res window\"", str(got))
+	# Both window choices survive a restart: saved in settings.cfg too.
+	var tmp_s: String = "user://selftest_settings.cfg"
+	var lrw2: bool = Settings.low_res_window
+	Settings.low_res_window = not lrw2
+	Settings._save(tmp_s)
+	Settings.low_res_window = lrw2
+	var sc2 := ConfigFile.new()
+	sc2.load(tmp_s)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp_s))
+	_check(sc2.get_value("settings", "low_res_window", lrw2) == (not lrw2) and sc2.get_value("settings", "fullscreen", null) == Settings.is_fullscreen(),
+		"settings: \"Low-res window\" and fullscreen are saved with the settings", "%s %s" % [sc2.get_value("settings", "low_res_window", null), sc2.get_value("settings", "fullscreen", null)])
 	_check(Settings.render_scale(2) == 1.0 and Settings.render_scale(0) == Settings.QUALITY_RENDER_SCALE[0], "settings: 3D scale per quality, unchanged at full resolution", "%.2f" % Settings.render_scale(0))
 	# Unlimited must also switch VSync off, or the screen's refresh rate
 	# caps it anyway (60 FPS in 0.10.0). Headless has no real VSync.
@@ -771,6 +824,7 @@ func _test_collectibles() -> void:
 	Collectibles.reset()
 
 var _float_checked: Dictionary = {}
+var _flown: Dictionary = {}
 ## Thin things a drone must not slip through (2026-10-14: ladders,
 ## cables, nets, fences had no hitboxes): per map, [what, from, to] - a
 ## ray through a gap in the drawn rods that must hit.
@@ -808,6 +862,30 @@ func _test_water() -> void:
 		_check(sc._water.size() >= 3, nm + ": its water is known (surface triangles)", str(sc._water.size() / 3))
 		if sc._water.size() < 3:
 			continue
+		# Nothing scattered (trees, flowers, bushes - MultiMesh instances)
+		# stands with its foot under the water surface.
+		var in_water: Array = []
+		var n_inst: int = 0
+		for mmi in sc.find_children("*", "MultiMeshInstance3D", true, false):
+			var mm: MultiMesh = (mmi as MultiMeshInstance3D).multimesh
+			if mm == null or mm.transform_format != MultiMesh.TRANSFORM_3D or (mmi as Node).has_meta("dynamic") or mmi is GrassTufts or (mmi as Node).get_parent() is GrassTufts:
+				continue
+			for i in range(mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count):
+				var o: Vector3 = ((mmi as Node3D).global_transform * mm.get_instance_transform(i)).origin
+				n_inst += 1
+				if sc.water_level(o + Vector3(0, 50, 0)) > o.y + 0.1:
+					in_water.append("%s %s" % [(mmi as Node).name, str(o.round())])
+		_check(n_inst > 0 and in_water.is_empty(), nm + ": no tree/flower stands in the water", "%d of %d: %s" % [in_water.size(), n_inst, str(in_water.slice(0, 4))])
+		# The grass tufts' ground capture check (GrassTufts.capture_ok) tells
+		# a real capture (grass flag exactly 0/1) from a stale frame.
+		var good := Image.create(64, 64, false, Image.FORMAT_RGB8)
+		good.fill(Color(0.3, 0.6, 1.0))
+		good.fill_rect(Rect2i(0, 0, 32, 64), Color(0.2, 0.1, 0.0))
+		var stale := Image.create(64, 64, false, Image.FORMAT_RGB8)
+		for y in range(64):
+			for x in range(64):
+				stale.set_pixel(x, y, Color(0.4, 0.5, float(x + y) / 128.0))
+		_check(GrassTufts.capture_ok(good) and not GrassTufts.capture_ok(stale), nm + ": grass capture check accepts a real capture, rejects a stale frame")
 		# The water nearest the spawn: rings outward until one is over water.
 		var spot := Vector3.INF
 		var sp: Vector3 = d._spawn_transform.origin
@@ -1068,6 +1146,29 @@ func _test_map(map: String, drone_id: String, perf: bool) -> void:
 	d.reset_to_spawn()
 	await _wait(0.5)
 
+	# Each map flown for 5 s once (Angle mode: climb, then cruise
+	# forward): the map runs on with a flying drone - no error, no NaN,
+	# the drone still in the scene.
+	if not _flown.has(map):
+		_flown[map] = true
+		var ov0 = InputManager.test_override
+		var lvl0: bool = InputManager.self_level
+		InputManager.self_level = true
+		InputManager.armed = true
+		InputManager.test_override = {"roll": 0.0, "pitch": 0.0, "yaw": 0.0, "throttle": 0.75}
+		await _wait(1.5)
+		InputManager.test_override = {"roll": 0.0, "pitch": 0.35, "yaw": 0.1, "throttle": 0.6}
+		await _wait(3.5)
+		var p5: Vector3 = d.global_position if is_instance_valid(d) else Vector3(NAN, NAN, NAN)
+		_check(is_instance_valid(d) and get_tree().current_scene == sc and p5.is_finite() and p5.distance_to(d._spawn_transform.origin) > 3.0,
+			tag + ": flies 5 s (climb + cruise) without trouble", "at %s, %.1f m from spawn" % [str(p5.round()), p5.distance_to(d._spawn_transform.origin) if p5.is_finite() else -1.0])
+		InputManager.test_override = ov0
+		InputManager.armed = false
+		InputManager.self_level = lvl0
+		if is_instance_valid(d):
+			d.reset_to_spawn()
+		await _wait(0.5)
+
 	# Simulated radio, through the real joystick path - only possible if
 	# the OS has a joypad at the configured device index.
 	if not Input.get_connected_joypads().has(InputManager.joystick_device):
@@ -1251,6 +1352,16 @@ func _find_button(node: Node, text: String) -> Button:
 ## negative, so it must come out inverted), 2 throttle, 3 yaw, 5 an arm
 ## switch on its own channel. The real calibration file is backed up and
 ## restored around it.
+## All saved settings and radio fields as one string (did a control
+## change anything?).
+func _settings_snapshot() -> String:
+	var parts: PackedStringArray = []
+	for obj: Object in [Settings, InputManager]:
+		for pr in obj.get_property_list():
+			if pr.usage & PROPERTY_USAGE_SCRIPT_VARIABLE and not String(pr.name).begins_with("_") and pr.type != TYPE_OBJECT:
+				parts.append("%s=%s" % [pr.name, var_to_str(obj.get(pr.name))])
+	return ";".join(parts)
+
 func _test_calibration_and_arm_switch() -> void:
 	var cfg_path: String = InputManager.CALIBRATION_PATH
 	var backup: String = FileAccess.get_file_as_string(cfg_path) if FileAccess.file_exists(cfg_path) else ""
@@ -1288,11 +1399,37 @@ func _test_calibration_and_arm_switch() -> void:
 	await _wait(0.2)
 	_check(not ss._arm_candidate.is_empty() and ss._calibration_step == ss.STEP_ARM, "calibration: arm switch detected, waits for flip back")
 	axes[5] = -1.0
-	await _wait(0.2)
+	await _wait(0.4)
 	_check(ss._calibration_step == ss.STEP_TEST and InputManager.arm_source == "axis" and InputManager.arm_axis == 5, "calibration: arm switch assigned", InputManager.arm_control_name())
 	ss._cal_next.pressed.emit()
 	await _wait(0.1)
 	_check(ss._settings_screen.visible, "calibration: Done returns to Settings")
+	# A real radio reports a channel only once it moves: an arm switch
+	# untouched since the game started reads 0 (its OFF is really -1).
+	# The user saw ARM stay OFF on the test card after such a calibration.
+	axes[5] = 0.0
+	InputManager._forget_axes()
+	_find_button(ss, "Assign Arm Switch").pressed.emit()
+	await _wait(0.2)
+	axes[6] = 0.99997 # flip ON: the channel's first report
+	await _wait(0.2)
+	_check(not ss._arm_candidate.is_empty() and ss._calibration_step == ss.STEP_ARM, "calibration: unmoved arm channel detected on its first report")
+	axes[6] = -1.0 # back OFF
+	await _wait(0.4)
+	_check(ss._calibration_step == ss.STEP_TEST and InputManager.arm_axis == 6 and is_equal_approx(InputManager.arm_axis_off_value, -1.0) and InputManager.arm_axis_on_value > 0.9,
+		"calibration: unmoved arm channel stored with its measured OFF/ON", "axis %d off %.2f on %.2f" % [InputManager.arm_axis, InputManager.arm_axis_off_value, InputManager.arm_axis_on_value])
+	var arm_off_reads: bool = InputManager.arm_switch_on()
+	axes[6] = 0.99997
+	await _wait(0.1)
+	_check(not arm_off_reads and InputManager.arm_switch_on(), "calibration: test card reads ARM OFF and ARM ON for that switch")
+	axes[6] = 0.0
+	ss._cal_next.pressed.emit()
+	await _wait(0.1)
+	InputManager.arm_axis = 5
+	InputManager.arm_axis_off_value = -1.0
+	InputManager.arm_axis_on_value = 1.0
+	axes[5] = -1.0
+	await _wait(0.2)
 	# Settings -> Assign Arm Switch alone: a button this time.
 	_find_button(ss, "Assign Arm Switch").pressed.emit()
 	await _wait(0.2)

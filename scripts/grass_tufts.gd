@@ -30,6 +30,22 @@ func _ready() -> void:
 		return
 	_build.call_deferred()
 
+## A real height capture writes its grass flag (blue) as exactly 0 or 1;
+## anything else (a stale frame of the game, a half-drawn window) has
+## blues in between. Checked on every 7th pixel.
+static func capture_ok(img: Image) -> bool:
+	if img == null or img.is_empty():
+		return false
+	var bad: int = 0
+	var n: int = 0
+	for y in range(0, img.get_height(), 7):
+		for x in range(0, img.get_width(), 7):
+			var b: float = img.get_pixel(x, y).b
+			n += 1
+			if b > 0.02 and b < 0.98:
+				bad += 1
+	return n > 0 and bad <= n / 100
+
 static func is_grass(gi: GeometryInstance3D) -> bool:
 	if gi.get_parent() and gi.get_parent().name == "Ground" and gi is MeshInstance3D:
 		return true
@@ -74,7 +90,11 @@ func _build() -> void:
 		if FileAccess.file_exists(cache_h) and FileAccess.file_exists(cache_c):
 			var ch := Image.load_from_file(cache_h)
 			var cc := Image.load_from_file(cache_c)
-			if ch and cc:
+			if ch and cc and not capture_ok(ch):
+				# A bad picture cached by an older build: drop it, take a new one.
+				DirAccess.remove_absolute(cache_h)
+				DirAccess.remove_absolute(cache_c)
+			elif ch and cc:
 				_make_tufts(ImageTexture.create_from_image(ch), ImageTexture.create_from_image(cc))
 				set_meta("ready", true)
 				return
@@ -133,6 +153,13 @@ func _build() -> void:
 			WorldShading.fit_fog(we.environment, vcam.far)
 	himg.convert(Image.FORMAT_RGB8)
 	cimg.convert(Image.FORMAT_RGB8)
+	if not capture_ok(himg):
+		# Not a real capture (the window wasn't drawn - hidden, minimised):
+		# no tufts this time, nothing cached, the next load tries again.
+		# (Tufts at a stale picture's heights stood in the air, over the
+		# lake on Mountain Lake.)
+		push_warning("GrassTufts: the ground capture came out wrong - no grass tufts this time")
+		return
 	if cache_h != "":
 		DirAccess.make_dir_recursive_absolute(MapCache.DIR)
 		himg.save_png(cache_h)

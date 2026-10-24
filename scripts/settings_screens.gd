@@ -927,7 +927,7 @@ func _enter_arm_step() -> void:
 	_arm_base_axes.clear()
 	_arm_base_buttons.clear()
 	for i in range(InputManager.AXES):
-		_arm_base_axes.append(InputManager.joy_axis(i) if InputManager.has_joystick() else 0.0)
+		_arm_base_axes.append(InputManager.joy_axis(i) if InputManager.has_joystick() and InputManager._axis_known(i) else NAN)
 	for b in range(InputManager.BUTTONS):
 		_arm_base_buttons.append(InputManager.joy_button(b) if InputManager.has_joystick() else false)
 
@@ -938,7 +938,7 @@ func _enter_capture_step(target: String) -> void:
 	_capture_base_axes.clear()
 	_capture_base_buttons.clear()
 	for i in range(InputManager.AXES):
-		_capture_base_axes.append(InputManager.joy_axis(i) if InputManager.has_joystick() else 0.0)
+		_capture_base_axes.append(InputManager.joy_axis(i) if InputManager.has_joystick() and InputManager._axis_known(i) else NAN)
 	for b in range(InputManager.BUTTONS):
 		_capture_base_buttons.append(InputManager.joy_button(b) if InputManager.has_joystick() else false)
 
@@ -1062,6 +1062,13 @@ func _detect_candidate(base_axes: Array[float], base_buttons: Array[bool]) -> Di
 		if i in exclude:
 			continue
 		var v: float = InputManager.joy_axis(i)
+		if is_nan(base_axes[i]):
+			# Not reported since the game started (reads 0 until it moves,
+			# see InputManager._axis_seen): its first report is the flip,
+			# its OFF value isn't known yet.
+			if InputManager._axis_known(i) and absf(v) > 0.5:
+				return {"source": "axis", "index": i, "off": NAN, "on": v}
+			continue
 		if absf(v - base_axes[i]) > 0.5:
 			return {"source": "axis", "index": i, "off": base_axes[i], "on": v}
 	return {}
@@ -1073,12 +1080,33 @@ func _detect_candidate(base_axes: Array[float], base_buttons: Array[bool]) -> Di
 func _confirm_candidate(candidate: Dictionary) -> String:
 	if candidate.source == "button":
 		return "button" if InputManager.joy_button(candidate.index) == candidate.off else ""
+	# Back OFF = nearer the OFF reading than the ON one (or, OFF unknown,
+	# well away from ON), held for 150 ms (a 3-position switch passing its
+	# middle doesn't count); OFF is then stored as measured.
 	var v: float = InputManager.joy_axis(candidate.index)
-	if absf(v - candidate.off) < 0.25:
-		return "axis"
-	if absf(v - candidate.off) > absf(candidate.on - candidate.off):
-		candidate.on = v
-	return ""
+	var off: float = candidate.off
+	var on: float = candidate.on
+	var back: bool
+	if is_nan(off):
+		back = absf(v - on) > 0.5
+	else:
+		back = absf(v - on) > 0.5 and absf(v - off) < absf(v - on)
+		# A 3-position switch still travelling: ON is its far end (same
+		# side, clearly further - 1.0 vs 0.99997 is no reason to move it).
+		if not back and signf(v - off) == signf(on - off) and absf(v - off) > absf(on - off) + 0.05:
+			candidate.on = v
+	if not back:
+		candidate.erase("settle_ms")
+		return ""
+	var now: int = Time.get_ticks_msec()
+	if not candidate.has("settle_ms") or absf(v - candidate.get("settle_v", v)) > 0.02:
+		candidate.settle_ms = now
+		candidate.settle_v = v
+		return ""
+	if now - int(candidate.settle_ms) < 150:
+		return ""
+	candidate.off = v
+	return "axis"
 
 func _candidate_name(candidate: Dictionary) -> String:
 	return ("button %d" if candidate.source == "button" else "switch on axis %d") % candidate.index
@@ -1231,7 +1259,10 @@ func _draw_test_view(c: Control, font: Font, w: float, h: float) -> void:
 	var pill := Rect2(ax, 24 + size * 0.5 - 40, 200, 80)
 	c.draw_style_box(UIKit.box(UIKit.LOGO_GROUND if on else UIKit.BOX, UIKit.LOGO_GROUND if on else UIKit.BORDER, 16), pill)
 	c.draw_string(font, Vector2(ax, pill.position.y + 50), "ARM ON" if on else "ARM OFF", HORIZONTAL_ALIGNMENT_CENTER, 200, 28, Color.WHITE)
-	c.draw_string(font, Vector2(ax, pill.end.y + 26), InputManager.arm_control_name(), HORIZONTAL_ALIGNMENT_CENTER, 200, 14, UIKit.MUTED_LIGHT)
+	var arm_live: String = InputManager.arm_control_name()
+	if InputManager.arm_source == "axis" and InputManager.arm_axis >= 0 and InputManager.has_joystick():
+		arm_live += "  (%+.2f)" % InputManager.joy_axis(InputManager.arm_axis)
+	c.draw_string(font, Vector2(ax, pill.end.y + 26), arm_live, HORIZONTAL_ALIGNMENT_CENTER, 200, 14, UIKit.MUTED_LIGHT)
 
 func _draw_gimbal(c: Control, font: Font, r: Rect2, x: float, y: float, label: String) -> void:
 	c.draw_style_box(UIKit.box(UIKit.BOX, UIKit.BORDER, 16), r)
