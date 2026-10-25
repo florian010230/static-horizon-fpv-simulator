@@ -89,7 +89,9 @@ func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_mat = ShaderMaterial.new()
 	_mat.shader = preload("res://shaders/fpv_video.gdshader")
-	material = _mat
+	# Drawn only while presenting (see _present).
+	material = null
+	color = Color(0, 0, 0, 0)
 	_fade_noise.seed = 11
 	_fade_noise.frequency = 0.35
 	_rng.seed = 5
@@ -125,6 +127,11 @@ func _present(needed: bool = true) -> void:
 		presenting = on
 		root.disable_3d = on
 		_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS if on else SubViewport.UPDATE_DISABLED
+		# Off: this full-screen rect must draw nothing, or its (stale or
+		# never rendered) view covers the window's own 3D - a black map
+		# on High + Clean in 0.11.1 work (cdd327f).
+		material = _mat if on else null
+		color = Color.WHITE if on else Color(0, 0, 0, 0)
 	if not on:
 		return
 	var sz := Vector2i((Vector2(root.size) * Settings.render_scale(Settings.graphics_quality)).round())

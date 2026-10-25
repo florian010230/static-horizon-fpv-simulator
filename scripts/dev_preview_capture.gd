@@ -61,6 +61,99 @@ func _wants(section: String) -> bool:
 
 ## `-- --dev-preview borders`: every map, the drone parked just outside
 ## its flight area - the border must show (prints BORDER ok/FAIL).
+func _tour_lap(dr2: RigidBody3D, c0: Vector3, secs: float, id: String) -> void:
+	var a: float = 0.0
+	var t_end: int = Time.get_ticks_msec() + int(secs * 1000.0)
+	var f_start: int = Engine.get_frames_drawn()
+	var t_start: int = Time.get_ticks_msec()
+	while Time.get_ticks_msec() < t_end:
+		var dt: float = get_process_delta_time()
+		var rad: float = 60.0 + a * 40.0
+		a += 25.0 * dt / rad
+		var p: Vector3 = c0 + Vector3(cos(a) * rad - 60.0, 20.0, sin(a) * rad)
+		var tan: Vector3 = Vector3(-sin(a), 0, cos(a))
+		dr2.global_transform = Transform3D(Basis.looking_at(tan, Vector3.UP), p)
+		await get_tree().process_frame
+	print("PERFD tour %s: %.1f fps average" % [id, (Engine.get_frames_drawn() - f_start) * 1000.0 / maxf(Time.get_ticks_msec() - t_start, 1)])
+
+## Every map x quality x camera look (Clean, Analog, Clean + fisheye, Clean) on a
+## real screen: "SCREEN FAIL" when the picture is mostly black (the 0.11.1
+## High + Clean black map passed every headless check). Map ids after
+## "screencheck" limit the run; SCREEN DONE: n failed at the end.
+func _screen_check() -> void:
+	var ca: Array = Array(OS.get_cmdline_user_args())
+	var only: Array = ca.slice(ca.find("screencheck") + 1)
+	var scenes: Array = []
+	if only.is_empty() or only.has("school"):
+		scenes.append(["school", "res://scenes/Main3.tscn"])
+	for m in MapCatalog.MAPS:
+		if (only.is_empty() or only.has(m.id)) and not scenes.any(func(s): return s[1] == m.scene):
+			scenes.append([m.id, m.scene])
+	var looks: Array = [["clean", 0, 0], ["analog", 1, 0], ["fisheye", 0, 1], ["clean again", 0, 0]]
+	var fails: int = 0
+	for s in scenes:
+		get_tree().change_scene_to_file(s[1])
+		var t0: int = Time.get_ticks_msec()
+		while (get_tree().current_scene == null or get_tree().current_scene.find_child("Drone", true, false) == null) and Time.get_ticks_msec() - t0 < 90000:
+			await get_tree().process_frame
+		var sc: Node = get_tree().current_scene
+		if sc == null:
+			print("SCREEN FAIL %s: did not load" % s[0])
+			fails += 1
+			continue
+		var drone := sc.find_child("Drone", true, false) as RigidBody3D
+		drone.freeze = true
+		# High first, Clean first: the way a player meets it after loading.
+		for q in [2, 1, 0]:
+			_set_q(q)
+			for lk in looks:
+				Settings.camera_look = lk[1]
+				Settings.lens_fisheye = lk[2]
+				await get_tree().create_timer(0.6).timeout
+				await _drawn_frames(3)
+				var img: Image = get_viewport().get_texture().get_image()
+				var dark: float = _dark_share(img)
+				# Turned 40 degrees the picture must change (catches a frozen view).
+				drone.rotate_y(deg_to_rad(40.0))
+				drone.reset_physics_interpolation()
+				await _drawn_frames(4)
+				var moved: float = _diff_share(img, get_viewport().get_texture().get_image())
+				drone.rotate_y(deg_to_rad(-40.0))
+				drone.reset_physics_interpolation()
+				var why: String = "black" if dark > 0.85 else ("frozen" if moved < 0.05 else "")
+				if why != "":
+					fails += 1
+					_shot("screen_%s_q%d_%s.png" % [s[0], q, lk[0].replace(" ", "_")])
+				print("SCREEN %s %s q%d %s: %.0f %% black, %.0f %% changed on turning %s" % ["FAIL" if why != "" else "ok  ", s[0], q, lk[0], 100.0 * dark, 100.0 * moved, why])
+	print("SCREEN DONE: %d failed" % fails)
+
+## Share of grid pixels that differ by more than 5 % between two shots.
+static func _diff_share(a: Image, b: Image) -> float:
+	var n: int = 0
+	var d: int = 0
+	var step: int = maxi(1, a.get_width() / 80)
+	for y in range(0, mini(a.get_height(), b.get_height()), step):
+		for x in range(0, mini(a.get_width(), b.get_width()), step):
+			var ca: Color = a.get_pixel(x, y)
+			var cb: Color = b.get_pixel(x, y)
+			n += 1
+			if absf(ca.r - cb.r) + absf(ca.g - cb.g) + absf(ca.b - cb.b) > 0.15:
+				d += 1
+	return float(d) / maxf(n, 1)
+
+## Share of near-black pixels (all channels under 4 %) on a coarse grid.
+static func _dark_share(img: Image) -> float:
+	var n: int = 0
+	var dark: int = 0
+	var step: int = maxi(1, img.get_width() / 80)
+	for y in range(0, img.get_height(), step):
+		for x in range(0, img.get_width(), step):
+			var c: Color = img.get_pixel(x, y)
+			n += 1
+			if maxf(c.r, maxf(c.g, c.b)) < 0.04:
+				dark += 1
+	return float(dark) / maxf(n, 1)
+
 func _border_shots() -> void:
 	var scenes: Array = ["res://scenes/Main3.tscn"]
 	for m in MapCatalog.MAPS:
@@ -372,6 +465,45 @@ func _go() -> void:
 		get_tree().quit()
 	if OS.get_cmdline_user_args().has("beauty"):
 		await _beauty_shots()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("loadscreen"):
+		# The real way into a map (SceneLoader), twice: LOADSCREEN stage
+		# times with SH_LOADTIME=1; shots of the card in SH_LOADSHOTS.
+		var la: Array = Array(OS.get_cmdline_user_args())
+		var lid: String = la[la.find("loadscreen") + 1] if la.find("loadscreen") + 1 < la.size() else "village"
+		for mm in MapCatalog.MAPS:
+			if mm.id == lid:
+				for k in range(1 if OS.has_environment("SH_PERFD_TOUR") else 2):
+					SceneLoader.goto(mm.scene, mm.name)
+					await get_tree().process_frame
+					var last: String = ""
+					while SceneLoader.is_loading():
+						# A shot per stage of the card (SH_LOADSHOTS).
+						var st: String = SceneLoader._stage_lbl.text
+						if OS.has_environment("SH_LOADSHOTS") and st != last and SceneLoader._root.modulate.a >= 1.0:
+							last = st
+							_shot("loading_%s_%d_%s.png" % [lid, k, st.get_slice(" ", 0).to_lower() + st.get_slice(" ", 1).to_lower()])
+						await get_tree().process_frame
+					await get_tree().create_timer(1.0).timeout
+				if OS.has_environment("SH_PERFD_TOUR"):
+					# Straight from the loading screen into the tour: the jerks a
+					# player meets on the first flight (SH_HITCH logs them).
+					var dr3: RigidBody3D = get_tree().current_scene.get_node("Drone")
+					dr3.freeze = true
+					# SH_TOUR_WAIT=s: hover first (do the jerks follow the clock
+					# or the place?).
+					if OS.has_environment("SH_TOUR_WAIT"):
+						print("PERFD waiting %s s" % OS.get_environment("SH_TOUR_WAIT"))
+						await get_tree().create_timer(float(OS.get_environment("SH_TOUR_WAIT"))).timeout
+						print("PERFD tour starts")
+					Settings.set_max_fps(0)
+					DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+					await _tour_lap(dr3, dr3.global_position, float(OS.get_environment("SH_PERFD_TOUR")), lid)
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("screencheck"):
+		await _screen_check()
 		get_tree().quit()
 		return
 	if OS.get_cmdline_user_args().has("borders"):
@@ -1155,6 +1287,15 @@ func _perf_detail() -> void:
 	var sc: Node = get_tree().current_scene
 	var sz: Vector2i = DisplayServer.window_get_size()
 	print("PERFD window %dx%d scale %.2f mode %d" % [sz.x, sz.y, get_viewport().scaling_3d_scale, get_tree().root.content_scale_mode])
+	if OS.has_environment("SH_PERFD_AT"):
+		# SH_PERFD_AT="x,y,z,dx,dz": measure there, looking along (dx, 0, dz).
+		var at: PackedFloat64Array = OS.get_environment("SH_PERFD_AT").split_floats(",")
+		var dra: RigidBody3D = sc.get_node("Drone")
+		dra.freeze = true
+		dra.global_transform = Transform3D(Basis.looking_at(Vector3(at[3], 0, at[4]), Vector3.UP), Vector3(at[0], at[1], at[2]))
+		dra.reset_physics_interpolation()
+		await get_tree().create_timer(2.0).timeout
+		_shot("at_%s.png" % id)
 	if OS.has_environment("SH_PERFD_SPAWN"):
 		_shot("spawn_whoop_%s.png" % id)
 		var cam4: Camera3D = get_viewport().get_camera_3d()
@@ -1223,19 +1364,11 @@ func _perf_detail() -> void:
 		var dr2: RigidBody3D = sc.get_node("Drone")
 		dr2.freeze = true
 		var c0: Vector3 = dr2.global_position
-		var a: float = 0.0
-		var t_end: int = Time.get_ticks_msec() + int(float(OS.get_environment("SH_PERFD_TOUR")) * 1000.0)
-		var f_start: int = Engine.get_frames_drawn()
-		var t_start: int = Time.get_ticks_msec()
-		while Time.get_ticks_msec() < t_end:
-			var dt: float = get_process_delta_time()
-			var rad: float = 60.0 + a * 40.0
-			a += 25.0 * dt / rad
-			var p: Vector3 = c0 + Vector3(cos(a) * rad - 60.0, 20.0, sin(a) * rad)
-			var tan: Vector3 = Vector3(-sin(a), 0, cos(a))
-			dr2.global_transform = Transform3D(Basis.looking_at(tan, Vector3.UP), p)
-			await get_tree().process_frame
-		print("PERFD tour %s: %.1f fps average" % [id, (Engine.get_frames_drawn() - f_start) * 1000.0 / maxf(Time.get_ticks_msec() - t_start, 1)])
+		# SH_PERFD_LAPS=n flies the same tour n times (a spike only in the
+		# first is a first-sight cost, e.g. a shader compiling).
+		for lap in range(int(OS.get_environment("SH_PERFD_LAPS")) if OS.has_environment("SH_PERFD_LAPS") else 1):
+			print("PERFD lap %d" % (lap + 1))
+			await _tour_lap(dr2, c0, float(OS.get_environment("SH_PERFD_TOUR")), id)
 		return
 	if OS.has_environment("SH_PERFD_GROUPS"):
 		# Draw calls per part of the scene: hide one node at a time

@@ -1249,11 +1249,21 @@ func _test_video_link() -> void:
 	await _wait(0.2)
 	var full_res: bool = Settings.render_scale(Settings.graphics_quality) >= 0.999
 	_check(v.presenting != full_res and get_tree().root.disable_3d != full_res, "video: Clean without fisheye skips the video pass only at full 3D resolution", "full res %s, presenting %s" % [full_res, v.presenting])
+	# Not presenting = the full-screen rect draws nothing; it covered the
+	# window's own 3D with its unrendered view once (black maps on High).
+	# High (full resolution) forces the pass off for this check.
+	var q0: int = Settings.graphics_quality
+	Settings.graphics_quality = 2
+	await _wait(0.2)
+	_check(not v.presenting and v.material == null and v.color.a == 0.0 and not get_tree().root.disable_3d, "video: with the pass off (High, Clean) nothing covers the window's 3D (no black map)", "presenting %s material %s alpha %.2f" % [v.presenting, v.material, v.color.a])
+	Settings.graphics_quality = q0
+	await _wait(0.2)
 	# With a lens the video pass presents the 3D view: the window's own 3D
 	# is off, the view's camera follows the window's current camera.
 	Settings.lens_fisheye = 1
 	await _wait(0.2)
 	_check(v.presenting and get_tree().root.disable_3d and v._view_cam.global_position.distance_to(cam.get_global_transform_interpolated().origin) < 0.01, "video: the 3D view is drawn through the video pass, from the current camera")
+	_check(v.material != null and v.color.a == 1.0, "video: while presenting the pass draws its picture")
 	Settings.lens_fisheye = fish0
 	# The world extras (LooksFx): glare and grass outdoors, none of them
 	# on Low; no dust anywhere (removed in 0.10.1).
