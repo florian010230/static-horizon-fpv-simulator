@@ -75,6 +75,11 @@ const DETUNE: Array[float] = [1.0, 1.012, 0.992, 1.024]
 ## between motors drifts instead of repeating in lock-step.
 const WANDER_CYCLES: Array[int] = [1, 2, 3, 5]
 const WANDER_PHASE: Array[float] = [0.0, 1.3, 2.6, 4.1]
+## Per-motor start angle. All four used to start at 0: with whole-Hz
+## frequencies every motor and harmonic peaked together once per loop, a
+## pulse 1.8x the usual level that ticked in time with the loop - faster
+## on throttle-up (user, 2026-10-26).
+const MOTOR_PHASE: Array[float] = [0.0, 1.9, 3.7, 5.2]
 
 const BUS_NAME := "MotorLPF"
 static var _lpf: AudioEffectLowPassFilter = null
@@ -180,7 +185,7 @@ static func _build_loop(s: Dictionary) -> Dictionary:
 		var base_r: float = roundf(rot * DETUNE[m] / step) * step
 		var wander_w: float = TAU * WANDER_CYCLES[m] / LOOP_SECONDS
 		var wander_ph: float = WANDER_PHASE[m]
-		var phase: float = 0.0
+		var phase: float = MOTOR_PHASE[m]
 		for i in range(n):
 			var t: float = float(i) / MIX_RATE
 			# Slow rpm wander (brushless cogging / load ripple), an
@@ -200,15 +205,25 @@ static func _build_loop(s: Dictionary) -> Dictionary:
 			v += whine_amp * (sin(whine_phase) + 0.3 * sin(whine_phase * 2.0)) + buzz_amp * sin(whine_phase * 3.0)
 			v += rumble_amp * sin(phase)
 			tone[i] += v * 0.25
-	var noise := PackedFloat32Array()
-	noise.resize(n)
+	# Prop wash: low-passed noise, darker the bigger the props. Random noise
+	# doesn't end where it starts: the jump at the loop point clicked once
+	# per loop, faster with throttle (user, 2026-10-26). So xfade extra
+	# samples are rendered and the head is crossfaded from that tail (which
+	# carries on smoothly from the last sample) into the noise itself.
+	var xfade: int = int(MIX_RATE * 0.05)
+	var raw := PackedFloat32Array()
+	raw.resize(n + xfade)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
 	var noise_lp: float = 0.0
-	for i in range(n):
-		# Prop wash: low-passed noise, darker the bigger the props.
+	for i in range(n + xfade):
 		noise_lp = lerpf(noise_lp, rng.randf_range(-1.0, 1.0), s.noise_lp)
-		noise[i] = noise_lp
+		raw[i] = noise_lp
+	var noise := raw.slice(0, n)
+	for i in range(xfade):
+		# Equal power: the two halves are uncorrelated noise.
+		var a: float = float(i) / xfade
+		noise[i] = raw[n + i] * sqrt(1.0 - a) + raw[i] * sqrt(a)
 	return {"tone": _to_wav(tone), "noise": _to_wav(noise)}
 
 static func _to_wav(buf: PackedFloat32Array) -> AudioStreamWAV:

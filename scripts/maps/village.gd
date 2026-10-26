@@ -336,6 +336,7 @@ func _materials() -> void:
 	geo.add_material("vg_paving", Geo.ground_mat(MapTextures.get_tex("paving_slabs"), Color(1.05, 1.02, 0.96), 3.0, 1, 0.2))
 	geo.add_material("vg_gravel", Geo.ground_mat(MapTextures.get_tex("gravel_verge"), Color(1.0, 0.95, 0.85), 2.5, 1, 0.3))
 	geo.add_material("vg_mat", Geo.ground_flat(Color(0.16, 0.17, 0.18), 3))
+	geo.add_material("vg_mat_cross", Geo.ground_flat(Color(0.95, 0.95, 0.95), 4))
 	# Inside the church and the ruin: lit by the build (light_fn), not
 	# darkened again by the sun's shadow map under their roofs.
 	geo.add_material("vgi_plaster", Geo.tex_mat(MapTextures.get_tex("plaster"), Color(1.0, 0.98, 0.94), 3.0))
@@ -573,12 +574,17 @@ func _club(trees: Array) -> Array:
 	# The mat is solid: a whoop resting on the ground below it had its
 	# camera (2 cm up) under the mat and saw only its grey underside.
 	geo.polygon([PAD + Vector3(-1.8, 0.05, -1.8), PAD + Vector3(1.8, 0.05, -1.8), PAD + Vector3(1.8, 0.05, 1.8), PAD + Vector3(-1.8, 0.05, 1.8)], "vg_mat", true)
-	geo.tint = Color(0.95, 0.95, 0.95)
-	# The cross a clear 2.5 cm over the mat (at 1 cm it lost the depth
-	# test to the mat at a distance and came and went, 2026-10-12).
-	geo.box(PAD + Vector3(0, 0.065, 0), Vector3(3.0, 0.02, 0.18), "vg_paint", PI * 0.25, false, false)
-	geo.box(PAD + Vector3(0, 0.066, 0), Vector3(3.0, 0.02, 0.18), "vg_paint", -PI * 0.25, false, false)
-	geo.tint = Color.WHITE
+	# The cross: flat strips on a ground layer ABOVE the mat's (4 over 3).
+	# The mat's layer material is drawn pulled towards the camera by
+	# 0.75 % of its distance, so a plain box lifted over it - 1 cm, then
+	# 2.5 cm (2026-10-12) - lost to the mat beyond a few metres and the
+	# cross kept coming back. Layers win at every distance; never lift a
+	# marking off a layered surface with a plain material (2026-10-26).
+	for a in [PI * 0.25, -PI * 0.25]:
+		var d := Vector3(cos(a), 0.0, sin(a)) * 1.5
+		var p := Vector3(-sin(a), 0.0, cos(a)) * 0.15 # 30 cm: thinner bars vanish at a flat angle on Low
+		var c: Vector3 = PAD + Vector3(0, 0.052, 0)
+		geo.polygon([c - d - p, c + d - p, c + d + p, c - d + p], "vg_mat_cross", false)
 	# The course, flown anticlockwise from the pad: west through the
 	# start, north through the ladder, east under the tower gate, the
 	# dive gate, back south through the hoop.

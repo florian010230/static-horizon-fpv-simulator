@@ -32,7 +32,7 @@ const TIPS: Array[String] = [
 ]
 ## Shown instead of the tips on a map's first load on this game version
 ## (Village: ~47 s cold - map build + shader compiles - against ~10 s after).
-const FIRST_LOAD_TIP: String = "First load is slower: the map is prepared once, then it's faster."
+const FIRST_LOAD_TIP: String = "Only the first load is slow. Next time this map loads much faster."
 ## Maps loaded before, per MapCache.key() (game version/sources + quality).
 const LOADED_FILE: String = "user://loaded_maps.cfg"
 const MIN_VISIBLE_FRAMES: int = 6
@@ -75,11 +75,11 @@ func _build() -> void:
 	_pic.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	# The pictures are 1024x512 (menu cards): stretched over a Retina
-	# screen by the GPU they showed their pixels; the old fix (a blur)
-	# looked too soft, so they are scaled up once per load with Lanczos
-	# instead (_sharp_picture).
-	_pic.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	# Its own 2048x1024 picture (images/loading/<id>.jpg, rendered with the
+	# menu cards by --dev-preview thumbs): the 1024 menu card looked
+	# pixelated over a Retina screen, blurred or not (user, 2026-10-26).
+	# A map without one falls back to the card (_sharp_picture).
+	_pic.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	_root.add_child(_pic)
 	var shade := ColorRect.new()
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -192,7 +192,11 @@ func goto(path: String, title: String = "") -> void:
 	_tip_t = 0.0
 	_pic.texture = null
 	for m in MapCatalog.MAPS:
-		if m.scene == path and ResourceLoader.exists("res://images/maps/%s.jpg" % m.id):
+		if m.scene != path:
+			continue
+		if ResourceLoader.exists("res://images/loading/%s.jpg" % m.id):
+			_pic.texture = load("res://images/loading/%s.jpg" % m.id)
+		elif ResourceLoader.exists("res://images/maps/%s.jpg" % m.id):
 			_pic.texture = _sharp_picture(load("res://images/maps/%s.jpg" % m.id))
 	_stage_lbl.text = "Loading files"
 	_bar.value = 0.0
@@ -349,6 +353,11 @@ func _warm_look(scene: Node) -> void:
 	var xf0: Transform3D = dr.global_transform
 	var froze: bool = dr.freeze
 	dr.freeze = true
+	# The look round goes up to ~570 m out: past the reset line on the
+	# smaller maps, which reset the drone and left "OUT OF RANGE" on
+	# screen after the card faded (user, 2026-10-26).
+	var border_off: bool = WorldBorder.disabled
+	WorldBorder.disabled = true
 	var pts: Array = []
 	for gx in range(-WARM_GRID, WARM_GRID + 1):
 		for gz in range(-WARM_GRID, WARM_GRID + 1):
@@ -362,6 +371,7 @@ func _warm_look(scene: Node) -> void:
 	dr.global_transform = xf0
 	dr.reset_physics_interpolation()
 	dr.freeze = froze
+	WorldBorder.disabled = border_off
 	cam.fov = fov0
 
 ## Not loaded before with this MapCache key: the map cache and the GPU's

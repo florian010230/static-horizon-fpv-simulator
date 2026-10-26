@@ -227,6 +227,7 @@ func _thumb_shots() -> void:
 	Settings.osd_enabled = false
 	Settings.crosshair_enabled = false
 	Settings.camera_angle_deg = 0.0 # aim the camera where the drone looks
+	Settings.camera_look = 0 # Clean: no video pass over the picture
 	WorldBorder.disabled = true
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://images/maps"))
 	var args := OS.get_cmdline_user_args()
@@ -249,13 +250,25 @@ func _thumb_shots() -> void:
 		if we and we.environment and we.environment.has_meta("depth_fog"):
 			we.environment.set_meta("depth_fog", maxf(we.environment.get_meta("depth_fog"), 700.0))
 			WorldShading.fit_fog(we.environment, get_viewport().get_camera_3d().far)
+		# Smooth edges for the full-screen loading picture: 4x MSAA and 2x
+		# supersampling (the plain render's jagged roofs and fences showed).
+		get_viewport().msaa_3d = Viewport.MSAA_4X
+		get_viewport().scaling_3d_scale = 2.0
 		await get_tree().create_timer(1.5).timeout
 		var img := get_viewport().get_texture().get_image()
 		var w: int = img.get_width()
 		var h: int = int(w / 2.0)
 		img = img.get_region(Rect2i(0, (img.get_height() - h) / 2, w, h))
-		img.resize(1024, 512, Image.INTERPOLATE_LANCZOS)
-		img.save_jpg(ProjectSettings.globalize_path("res://images/maps/%s.jpg" % m.id), 0.9)
+		# The loading screen's full-screen picture (images/loading/<id>.jpg):
+		# 2048 wide, the 1024 menu card looked pixelated stretched over a
+		# Retina screen. SH_LOADPIC_ONLY=1 leaves the menu card as it is.
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://images/loading"))
+		var big: Image = img.duplicate()
+		big.resize(2048, 1024, Image.INTERPOLATE_LANCZOS)
+		big.save_jpg(ProjectSettings.globalize_path("res://images/loading/%s.jpg" % m.id), 0.85)
+		if not OS.has_environment("SH_LOADPIC_ONLY"):
+			img.resize(1024, 512, Image.INTERPOLATE_LANCZOS)
+			img.save_jpg(ProjectSettings.globalize_path("res://images/maps/%s.jpg" % m.id), 0.9)
 		print("THUMB ", m.id)
 
 ## The website's drone pictures: `-- --dev-preview drones` - the menu's
