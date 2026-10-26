@@ -30,6 +30,11 @@ const TIPS: Array[String] = [
 	"Calibrate your radio once in Settings - it's remembered.",
 	"Your drone's shadow on the ground is the best height cue when landing.",
 ]
+## Shown instead of the tips on a map's first load on this game version
+## (Village: ~47 s cold - map build + shader compiles - against ~10 s after).
+const FIRST_LOAD_TIP: String = "First load is slower: the map is prepared once, then it's faster."
+## Maps loaded before, per MapCache.key() (game version/sources + quality).
+const LOADED_FILE: String = "user://loaded_maps.cfg"
 const MIN_VISIBLE_FRAMES: int = 6
 const WARM_GROUPS: int = 6
 ## The look round: points WARM_STEP apart, WARM_GRID each way from the spawn.
@@ -71,9 +76,9 @@ func _build() -> void:
 	_pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	# The pictures are 1024x512 (menu cards): stretched over a Retina
-	# screen they showed their pixels, so they are softly blurred - a
-	# camera-style background behind the sharp card (_soft_picture, once
-	# per load - a blur shader would cost every loading frame).
+	# screen by the GPU they showed their pixels; the old fix (a blur)
+	# looked too soft, so they are scaled up once per load with Lanczos
+	# instead (_sharp_picture).
 	_pic.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	_root.add_child(_pic)
 	var shade := ColorRect.new()
@@ -128,24 +133,20 @@ func _process(delta: float) -> void:
 	if not _root.visible:
 		return
 	_tip_t += delta
-	if _tip_t > TIP_SECONDS:
+	if _tip_t > TIP_SECONDS and _tip.text != FIRST_LOAD_TIP:
 		_tip_t = 0.0
 		_tip.text = TIPS[(TIPS.find(_tip.text) + 1) % TIPS.size()]
 
-## A soft blur, no visible pixels: halved twice (each halving averages
-## 2x2 pixels - one big shrink only samples and stayed blocky), then
-## doubled back up the same way (~16 ms).
-static func _soft_picture(tex: Texture2D) -> Texture2D:
+## Sharp, no visible pixels: scaled up 2x with Lanczos (crisper edges
+## than the GPU's bilinear stretch), the rest of the way bilinear on screen.
+static func _sharp_picture(tex: Texture2D) -> Texture2D:
 	if tex == null:
 		return null
 	var img: Image = tex.get_image()
 	if img == null:
 		return tex
 	img.decompress()
-	for k in range(2):
-		img.resize(maxi(img.get_width() / 2, 1), maxi(img.get_height() / 2, 1), Image.INTERPOLATE_BILINEAR)
-	for k in range(2):
-		img.resize(img.get_width() * 2, img.get_height() * 2, Image.INTERPOLATE_BILINEAR)
+	img.resize(img.get_width() * 2, img.get_height() * 2, Image.INTERPOLATE_LANCZOS)
 	return ImageTexture.create_from_image(img)
 
 ## Shows what the loader is doing and moves the bar; waits until that is
@@ -187,12 +188,12 @@ func goto(path: String, title: String = "") -> void:
 	_loading = true
 	_path = path
 	_title.text = title if title != "" else "Loading"
-	_tip.text = TIPS[randi() % TIPS.size()]
+	_tip.text = FIRST_LOAD_TIP if _first_load(path) else TIPS[randi() % TIPS.size()]
 	_tip_t = 0.0
 	_pic.texture = null
 	for m in MapCatalog.MAPS:
 		if m.scene == path and ResourceLoader.exists("res://images/maps/%s.jpg" % m.id):
-			_pic.texture = _soft_picture(load("res://images/maps/%s.jpg" % m.id))
+			_pic.texture = _sharp_picture(load("res://images/maps/%s.jpg" % m.id))
 	_stage_lbl.text = "Loading files"
 	_bar.value = 0.0
 	_root.modulate.a = 1.0
@@ -270,6 +271,7 @@ func goto(path: String, title: String = "") -> void:
 			parts.append("%s %d ms" % [names[i - 1], _lt[i] - _lt[i - 1]])
 		print("LOADSCREEN %s: %d ms total - %s" % [path.get_file(), _lt[-1] - _lt[0], ", ".join(parts)])
 	_bar.value = 100.0
+	_remember_loaded(path)
 	_finish()
 
 ## Shaders compiled under the card, not as jerks in flight: the GPU
@@ -362,6 +364,25 @@ func _warm_look(scene: Node) -> void:
 	dr.freeze = froze
 	cam.fov = fov0
 
+## Not loaded before with this MapCache key: the map cache and the GPU's
+## shader cache are both cold, so the load takes several times longer.
+func _first_load(path: String) -> bool:
+	var cf := ConfigFile.new()
+	cf.load(LOADED_FILE)
+	return not cf.get_value(MapCache.key(), path.get_file().get_basename(), false)
+
+func _remember_loaded(path: String) -> void:
+	if OS.get_cmdline_user_args().has("--selftest"):
+		return
+	var cf := ConfigFile.new()
+	cf.load(LOADED_FILE)
+	# Only the current key is kept: older versions' entries are dead weight.
+	for s in cf.get_sections():
+		if s != MapCache.key():
+			cf.erase_section(s)
+	cf.set_value(MapCache.key(), path.get_file().get_basename(), true)
+	cf.save(LOADED_FILE)
+
 func _finish() -> void:
 	_set_muted(false)
 	var tw := create_tween()
@@ -374,25 +395,17 @@ func _set_muted(muted: bool) -> void:
 	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), muted)
 
 ## The loading symbol: the logo's artificial horizon (sky blue over ground
-## orange, white ring and wing bar) banking gently from side to side like
-## a drone, with a blue arc running round it. It moves whenever a frame
-## is drawn - it stands still while a load step holds the main thread.
+## orange, white ring and wing bar), level and still. It used to bank and
+## spin, but it froze whenever a load step held the main thread, which
+## looked like a hang (user, 2026-10-26) - so nothing on the loader moves.
 class HorizonSpinner extends Control:
 	const SKY := Color("#2172e0")
 	const GROUND := Color("#e8581c")
-	var _t: float = 0.0
-
-	func _process(delta: float) -> void:
-		# At most a 30 fps step per frame: while loading, frames come
-		# unevenly (some take 100 ms+), and following the real time made the
-		# symbol jump; capped, a slow frame just moves it a little slower.
-		_t += minf(delta, 1.0 / 30.0)
-		queue_redraw()
 
 	func _draw() -> void:
 		var c: Vector2 = size * 0.5
 		var r: float = minf(size.x, size.y) * 0.5 - 3.5
-		var bank: float = sin(_t * 1.7) * 0.38
+		var bank: float = 0.0
 		draw_circle(c, r, GROUND)
 		var sky := PackedVector2Array()
 		for k in range(33):
@@ -405,5 +418,3 @@ class HorizonSpinner extends Control:
 		draw_line(c + along * r * 0.2, c + along * r * 0.72, Color.WHITE, 2.0, true)
 		draw_circle(c, r * 0.13, Color.WHITE)
 		draw_arc(c, r, 0.0, TAU, 48, Color.WHITE, 1.5, true)
-		var spin: float = _t * 4.2
-		draw_arc(c, r + 2.5, spin, spin + 1.7, 24, UIKit.LINK, 1.5, true)

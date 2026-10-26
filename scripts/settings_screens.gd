@@ -9,7 +9,7 @@ extends Control
 
 signal closed
 
-const FPS_MIN: int = 50
+const FPS_MIN: int = 10
 const FPS_MAX: int = 250 ## top of the slider means uncapped, not literally 250
 
 ## Each step asks the pilot to hold a stick at the extreme that should
