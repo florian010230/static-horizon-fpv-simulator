@@ -301,18 +301,31 @@ func _build_key_guide() -> void:
 	# With the guide switched off (H, saved), a keyboard pilot saw no keys
 	# at all and no way back (user, 2026-10-26): a short line for the
 	# first seconds of each flight says how to get it back.
+	# Two short lines in the bottom left corner, out of the way (user,
+	# 2026-10-28: the one long line at the middle left stuck into the view).
 	_key_hint = PanelContainer.new()
+	_key_hint.name = "KeyHint"
 	_key_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_key_hint.add_theme_stylebox_override("panel", UIKit.box(Color(0.04, 0.06, 0.08, 0.72), Color(1, 1, 1, 0.1), 6, 1, Vector4(14, 8, 16, 8)))
-	_key_hint.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-	_key_hint.offset_left = 18
-	_key_hint.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_key_hint.add_theme_stylebox_override("panel", UIKit.box(Color(0.04, 0.06, 0.08, 0.6), Color(1, 1, 1, 0.08), 5, 1, Vector4(10, 5, 12, 6)))
+	_key_hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_key_hint.offset_left = 16
+	_key_hint.offset_bottom = -16
+	_key_hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_root.add_child(_key_hint)
-	var hl := Label.new()
-	hl.text = "No radio - H shows the keyboard keys"
-	hl.add_theme_font_size_override("font_size", 15)
-	hl.add_theme_color_override("font_color", UIKit.TEXT)
-	_key_hint.add_child(hl)
+	var hv := VBoxContainer.new()
+	hv.add_theme_constant_override("separation", 0)
+	_key_hint.add_child(hv)
+	var h1 := Label.new()
+	h1.text = "NO RADIO"
+	h1.add_theme_font_override("font", UIKit.oswald())
+	h1.add_theme_font_size_override("font_size", 13)
+	h1.add_theme_color_override("font_color", UIKit.MUTED_LIGHT)
+	hv.add_child(h1)
+	var h2 := Label.new()
+	h2.text = "H  keyboard keys"
+	h2.add_theme_font_size_override("font_size", 15)
+	h2.add_theme_color_override("font_color", UIKit.TEXT)
+	hv.add_child(h2)
 
 var _key_hint: PanelContainer
 var _key_hint_left: float = 10.0 # seconds of flight it stays up
@@ -331,7 +344,10 @@ func _update_key_guide() -> void:
 	if _key_hint:
 		if not SceneLoader.is_loading():
 			_key_hint_left -= get_process_delta_time()
-		_key_hint.visible = not Settings.keyboard_help and keys and _key_hint_left > 0.0
+		# Only with no radio plugged in at all: a radio that hasn't moved yet
+		# reads "silent" (the OS reports only changes), so _joy_connected()
+		# was false and the hint showed with a radio (user, 2026-10-28).
+		_key_hint.visible = not Settings.keyboard_help and keys and InputManager.radio_status() == "none" and _key_hint_left > 0.0
 
 ## While flying: hidden AND confined to the window (2026-10-12: plain
 ## HIDDEN let macOS show the cursor again now and then - after a menu, the

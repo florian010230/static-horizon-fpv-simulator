@@ -1,9 +1,6 @@
 class_name PauseMenu
 extends CanvasLayer
 
-# Preloaded, not global classes (in-game update packs can't add those).
-const BugReportScreen = preload("res://scripts/bug_report_screen.gd")
-
 ## In-game menu: Esc while flying pauses the game (the whole scene tree -
 ## physics, drone, timers) and opens this card: camera angle and FOV
 ## (applied live to the frozen view behind the menu), switching drone,
@@ -22,8 +19,6 @@ var _settings: SettingsScreens
 var _drone_name: Label
 var _drone_tags: Label
 var _drone_locked: bool = false
-var _bug: BugReportScreen
-var _bug_screen: Control
 
 func setup(drone: Drone) -> void:
 	_drone = drone
@@ -46,11 +41,6 @@ func setup(drone: Drone) -> void:
 	_settings = SettingsScreens.new()
 	_root.add_child(_settings)
 	_settings.closed.connect(_on_settings_closed)
-	# Report a bug from right where it happened: map, drone and FPS go
-	# with it (BugReportScreen.collect_info).
-	_bug = BugReportScreen.new()
-	_bug_screen = _bug.build(_root, _close_bug)
-	_bug_screen.visible = false
 	visible = false
 
 func is_open() -> bool:
@@ -65,7 +55,6 @@ func open() -> void:
 
 func resume() -> void:
 	_settings.visible = false
-	_bug_screen.visible = false
 	visible = false
 	get_tree().paused = false
 
@@ -74,9 +63,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	# (While Settings is open it handles Esc itself, before this.)
 	get_viewport().set_input_as_handled()
-	if _bug_screen.visible:
-		_close_bug()
-	elif visible:
+	if visible:
 		resume()
 	else:
 		open()
@@ -133,7 +120,7 @@ func _build_card() -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	content.add_child(row)
-	for spec in [["Reset drone", _reset_drone], ["Change map", _change_map], ["Settings", _open_settings], ["Report a bug", _open_bug]]:
+	for spec in [["Reset drone", _reset_drone], ["Change map", _change_map], ["Settings", _open_settings]]:
 		var b := UIKit.button(spec[0], "", 54)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.pressed.connect(spec[1])
@@ -174,15 +161,6 @@ func _reset_drone() -> void:
 func _open_settings() -> void:
 	_card.visible = false
 	_settings.open()
-
-func _open_bug() -> void:
-	_card.visible = false
-	_bug.refresh()
-	_bug_screen.visible = true
-
-func _close_bug() -> void:
-	_bug_screen.visible = false
-	_card.visible = true
 
 func _on_settings_closed() -> void:
 	# Apply whatever changed: quality, shadows, performance mode, view

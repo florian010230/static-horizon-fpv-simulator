@@ -226,7 +226,7 @@ const HERO := {
 }
 
 ## `-- --dev-preview bugreport`: the main menu with its corner buttons, the
-## bug-report and Support screens, then the pause menu's bug report in
+## bug-report and Support screens, then the pause menu and the H hint in
 ## Village (bugreport_*.png). Nothing is sent (test run).
 func _bug_report_shots() -> void:
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
@@ -246,10 +246,12 @@ func _bug_report_shots() -> void:
 	pm.open()
 	await get_tree().create_timer(0.5).timeout
 	_shot("bugreport_pause.png")
-	pm.call("_open_bug")
-	await get_tree().create_timer(0.5).timeout
-	_shot("bugreport_pause_bug.png")
 	pm.resume()
+	# The H hint (bottom left; only with no radio and the key guide off).
+	Settings.keyboard_help = false
+	ui.set("_key_hint_left", 10.0)
+	await get_tree().create_timer(0.5).timeout
+	_shot("bugreport_keyhint.png")
 
 func _thumb_shots() -> void:
 	Settings.graphics_quality = 2
