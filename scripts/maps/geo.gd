@@ -26,15 +26,30 @@ extends RefCounted
 ## orders every triangle from its intended normal, so callers never
 ## think about it.
 
-const CELL: float = 64.0
-## Batch cell size for what is built next (64 m default; far filler
-## content uses bigger cells - fewer draw calls where nothing is near).
+## 256 m since FPS round 2 (2026-10-27, was 64): on the dev Mac's GL
+## driver each draw call costs ~19 us of CPU, and once the fine details
+## stopped at fine_range, Village went 77 -> 91 fps (509 -> 331 draws,
+## render CPU 9.4 -> 5.7 ms). Fine details stay in FINE_CELL cells: their
+## draw distance is measured to the batch's centre.
+const CELL: float = 256.0
+const FINE_CELL: float = 64.0
+## Batch cell size for what is built next (far filler content may use
+## bigger cells - fewer draw calls where nothing is near).
 var cell: float = CELL
 ## Materials of small details (markings, lamps, rails, vehicles...):
 ## their batches stop drawing past DETAIL_RANGE - sub-pixel out there,
 ## and thousands of draw calls saved.
 var detail_prefixes: Array[String] = ["rd_line", "rd_steel", "rd_lamp", "rd_kerb", "rd_barrier", "veh_", "train_", "rw_rail", "rw_steel", "rw_black", "rw_yellow", "rw_red", "rw_green", "rw_white", "rw_mast", "groove", "cty_metal", "cty_cornice", "boat_", "site_", "yard_"]
 const DETAIL_RANGE: float = 450.0
+## Fine details (garden furniture and paint, house interiors seen only
+## through windows, house trim - window frames, sills, gutters): their
+## batches stop at fine_range. FPS round 2 (2026-10-27): Village is
+## triangle-bound, not draw-call-bound (35% fewer batches gained nothing);
+## these were ~260k of the ~570k triangles at the spawn - thin slivers a
+## pixel wide out there. All three at 160 m: 67 -> 76 fps (any one alone
+## was within the noise); no visible change from the spawn.
+var fine_prefixes: Array[String] = ["gd_", "hcd_", "hc_trim"]
+var fine_range: float = 180.0
 ## Vertex compression for the big generated meshes (Geo batches, terrain
 ## chunks, Fleet chunks): 16-bit positions within the mesh's bounding box
 ## and octahedral normals - 16 bytes a vertex instead of 24 (measured,
@@ -1554,13 +1569,17 @@ func _begin(mat: String, pos: Vector3, collide: bool) -> void:
 			return
 	assert(_mats.has(mat), "Geo: unknown material " + mat)
 	if not _mat_cell.has(mat):
-		var coarse: bool = false
+		var cs_m: float = 0.0 # 0 = the current cell
 		for pre in coarse_prefixes + detail_prefixes:
 			if mat.begins_with(pre):
-				coarse = true
+				cs_m = COARSE_CELL
 				break
-		_mat_cell[mat] = coarse
-	var cs: float = maxf(cell, COARSE_CELL) if _mat_cell[mat] else cell
+		for pre in fine_prefixes:
+			if mat.begins_with(pre):
+				cs_m = FINE_CELL
+				break
+		_mat_cell[mat] = cs_m
+	var cs: float = cell if _mat_cell[mat] == 0.0 else (FINE_CELL if _mat_cell[mat] == FINE_CELL else maxf(cell, COARSE_CELL))
 	var cx: int = floori(pos.x / cs)
 	var cz: int = floori(pos.z / cs)
 	var key: String = "%s|%d|%d|%d" % [mat, cx, cz, int(cs)]
@@ -1760,6 +1779,12 @@ func commit(root: Node3D) -> void:
 			if _batch_mat[key].begins_with(pre):
 				mi.visibility_range_end = DETAIL_RANGE
 				mi.visibility_range_end_margin = 40.0
+				mi.set_meta("geo_detail", true)
+				break
+		for pre in fine_prefixes:
+			if _batch_mat[key].begins_with(pre):
+				mi.visibility_range_end = fine_range
+				mi.visibility_range_end_margin = 20.0
 				mi.set_meta("geo_detail", true)
 				break
 		holder.add_child(mi)

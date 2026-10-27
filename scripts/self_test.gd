@@ -723,6 +723,11 @@ func _test_keyboard() -> void:
 	fresh.free()
 	var lvl0: bool = InputManager.self_level
 	var user0: bool = InputManager._level_user_set
+	# Without a mode switch: the dev machine's real calibration has one
+	# (mode_source "axis"), and then the switch decides - this check
+	# failed there (2026-10-27).
+	var src0: String = InputManager.mode_source
+	InputManager.mode_source = ""
 	InputManager._level_user_set = false
 	InputManager.self_level = true
 	InputManager.radio_found_mode()
@@ -733,6 +738,7 @@ func _test_keyboard() -> void:
 	var kept: bool = InputManager.self_level
 	InputManager.self_level = lvl0
 	InputManager._level_user_set = user0
+	InputManager.mode_source = src0
 	_check(default_angle and radio_acro and kept, "keyboard: Angle by default without a radio; a radio switches to Acro unless the pilot chose")
 	InputManager._kb_axes = Vector3.ZERO
 	InputManager.update_keyboard_axes(0.05, Vector3(1, 0, 0)) # D held

@@ -221,6 +221,32 @@ const HERO := {
 	"test_valley": [Vector3(250, 55, 190), Vector3(20, 0, 0)],
 }
 
+## `-- --dev-preview bugreport`: the main menu with its corner buttons, the
+## bug-report and Support screens, then the pause menu's bug report in
+## Village (bugreport_*.png). Nothing is sent (test run).
+func _bug_report_shots() -> void:
+	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+	await get_tree().create_timer(1.5).timeout
+	var menu: Node = get_tree().current_scene
+	_shot("bugreport_menu.png")
+	menu.call("_show", "bug")
+	await get_tree().create_timer(0.5).timeout
+	_shot("bugreport_menu_bug.png")
+	menu.call("_show", "support")
+	await get_tree().create_timer(0.5).timeout
+	_shot("bugreport_support.png")
+	get_tree().change_scene_to_file("res://scenes/maps/Village.tscn")
+	await get_tree().create_timer(6.0).timeout
+	var ui: Node = get_tree().current_scene.find_child("UI", true, false)
+	var pm: PauseMenu = ui.get("pause_menu")
+	pm.open()
+	await get_tree().create_timer(0.5).timeout
+	_shot("bugreport_pause.png")
+	pm.call("_open_bug")
+	await get_tree().create_timer(0.5).timeout
+	_shot("bugreport_pause_bug.png")
+	pm.resume()
+
 func _thumb_shots() -> void:
 	Settings.graphics_quality = 2
 	Settings.view_distance = 2400.0
@@ -526,6 +552,10 @@ func _go() -> void:
 		return
 	if OS.get_cmdline_user_args().has("borders"):
 		await _border_shots()
+		get_tree().quit()
+		return
+	if OS.get_cmdline_user_args().has("bugreport"):
+		await _bug_report_shots()
 		get_tree().quit()
 		return
 	if OS.get_cmdline_user_args().has("lab"):
@@ -1329,6 +1359,7 @@ func _perf_detail() -> void:
 		# the drone - which materials cost the draw calls.
 		var all_n: Dictionary = {}
 		var near_n: Dictionary = {}
+		var near_t: Dictionary = {}
 		var dpos: Vector3 = (sc.get_node("Drone") as Node3D).global_position
 		for mi in sc.find_children("*", "MeshInstance3D", true, false):
 			var m3 := mi as MeshInstance3D
@@ -1338,13 +1369,20 @@ func _perf_detail() -> void:
 				var mat: Material = m3.get_active_material(si)
 				var key: String = (mat.resource_name if mat and mat.resource_name != "" else str(mat.get_class() if mat else "none")) + ("/" + (mat as ShaderMaterial).shader.resource_path.get_file() if mat is ShaderMaterial and (mat as ShaderMaterial).shader else "")
 				all_n[key] = all_n.get(key, 0) + 1
+				# Triangles, not batches: Village didn't get faster with 35% fewer
+				# draw calls (2026-10-27) - it's the triangle count.
+				var tris: int = 0
+				if m3.mesh is ArrayMesh:
+					var am := m3.mesh as ArrayMesh
+					tris = (am.surface_get_array_index_len(si) if am.surface_get_array_index_len(si) > 0 else am.surface_get_array_len(si)) / 3
 				if (m3.global_transform * m3.get_aabb()).get_center().distance_to(dpos) < 300.0:
 					near_n[key] = near_n.get(key, 0) + 1
+					near_t[key] = near_t.get(key, 0) + tris
 		var keys: Array = near_n.keys()
-		keys.sort_custom(func(x, y): return near_n[x] > near_n[y])
+		keys.sort_custom(func(x, y): return near_t[x] > near_t[y])
 		print("PERFD mats %s: %d materials, %d batches near, %d all" % [id, all_n.size(), near_n.values().reduce(func(a2, b2): return a2 + b2, 0), all_n.values().reduce(func(a2, b2): return a2 + b2, 0)])
 		for k in keys.slice(0, 40):
-			print("PERFD mat %-40s near %4d  all %4d" % [k, near_n[k], all_n[k]])
+			print("PERFD mat %-40s near %4d  all %4d  tris near %6dk" % [k, near_n[k], all_n[k], near_t[k] / 1000])
 		return
 	if OS.has_environment("SH_PERFD_PASSDIFF"):
 		# The same frozen view with and without the video pass, per
@@ -1415,6 +1453,10 @@ func _perf_detail() -> void:
 	var variants: Array = [
 		["base", func(): pass, func(): pass],
 		["no fisheye", func(): Settings.lens_fisheye = 0, func(): Settings.lens_fisheye = 1],
+		# (With the fisheye on, the 3D renders in FpvVideo's own viewport:
+		# "scale 0.35" below changes nothing there. These two do.)
+		["nofish scale 0.5", func(): Settings.lens_fisheye = 0; get_viewport().scaling_3d_scale = 0.5, func(): Settings.lens_fisheye = 1; get_viewport().scaling_3d_scale = Settings.render_scale(Settings.graphics_quality)],
+		["nofish no gen", func(): Settings.lens_fisheye = 0; _child_vis(sc, "Generated", false), func(): Settings.lens_fisheye = 1; _child_vis(sc, "Generated", true)],
 		["scale 0.35", func(): get_viewport().scaling_3d_scale = 0.35, func(): get_viewport().scaling_3d_scale = Settings.render_scale(Settings.graphics_quality)],
 		["low", func(): _set_q(0), func(): _set_q(q0)],
 		["medium", func(): _set_q(1), func(): _set_q(q0)],
@@ -1444,6 +1486,10 @@ func _perf_detail() -> void:
 		if not only.is_empty() and not only.has(v[0]):
 			continue
 		(v[1] as Callable).call()
+		# A quality change re-applies the saved FPS limit and vsync: every
+		# variant after "low" read a flat 60 fps (2026-10-27).
+		Settings.set_max_fps(0)
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 		DisplayServer.window_move_to_foreground()
 		await get_tree().create_timer(1.5).timeout
 		var f0: int = Engine.get_frames_drawn()

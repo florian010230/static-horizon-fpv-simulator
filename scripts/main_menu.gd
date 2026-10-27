@@ -24,7 +24,7 @@ const MENU_FPS: int = 30
 ## The maps themselves live in MapCatalog (scripts/map_catalog.gd).
 
 ## Where Back / Esc goes from each screen.
-const BACK_TARGET := {"mode": "main", "map": "mode", "tracks": "map", "about": "main", "licences": "about", "updates": "main", "achievements": "main"}
+const BACK_TARGET := {"mode": "main", "map": "mode", "tracks": "map", "about": "main", "licences": "about", "updates": "main", "achievements": "main", "bug": "main", "support": "main"}
 const WEBSITE := "https://statichorizonfpv.com/"
 
 var _settings: SettingsScreens
@@ -32,6 +32,8 @@ var _updater: Updater
 var _updates: UpdatesScreen
 var _ping: FirstStartPing
 var _achievements: AchievementsScreen
+var _bug: BugReportScreen
+var _support: SupportScreen
 var _update_hint: Button
 
 var _screens: Dictionary = {}
@@ -83,6 +85,10 @@ func _ready() -> void:
 	_screens["updates"] = _updates.build(root, _updater, func(): _show("main"))
 	_achievements = AchievementsScreen.new()
 	_screens["achievements"] = _achievements.build(root, func(): _show("main"))
+	_bug = BugReportScreen.new()
+	_screens["bug"] = _bug.build(root, func(): _show("main"))
+	_support = SupportScreen.new()
+	_screens["support"] = _support.build(root, func(): _show("main"))
 	_updater.finished.connect(_refresh_update_hint)
 	Updater.note_launch()
 	_refresh_update_hint()
@@ -170,6 +176,8 @@ func _show(screen: String) -> void:
 		_fill_licences()
 	if screen == "achievements":
 		_achievements.refresh()
+	if screen == "bug":
+		_bug.refresh()
 	if screen == "main":
 		_refresh_update_hint()
 	# Keyboard / gamepad: something is always focused, so arrows + Enter
@@ -239,19 +247,24 @@ func _refresh_update_hint() -> void:
 	else:
 		_update_hint.visible = false
 
-## The main screen's corners: a small Settings button bottom left; the
-## version, the quiet "new version" / "what's new" hint and a small
-## Updates button bottom right.
+## The main screen's corners: small Settings, Report a bug and Support
+## buttons bottom left (the last two: user, 2026-10-27 - there, not as
+## big rows); the version, the quiet "new version" / "what's new" hint
+## and a small Updates button bottom right.
 func _build_corners(screen: Control) -> void:
-	var settings := UIKit.button("Settings", "MainChip", 40)
-	settings.add_theme_font_size_override("font_size", 19)
-	settings.custom_minimum_size.x = 130
-	settings.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	settings.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	settings.offset_left = 28
-	settings.offset_bottom = -22
-	settings.pressed.connect(func(): _show("settings"))
-	screen.add_child(settings)
+	var left := HBoxContainer.new()
+	left.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	left.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	left.offset_left = 28
+	left.offset_bottom = -22
+	left.add_theme_constant_override("separation", 14)
+	screen.add_child(left)
+	for spec in [["Settings", "settings", 130], ["Report a bug", "bug", 160], ["Support me", "support", 140]]:
+		var b := UIKit.button(spec[0], "MainChip", 40)
+		b.add_theme_font_size_override("font_size", 19)
+		b.custom_minimum_size.x = spec[2]
+		b.pressed.connect(_show.bind(spec[1]))
+		left.add_child(b)
 	var corner := HBoxContainer.new()
 	corner.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	corner.grow_horizontal = Control.GROW_DIRECTION_BEGIN

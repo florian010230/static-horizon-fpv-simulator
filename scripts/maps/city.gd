@@ -66,7 +66,7 @@ func building(c: Vector3, size: Vector2, yaw: float, floors: int, facade: String
 	var h: float = floors * STOREY
 	var b := Basis(Vector3.UP, yaw)
 	var old_cell: float = geo.cell
-	geo.cell = 128.0
+	geo.cell = maxf(old_cell, 128.0) # (Geo.CELL is 256 since 2026-10-27)
 	if PLASTER_TINTS.has(facade):
 		var t: Color = PLASTER_TINTS[facade]
 		var j: float = rng.randf_range(0.93, 1.05)
