@@ -1,4 +1,5 @@
-class_name SupportScreen
+# (No class_name: an in-game update pack can't add global classes -
+# users preload this file. 2026-10-27, 0.11.1.)
 extends RefCounted
 
 ## "Support me" (small button in the main menu corner, user 2026-10-27): a

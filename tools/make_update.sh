@@ -31,7 +31,9 @@ grep -q "config/version=\"$VER\"" project.godot || { echo "project.godot is not 
 MIN_BASE="$PREV"
 if ! git rev-parse -q --verify "v$PREV" >/dev/null; then
 	echo "No tag v$PREV - min_base = $VER (no in-game update)"; MIN_BASE="$VER"
-elif ! git diff --quiet "v$PREV" HEAD -- project.godot \
+# (config/version changes with every release; UpdatePack sets it itself
+# after loading a pack - only other project.godot changes count.)
+elif git diff -U0 "v$PREV" HEAD -- project.godot | grep '^[-+]' | grep -v '^\(---\|+++\)' | grep -qv 'config/version=' \
 	|| git diff "v$PREV" HEAD -- '*.gd' | grep -q '^+class_name'; then
 	echo "project.godot or class_name scripts changed since v$PREV - min_base = $VER (no in-game update)"
 	MIN_BASE="$VER"

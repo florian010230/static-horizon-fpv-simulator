@@ -1,4 +1,5 @@
-class_name GhostCine
+# (No class_name: an in-game update pack can't add global classes -
+# users preload this file. 2026-10-27, 0.11.1.)
 extends Node
 ## Ghost lap renderer and checker (dev tool, 2026-10-22): turns the pilot's
 ## recorded race ghosts into clean 1080p60 trailer frames, and checks a

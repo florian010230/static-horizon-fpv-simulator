@@ -1,5 +1,8 @@
 extends Node
 
+# Preloaded, not global classes (in-game update packs can't add those).
+const TakeRecorder = preload("res://scripts/take_recorder.gd")
+
 ## Autoloaded singleton holding options that need to survive scene
 ## changes (menu <-> gameplay): crosshair, fullscreen, shadow quality.
 

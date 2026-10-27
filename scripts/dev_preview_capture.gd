@@ -1,5 +1,9 @@
 extends Node
 
+# Preloaded, not global classes (in-game update packs can't add those).
+const TakeRecorder = preload("res://scripts/take_recorder.gd")
+const GhostCine = preload("res://scripts/ghost_cine.gd")
+
 ## Dev tool, not part of the shipped game: renders a few real frames and
 ## saves screenshots to the project root, so the project can be visually
 ## previewed without a screen-sharing/remote-desktop setup. Godot's

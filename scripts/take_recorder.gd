@@ -1,4 +1,5 @@
-class_name TakeRecorder
+# (No class_name: an in-game update pack can't add global classes -
+# users preload this file. 2026-10-27, 0.11.1.)
 extends Node
 
 ## Dev tool for trailer footage: with `-- --record-all` every flight is

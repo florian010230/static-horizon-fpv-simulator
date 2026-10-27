@@ -1,6 +1,10 @@
 class_name MainMenu
 extends CanvasLayer
 
+# Preloaded, not global classes (in-game update packs can't add those).
+const BugReportScreen = preload("res://scripts/bug_report_screen.gd")
+const SupportScreen = preload("res://scripts/support_screen.gd")
+
 ## The real entry point (see project.godot run/main_scene) - a proper
 ## menu outside gameplay, matching what every real FPV sim ships with,
 ## rather than dropping straight into flying. Built entirely in code (no

@@ -1,4 +1,5 @@
-class_name BugReportScreen
+# (No class_name: an in-game update pack can't add global classes -
+# users preload this file. 2026-10-27, 0.11.1.)
 extends RefCounted
 
 ## "Report a bug" (main menu corner and pause menu, user 2026-10-27): the
@@ -68,12 +69,15 @@ func build(root: Control, on_back: Callable) -> Control:
 	_send.custom_minimum_size.x = 180
 	_send.pressed.connect(_on_send)
 	row.add_child(_send)
+	# No worker yet (0.11.1 shipped before it): no Send button rather than
+	# one that only says "not available".
+	_send.visible = REPORT_URL != ""
 	_status = Label.new()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(_status)
-	UIKit.section(c, "Other ways")
+	UIKit.section(c, "Other ways" if REPORT_URL != "" else "Send it")
 	var other := HBoxContainer.new()
 	other.add_theme_constant_override("separation", 12)
 	c.add_child(other)

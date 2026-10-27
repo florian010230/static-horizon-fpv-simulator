@@ -7,6 +7,32 @@ extends RefCounted
 ## with every release (and bump config/version in project.godot).
 
 const ENTRIES: Array = [
+	["0.11.1", """# Faster, smoother, and a way to report bugs
+
+# Performance
+- Higher frame rates on weak computers, most on the bigger maps (Harbour, Mountain Lake, Village): the maps are drawn in fewer, bigger pieces, and fine details stop where they are only a pixel wide.
+- High quality is faster too.
+- "Low-res window" (Settings -> Graphics) runs the whole window at half resolution on Retina/HiDPI screens - the biggest speed-up for weak Macs (takes effect after a restart).
+- The frame rate limit now goes down to 10 FPS.
+
+# Loading
+- A new loading screen: a picture of the map, what the game is doing right now, and tips. The first load of a map after an update takes longest - the game says so.
+- Shaders are prepared while the loading screen is up, so the first flight no longer jerks when new things come into view.
+- Fixed: "OUT OF RANGE" could appear right after loading.
+
+# Fixes
+- Fixed: on High with the Clean camera look some maps were black.
+- Fullscreen or window: your choice is remembered. F11 or Alt+Enter switches at any time.
+- Radio calibration: an arm switch that wasn't moved since the game started is recognised.
+- Motor sound: no more quiet ticking in time with the motors.
+- Village: the start cross on the mat shows from every distance.
+- Flying with the keyboard: if you switched the key guide off, a short hint says how to get it back (H).
+- Settings: the Static Whoop's render distance ends at 400 m (its camera sits very close to walls); the slider says so.
+
+# New
+- Report a bug: in the main menu and the pause menu. Write what happened, then copy it, send it as an email, or open a GitHub issue - the game info that helps me find the bug comes along if you want.
+- Support me: if you want to support the project.
+"""],
 	["0.11.0", """# The Race Update
 
 # Race mode: six tracks per race map

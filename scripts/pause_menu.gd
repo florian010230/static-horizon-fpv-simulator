@@ -1,6 +1,9 @@
 class_name PauseMenu
 extends CanvasLayer
 
+# Preloaded, not global classes (in-game update packs can't add those).
+const BugReportScreen = preload("res://scripts/bug_report_screen.gd")
+
 ## In-game menu: Esc while flying pauses the game (the whole scene tree -
 ## physics, drone, timers) and opens this card: camera angle and FOV
 ## (applied live to the frozen view behind the menu), switching drone,

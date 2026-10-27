@@ -1,6 +1,9 @@
 class_name RaceCourse
 extends Node3D
 
+# Preloaded, not global classes (in-game update packs can't add those).
+const TakeRecorder = preload("res://scripts/take_recorder.gd")
+
 ## A timed race course: an ordered list of gate openings, lap timing,
 ## best laps saved per map + drone, and a glowing marker on the next
 ## gate. Gate visuals and collision are built through the map's Geo.
