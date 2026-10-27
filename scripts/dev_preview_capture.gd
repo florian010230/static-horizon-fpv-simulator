@@ -236,6 +236,11 @@ func _thumb_shots() -> void:
 			continue
 		get_tree().change_scene_to_file(m.scene)
 		await get_tree().create_timer(3.0).timeout
+		# A slow (cold) build was still running after 3 s: the Steel Mill
+		# picture came out from the spawn with the key guide in it (2026-10-26).
+		while get_tree().current_scene == null or get_tree().current_scene.scene_file_path != m.scene or not get_tree().current_scene.is_node_ready():
+			await get_tree().process_frame
+		Settings.keyboard_help = false
 		var root: Node = get_tree().current_scene
 		var drone := root.find_child("Drone", true, false) as RigidBody3D
 		var ui := root.find_child("UI", true, false) as CanvasLayer

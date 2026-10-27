@@ -298,14 +298,40 @@ func _build_key_guide() -> void:
 		d.add_theme_font_size_override("font_size", 15)
 		d.add_theme_color_override("font_color", UIKit.TEXT if row[0] != "KEYBOARD" else UIKit.MUTED_LIGHT)
 		grid.add_child(d)
+	# With the guide switched off (H, saved), a keyboard pilot saw no keys
+	# at all and no way back (user, 2026-10-26): a short line for the
+	# first seconds of each flight says how to get it back.
+	_key_hint = PanelContainer.new()
+	_key_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_key_hint.add_theme_stylebox_override("panel", UIKit.box(Color(0.04, 0.06, 0.08, 0.72), Color(1, 1, 1, 0.1), 6, 1, Vector4(14, 8, 16, 8)))
+	_key_hint.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	_key_hint.offset_left = 18
+	_key_hint.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_root.add_child(_key_hint)
+	var hl := Label.new()
+	hl.text = "No radio - H shows the keyboard keys"
+	hl.add_theme_font_size_override("font_size", 15)
+	hl.add_theme_color_override("font_color", UIKit.TEXT)
+	_key_hint.add_child(hl)
+
+var _key_hint: PanelContainer
+var _key_hint_left: float = 10.0 # seconds of flight it stays up
 
 func _update_key_guide() -> void:
 	var h: bool = Input.is_key_pressed(KEY_H)
 	if h and not _prev_h:
 		Settings.keyboard_help = not Settings.keyboard_help # (saved with the other settings)
+		_key_hint_left = 0.0
 	_prev_h = h
+	# Not while the loading card fades out: it showed through it, half
+	# there, on top of the card (user, 2026-10-26).
+	var keys: bool = not InputManager._joy_connected() and not (replay != null and replay.active) and not SceneLoader.is_loading()
 	if _key_guide:
-		_key_guide.visible = Settings.keyboard_help and not InputManager._joy_connected() and not (replay != null and replay.active)
+		_key_guide.visible = Settings.keyboard_help and keys
+	if _key_hint:
+		if not SceneLoader.is_loading():
+			_key_hint_left -= get_process_delta_time()
+		_key_hint.visible = not Settings.keyboard_help and keys and _key_hint_left > 0.0
 
 ## While flying: hidden AND confined to the window (2026-10-12: plain
 ## HIDDEN let macOS show the cursor again now and then - after a menu, the

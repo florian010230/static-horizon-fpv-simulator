@@ -177,6 +177,18 @@ func _build_settings() -> Control:
 	UIKit.gap(g1, 6)
 	UIKit.slider(g1, "Render distance", Settings.VIEW_DISTANCE_MIN, Settings.VIEW_DISTANCE_MAX, 100.0, Settings.view_distance, func(v: float): Settings.view_distance = v, " m")
 	_hint(g1, "How far the world is drawn before it fades into the haze. Shorter = more FPS.")
+	# The whoop's camera stops at 400 m whatever the slider says (its 1.2 cm
+	# near plane - see Drone.PROFILES); the slider looked broken (user, 2026-10-26).
+	# (Checked each time the screen shows: the drone can change in between.)
+	var far_hint := _hint_label()
+	far_hint.text = "Static Whoop: max %d m (its camera sits right at the walls)." % int(Drone.PROFILES["whoop"].camera_far)
+	g1.add_child(far_hint)
+	var show_far := func() -> void:
+		var cur: Node = get_tree().current_scene
+		var forced: String = MapCatalog.forced_drone(cur.scene_file_path) if cur else ""
+		far_hint.visible = (forced if forced != "" else Settings.selected_drone) == "whoop"
+	show_far.call()
+	visibility_changed.connect(show_far)
 	UIKit.gap(g1, 6)
 	UIKit.toggle(g1, "Sun shadows", Settings.shadows_enabled, func(v: bool): Settings.shadows_enabled = v)
 	_hint(g1, "Real shadows from every building, tree and crane. Cheap - computed once per map.")
