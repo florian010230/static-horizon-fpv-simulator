@@ -1410,6 +1410,12 @@ func _test_bug_report_replies() -> void:
 	_check(st.text.contains("other ways"), "bug report: 429 full offers the other ways", st.text)
 	br.handle_reply(429, PackedStringArray(["Retry-After: 1800"]), "not json")
 	_check(st.text == "Please wait 30 minutes before the next report.", "bug report: 429 without JSON uses Retry-After", st.text)
+	# Send stays usable: off only while sending or waiting (a test run keeps
+	# no wait file), and an empty text gets a hint instead of a request.
+	_check(not br._send.disabled, "bug report: Send is on again after a report", "disabled")
+	br._text.text = ""
+	br._on_send()
+	_check(not br._send.disabled and st.text.begins_with("Write what happened"), "bug report: Send with no text asks for one", st.text)
 	br.handle_reply(503, PackedStringArray(), "")
 	_check(st.text.begins_with("Couldn't send (503)"), "bug report: other errors offer the fallbacks", st.text)
 	holder.queue_free()

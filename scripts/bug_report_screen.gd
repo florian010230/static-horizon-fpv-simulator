@@ -41,6 +41,7 @@ var _with_info: CheckButton
 var _key: String = ""
 ## The line the countdown is added to while the next report has to wait.
 var _countdown_base: String = ""
+var _sending: bool = false
 ## Sent even with the game info switched off.
 const ALWAYS: Array[String] = ["v", "os"]
 
@@ -120,7 +121,7 @@ func refresh() -> void:
 	_show_info()
 	_status.text = ""
 	_countdown_base = ""
-	_send.disabled = _text.text.strip_edges() == ""
+	_update_send()
 	if _can_send() and _wait_left() > 0:
 		_countdown_base = "Thank you for your last report!"
 		_tick()
@@ -164,12 +165,21 @@ func _on_text_changed() -> void:
 		_text.text = _text.text.left(MAX_TEXT)
 		_text.set_caret_column(_text.get_line(_text.get_line_count() - 1).length())
 		_text.set_caret_line(_text.get_line_count() - 1)
-	_send.disabled = _text.text.strip_edges() == ""
+	_update_send()
+
+## Send is off only while a report is on its way or the next one has to
+## wait; the countdown turns it back on (user, 2026-10-28: it stayed grey
+## after the countdown until something new was typed).
+func _update_send() -> void:
+	_send.disabled = _sending or (_can_send() and _wait_left() > 0)
 
 func _can_send() -> bool:
 	return REPORT_URL != "" and _key != ""
 
 func _on_send() -> void:
+	if _text.text.strip_edges() == "":
+		_fail("Write what happened first, then press Send.")
+		return
 	if not _can_send() or Updater.is_test_run():
 		_fail("Sending isn't available in this version. Please use one of the other ways below.")
 		return
@@ -180,6 +190,7 @@ func _on_send() -> void:
 	var body: Dictionary = _sent_info()
 	body["text"] = _text.text.strip_edges()
 	body["email"] = _email.text.strip_edges()
+	_sending = true
 	_send.disabled = true
 	_status.text = "Sending..."
 	_status.remove_theme_color_override("font_color")
@@ -187,6 +198,7 @@ func _on_send() -> void:
 		_fail("Couldn't send. Please try again later or use one of the other ways below.")
 
 func _on_done(result: int, code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+	_sending = false
 	handle_reply(code if result == HTTPRequest.RESULT_SUCCESS else 0, headers, body.get_string_from_utf8())
 
 ## The worker's answer -> the line the player sees (and the local
@@ -198,7 +210,7 @@ func handle_reply(code: int, headers: PackedStringArray, text: String) -> void:
 		_status.text = "Sent - thank you!"
 		_status.add_theme_color_override("font_color", UIKit.ACCENT)
 		_text.text = ""
-		_send.disabled = true
+		_update_send()
 		_countdown_base = _status.text
 		_tick()
 		return
@@ -220,6 +232,9 @@ func handle_reply(code: int, headers: PackedStringArray, text: String) -> void:
 ## Once a second: "(next report in 0:42)" after the line, until it may go
 ## (user, 2026-10-28).
 func _tick() -> void:
+	if not screen.is_visible_in_tree():
+		return
+	_update_send()
 	if _countdown_base == "":
 		return
 	var left: int = _wait_left()
@@ -260,7 +275,8 @@ func _fail(msg: String) -> void:
 	_countdown_base = ""
 	_status.text = msg
 	_status.add_theme_color_override("font_color", Color("#ffb86b"))
-	_send.disabled = _text.text.strip_edges() == ""
+	_sending = false
+	_update_send()
 
 ## The report as plain text (clipboard / email body).
 func _plain() -> String:
