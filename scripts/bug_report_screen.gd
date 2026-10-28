@@ -252,6 +252,10 @@ func _retry_after(headers: PackedStringArray) -> int:
 
 ## Seconds until the next report may go (0: now).
 func _wait_left() -> int:
+	# A test run neither writes nor reads it (the player's real wait made
+	# the self-test fail, 2026-10-28).
+	if Updater.is_test_run():
+		return 0
 	var cfg := ConfigFile.new()
 	if cfg.load(STATE_PATH) != OK:
 		return 0
