@@ -121,8 +121,11 @@ func _run() -> void:
 		var only: PackedStringArray = OS.get_environment("SH_SELFTEST_ONLY").split(",")
 		if only.has("menu"):
 			await _test_menu_flow()
+			_test_bug_report_replies()
 		if only.has("reset"):
 			await _test_reset_switch()
+		if only.has("calibration"):
+			await _test_calibration_and_arm_switch()
 		if only.has("realism"):
 			await _test_realism()
 		if only.has("race"):
@@ -162,6 +165,7 @@ func _run() -> void:
 		get_tree().quit(1 if _failures > 0 else 0)
 		return
 	await _test_menu_flow()
+	_test_bug_report_replies()
 	_test_updater()
 	_test_update_pack()
 	_test_save_keeps_unknown_keys()
@@ -1378,6 +1382,38 @@ func _settings_snapshot() -> String:
 				parts.append("%s=%s" % [pr.name, var_to_str(obj.get(pr.name))])
 	return ";".join(parts)
 
+## Report a bug -> Send: the worker's replies (mocked - a test run never
+## sends) give the right line; the key ships in the build.
+func _test_bug_report_replies() -> void:
+	var holder := Control.new()
+	get_tree().root.add_child(holder)
+	var br = preload("res://scripts/bug_report_screen.gd").new()
+	br.build(holder, func(): pass)
+	_check(br._can_send() and br._send.visible, "bug report: Send is on (key file present)")
+	var st: Label = br._status
+	br.handle_reply(204, PackedStringArray(), "")
+	_check(st.text.begins_with("Sent - thank you!") and not st.text.contains("I read"), "bug report: 204 says sent", st.text)
+	# The countdown after it (a test run never writes the wait file: fake it).
+	br._countdown_base = "Sent - thank you!"
+	var wait_left_was: int = br._wait_left()
+	_check(br._duration(42) == "42 seconds" and "%d:%02d" % [102 / 60, 102 % 60] == "1:42", "bug report: countdown format")
+	if wait_left_was == 0:
+		br._tick()
+		_check(st.text == "Sent - thank you!", "bug report: no countdown once the wait is over", st.text)
+	br.handle_reply(429, PackedStringArray(["Retry-After: 300"]), '{"error":"wait","retry_after_seconds":300}')
+	_check(st.text == "Please wait 5 minutes before the next report.", "bug report: 429 wait names the time", st.text)
+	br.handle_reply(429, PackedStringArray(), '{"error":"wait","retry_after_seconds":60}')
+	_check(st.text == "Please wait 60 seconds before the next report.", "bug report: 429 wait in seconds", st.text)
+	br.handle_reply(429, PackedStringArray(), '{"error":"limit","message":"Daily limit reached, try again tomorrow","retry_after_seconds":40000}')
+	_check(st.text.begins_with("Daily limit reached, try again tomorrow."), "bug report: 429 limit shows the message", st.text)
+	br.handle_reply(429, PackedStringArray(), '{"error":"full","retry_after_seconds":40000}')
+	_check(st.text.contains("other ways"), "bug report: 429 full offers the other ways", st.text)
+	br.handle_reply(429, PackedStringArray(["Retry-After: 1800"]), "not json")
+	_check(st.text == "Please wait 30 minutes before the next report.", "bug report: 429 without JSON uses Retry-After", st.text)
+	br.handle_reply(503, PackedStringArray(), "")
+	_check(st.text.begins_with("Couldn't send (503)"), "bug report: other errors offer the fallbacks", st.text)
+	holder.queue_free()
+
 func _test_calibration_and_arm_switch() -> void:
 	var cfg_path: String = InputManager.CALIBRATION_PATH
 	var backup: String = FileAccess.get_file_as_string(cfg_path) if FileAccess.file_exists(cfg_path) else ""
@@ -1454,6 +1490,31 @@ func _test_calibration_and_arm_switch() -> void:
 	buttons[4] = false
 	await _wait(0.2)
 	_check(InputManager.arm_source == "button" and InputManager.arm_button_index == 4 and InputManager.axis_roll == 0, "calibration: Assign Arm Switch alone (button 4), sticks untouched")
+	# Assign Reset / Line-of-Sight: the user's flip on and off didn't move
+	# the wizard on (2026-10-28) - a channel untouched since the start,
+	# then one already known, then a button.
+	for spec in [["Assign Reset Button", "reset", "axis", 7], ["Assign Line-of-Sight Button", "los", "button", 6]]:
+		ss._cal_next.pressed.emit()
+		await _wait(0.1)
+		if spec[2] == "axis":
+			axes[7] = 0.0
+			InputManager._forget_axes()
+		_find_button(ss, spec[0]).pressed.emit()
+		await _wait(0.2)
+		_check(ss._calibration_step == ss.STEP_CAPTURE, "calibration: %s opens the capture step" % spec[0], "step %d" % ss._calibration_step)
+		if spec[2] == "axis":
+			axes[7] = 1.0
+		else:
+			buttons[spec[3]] = true
+		await _wait(0.2)
+		_check(not ss._capture_candidate.is_empty(), "calibration: %s sees the flip ON" % spec[0])
+		if spec[2] == "axis":
+			axes[7] = -1.0
+		else:
+			buttons[spec[3]] = false
+		await _wait(0.4)
+		_check(ss._calibration_step == ss.STEP_TEST and InputManager.get(spec[1] + "_source") == spec[2] and InputManager.get(spec[1] + "_" + ("axis" if spec[2] == "axis" else "button_index")) == spec[3],
+			"calibration: %s assigned after flip on and off" % spec[0], "step %d %s" % [ss._calibration_step, InputManager.get(spec[1] + "_source")])
 	await _test_unusual_radio(ss)
 	ss._cal_next.pressed.emit()
 	await _tap(KEY_ESCAPE)

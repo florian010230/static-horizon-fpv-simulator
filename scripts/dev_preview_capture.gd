@@ -236,6 +236,39 @@ func _bug_report_shots() -> void:
 	menu.call("_show", "bug")
 	await get_tree().create_timer(0.5).timeout
 	_shot("bugreport_menu_bug.png")
+	# After Send: the countdown to the next report (faked, nothing sent).
+	var br = menu.get("_bug")
+	br.handle_reply(204, PackedStringArray(), "")
+	br._status.text = "Sent - thank you! (next report in 0:42)"
+	await get_tree().create_timer(0.3).timeout
+	_shot("bugreport_sent.png")
+	br._status.text = ""
+	# The radio wizard's test card after "Assign Reset Button": ARM plus
+	# the reset switch (virtual radio; the assignment is put back).
+	menu.call("_show", "settings")
+	await get_tree().create_timer(0.3).timeout
+	var ss: SettingsScreens = menu.get("_settings")
+	var keep := {}
+	for f in ["reset_source", "reset_axis", "reset_axis_off_value", "reset_axis_on_value"]:
+		keep[f] = InputManager.get(f)
+	var axes: Array = [0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 1.0]
+	InputManager.test_joy = {"axes": axes, "buttons": []}
+	InputManager.reset_source = "axis"
+	InputManager.reset_axis = 7
+	InputManager.reset_axis_off_value = -1.0
+	InputManager.reset_axis_on_value = 1.0
+	ss._capture_only = "reset"
+	ss._show_calibration()
+	ss._calibration_step = ss.STEP_TEST
+	ss._update_calibration_step()
+	await get_tree().create_timer(1.0).timeout
+	_shot("bugreport_assign_reset_test.png")
+	InputManager.test_joy = null
+	InputManager._joy_active = false
+	for f in keep:
+		InputManager.set(f, keep[f])
+	ss._capture_only = ""
+	ss.visible = false
 	menu.call("_show", "support")
 	await get_tree().create_timer(0.5).timeout
 	_shot("bugreport_support.png")

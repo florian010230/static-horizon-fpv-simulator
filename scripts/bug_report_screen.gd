@@ -2,7 +2,7 @@
 # users preload this file. 2026-10-27, 0.11.1.)
 extends RefCounted
 
-## "Report a bug" (main menu corner and pause menu, user 2026-10-27): the
+## "Report a bug" (main menu corner, user 2026-10-27; not in the pause menu since 2026-10-28): the
 ## player types what happened, and Send posts it with the game info shown
 ## underneath to the website's report worker, which mails it to us and
 ## keeps it in a D1 table. Nothing is sent before Send; the info list
@@ -11,11 +11,19 @@ extends RefCounted
 ## not set up, rate limit) shows a friendly line and the fallbacks: copy
 ## the text, write an email, or open a GitHub issue - no retry loop.
 
-## Set when the website's worker exists (contract from the website
-## session, 2026-10-27: POST JSON, header X-SH-Key, 204 = stored).
-const REPORT_URL: String = ""
-## Only keeps random bots out (the source is public, so is this).
-const REPORT_KEY: String = ""
+## The website's report worker (contract from the website session,
+## 2026-10-27/28: POST JSON, header X-SH-Key, 204 = stored; 429 with JSON
+## {"error": "wait"|"limit"|"full", "retry_after_seconds": n} and a
+## Retry-After header).
+const REPORT_URL: String = "https://statichorizon-report.florian-chri-schmidt.workers.dev/"
+## The key only keeps random bots out. It is not in git: tools copy it
+## into secrets/ (gitignored) and the export ships it (include_filter).
+## No key file (a fresh checkout) = no Send button.
+const KEY_PATH: String = "res://secrets/report_key.txt"
+## The last server cooldown, kept so a restart doesn't skip it.
+const STATE_PATH: String = "user://bug_report.cfg"
+## After a report the worker wants at least a minute before the next.
+const MIN_GAP_SECONDS: int = 60
 const EMAIL: String = "static.horizon.fpv@web.de"
 const ISSUES_URL: String = "https://github.com/" + Updater.REPO + "/issues/new"
 const MAX_TEXT: int = 4000
@@ -30,6 +38,9 @@ var _send: Button
 var _http: HTTPRequest
 var _info: Dictionary = {}
 var _with_info: CheckButton
+var _key: String = ""
+## The line the countdown is added to while the next report has to wait.
+var _countdown_base: String = ""
 ## Sent even with the game info switched off.
 const ALWAYS: Array[String] = ["v", "os"]
 
@@ -69,15 +80,16 @@ func build(root: Control, on_back: Callable) -> Control:
 	_send.custom_minimum_size.x = 180
 	_send.pressed.connect(_on_send)
 	row.add_child(_send)
-	# No worker yet (0.11.1 shipped before it): no Send button rather than
-	# one that only says "not available".
-	_send.visible = REPORT_URL != ""
+	# No key (a fresh checkout): no Send button rather than one that only
+	# says "not available".
+	_key = FileAccess.get_file_as_string(KEY_PATH).strip_edges() if FileAccess.file_exists(KEY_PATH) else ""
+	_send.visible = _can_send()
 	_status = Label.new()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(_status)
-	UIKit.section(c, "Other ways" if REPORT_URL != "" else "Send it")
+	UIKit.section(c, "Other ways" if _can_send() else "Send it")
 	var other := HBoxContainer.new()
 	other.add_theme_constant_override("separation", 12)
 	c.add_child(other)
@@ -94,6 +106,11 @@ func build(root: Control, on_back: Callable) -> Control:
 	_http.timeout = TIMEOUT_SECONDS
 	_http.request_completed.connect(_on_done)
 	screen.add_child(_http)
+	var tick := Timer.new()
+	tick.wait_time = 1.0
+	tick.autostart = true
+	tick.timeout.connect(_tick)
+	screen.add_child(tick)
 	return screen
 
 ## Called each time the screen opens: fresh game info, the text kept
@@ -102,7 +119,11 @@ func refresh() -> void:
 	_info = collect_info()
 	_show_info()
 	_status.text = ""
+	_countdown_base = ""
 	_send.disabled = _text.text.strip_edges() == ""
+	if _can_send() and _wait_left() > 0:
+		_countdown_base = "Thank you for your last report!"
+		_tick()
 
 ## What goes out with the report, as the player sees it.
 func _show_info() -> void:
@@ -145,9 +166,16 @@ func _on_text_changed() -> void:
 		_text.set_caret_line(_text.get_line_count() - 1)
 	_send.disabled = _text.text.strip_edges() == ""
 
+func _can_send() -> bool:
+	return REPORT_URL != "" and _key != ""
+
 func _on_send() -> void:
-	if REPORT_URL == "" or Updater.is_test_run():
+	if not _can_send() or Updater.is_test_run():
 		_fail("Sending isn't available in this version. Please use one of the other ways below.")
+		return
+	var left: int = _wait_left()
+	if left > 0:
+		_fail("Please wait %s before the next report." % _duration(left))
 		return
 	var body: Dictionary = _sent_info()
 	body["text"] = _text.text.strip_edges()
@@ -155,21 +183,81 @@ func _on_send() -> void:
 	_send.disabled = true
 	_status.text = "Sending..."
 	_status.remove_theme_color_override("font_color")
-	if _http.request(REPORT_URL, ["Content-Type: application/json", "X-SH-Key: " + REPORT_KEY, "User-Agent: StaticHorizonFPV/" + Updater.current_version()], HTTPClient.METHOD_POST, JSON.stringify(body)) != OK:
+	if _http.request(REPORT_URL, ["Content-Type: application/json", "X-SH-Key: " + _key, "User-Agent: StaticHorizonFPV/" + Updater.current_version()], HTTPClient.METHOD_POST, JSON.stringify(body)) != OK:
 		_fail("Couldn't send. Please try again later or use one of the other ways below.")
 
-func _on_done(result: int, code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
-	if result == HTTPRequest.RESULT_SUCCESS and code == 204:
-		_status.text = "Sent - thank you! I read every report."
+func _on_done(result: int, code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+	handle_reply(code if result == HTTPRequest.RESULT_SUCCESS else 0, headers, body.get_string_from_utf8())
+
+## The worker's answer -> the line the player sees (and the local
+## cooldown). Public for the self-test (mock replies, nothing sent).
+func handle_reply(code: int, headers: PackedStringArray, text: String) -> void:
+	if code == 204:
+		# (Also when the same text was already sent today.)
+		_set_wait(MIN_GAP_SECONDS)
+		_status.text = "Sent - thank you!"
 		_status.add_theme_color_override("font_color", UIKit.ACCENT)
 		_text.text = ""
+		_send.disabled = true
+		_countdown_base = _status.text
+		_tick()
 		return
 	if code == 429:
-		_fail("Too many reports right now - please try again in a few minutes.")
+		var j: Variant = JSON.parse_string(text) if text.strip_edges().begins_with("{") else null
+		var d: Dictionary = j if j is Dictionary else {}
+		var secs: int = int(d.get("retry_after_seconds", _retry_after(headers)))
+		_set_wait(secs)
+		match str(d.get("error", "wait")):
+			"limit":
+				_fail("%s. Or use one of the other ways below." % str(d.get("message", "Daily limit reached, try again tomorrow")).trim_suffix("."))
+			"full":
+				_fail("The report inbox is full for today. Please use one of the other ways below - thank you!")
+			_:
+				_fail("Please wait %s before the next report." % _duration(secs))
+		return
+	_fail("Couldn't send (%s). Please try again later or use one of the other ways below." % (str(code) if code > 0 else "no connection"))
+
+## Once a second: "(next report in 0:42)" after the line, until it may go
+## (user, 2026-10-28).
+func _tick() -> void:
+	if _countdown_base == "":
+		return
+	var left: int = _wait_left()
+	if left > 0:
+		_status.text = "%s (next report in %d:%02d)" % [_countdown_base, left / 60, left % 60]
 	else:
-		_fail("Couldn't send (%s). Please try again later or use one of the other ways below." % (str(code) if code > 0 else "no connection"))
+		_status.text = _countdown_base
+		_countdown_base = ""
+
+func _retry_after(headers: PackedStringArray) -> int:
+	for h in headers:
+		if h.to_lower().begins_with("retry-after:"):
+			return int(h.get_slice(":", 1).strip_edges())
+	return MIN_GAP_SECONDS
+
+## Seconds until the next report may go (0: now).
+func _wait_left() -> int:
+	var cfg := ConfigFile.new()
+	if cfg.load(STATE_PATH) != OK:
+		return 0
+	return maxi(int(cfg.get_value("report", "wait_until", 0)) - int(Time.get_unix_time_from_system()), 0)
+
+func _set_wait(secs: int) -> void:
+	if Updater.is_test_run():
+		return # (never touches the player's file in tests)
+	var cfg := ConfigFile.new()
+	cfg.set_value("report", "wait_until", int(Time.get_unix_time_from_system()) + maxi(secs, 0))
+	cfg.save(STATE_PATH)
+
+static func _duration(secs: int) -> String:
+	if secs < 90:
+		return "%d seconds" % maxi(secs, 1)
+	if secs < 90 * 60:
+		return "%d minutes" % int(ceil(secs / 60.0))
+	return "%d hours" % int(ceil(secs / 3600.0))
 
 func _fail(msg: String) -> void:
+	_countdown_base = ""
 	_status.text = msg
 	_status.add_theme_color_override("font_color", Color("#ffb86b"))
 	_send.disabled = _text.text.strip_edges() == ""

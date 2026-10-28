@@ -20,3 +20,6 @@ notes/
 review/
 review_page/
 previews/
+
+# The bug-report key (copied from ~/.static_horizon_keys, shipped in the export, never in git)
+secrets/

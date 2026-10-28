@@ -28,9 +28,11 @@ const ENTRIES: Array = [
 - Village: the start cross on the mat shows from every distance.
 - Flying with the keyboard: if you switched the key guide off, a short hint says how to get it back (H).
 - Settings: the Static Whoop's render distance ends at 400 m (its camera sits very close to walls); the slider says so.
+- Radio: assigning the reset, line-of-sight and other switches works again (the wizard waited forever after the flip), and the test card shows the switch you just assigned.
+- The "H shows the keyboard keys" hint no longer shows with a radio plugged in, and sits small in the bottom left corner.
 
 # New
-- Report a bug: in the main menu and the pause menu. Write what happened, then copy it, send it as an email, or open a GitHub issue - the game info that helps me find the bug comes along if you want.
+- Report a bug, in the main menu: write what happened and press Send - it comes straight to me (up to 4 reports a day, with a short wait between them). Or copy it, send it as an email, or open a GitHub issue. The game info that helps me find the bug comes along if you want.
 - Support me: if you want to support the project.
 """],
 	["0.11.0", """# The Race Update

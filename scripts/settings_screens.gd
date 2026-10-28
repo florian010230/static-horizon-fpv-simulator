@@ -1002,7 +1002,7 @@ func _update_calibration_step() -> void:
 		_cal_hint.text = "Any switch or button on the radio (or press Esc to skip). Currently: %s." % _current_capture_name()
 	else:
 		_cal_title.text = "All set - try it"
-		_cal_hint.text = "This is exactly what the sim reads now. Flip the arm switch to check it. Saved - it stays calibrated after a restart."
+		_cal_hint.text = ("This is exactly what the sim reads now. Flip the %s switch to check it. Saved - it stays assigned after a restart." % CAPTURE_LABELS[_capture_only]) if _capture_only != "" else "This is exactly what the sim reads now. Flip the arm switch to check it. Saved - it stays calibrated after a restart."
 
 ## The current assignment of whichever optional control the Radio tab's
 ## "Assign ..." button is capturing - used for the STEP_CAPTURE hint
@@ -1076,10 +1076,19 @@ func _detect_candidate(base_axes: Array[float], base_buttons: Array[bool]) -> Di
 		var v: float = InputManager.joy_axis(i)
 		if is_nan(base_axes[i]):
 			# Not reported since the game started (reads 0 until it moves,
-			# see InputManager._axis_seen): its first report is the flip,
-			# its OFF value isn't known yet.
-			if InputManager._axis_known(i) and absf(v) > 0.5:
+			# see InputManager._axis_seen). A radio sends every channel at
+			# once, so flipping one switch also brings the first report of
+			# every untouched one, resting at its OFF end (-1): that is
+			# their OFF, not a flip - taking the first of them as the
+			# candidate left the wizard waiting for the arm switch to flip
+			# back (Assign Reset / Line-of-Sight stuck, user 2026-10-28).
+			# A first report at the high end is the flip; its OFF isn't
+			# known yet.
+			if not InputManager._axis_known(i):
+				continue
+			if v > 0.5:
 				return {"source": "axis", "index": i, "off": NAN, "on": v}
+			base_axes[i] = v
 			continue
 		if absf(v - base_axes[i]) > 0.5:
 			return {"source": "axis", "index": i, "off": base_axes[i], "on": v}
@@ -1266,15 +1275,26 @@ func _draw_test_view(c: Control, font: Font, w: float, h: float) -> void:
 	var right := Rect2(gap_x * 2.0 + size, 24, size, size)
 	_draw_gimbal(c, font, left, InputManager.get_yaw(), InputManager.get_throttle() * 2.0 - 1.0, "YAW / THROTTLE %d%%" % int(round(InputManager.get_throttle() * 100.0)))
 	_draw_gimbal(c, font, right, InputManager.get_roll(), InputManager.get_pitch(), "ROLL / PITCH")
-	var on: bool = InputManager.arm_switch_on()
 	var ax: float = gap_x * 3.0 + size * 2.0
-	var pill := Rect2(ax, 24 + size * 0.5 - 40, 200, 80)
+	# After "Assign Reset / Line-of-Sight / ...": that switch gets its own
+	# pill under ARM, so the test shows the new assignment working (user,
+	# 2026-10-28: only ARM and the gimbals were shown).
+	if _capture_only == "":
+		_draw_switch_pill(c, font, Rect2(ax, 24 + size * 0.5 - 40, 200, 80), "ARM", InputManager.arm_switch_on(), "arm", 28)
+	else:
+		_draw_switch_pill(c, font, Rect2(ax, 24 + size * 0.5 - 104, 200, 64), "ARM", InputManager.arm_switch_on(), "arm", 24)
+		_draw_switch_pill(c, font, Rect2(ax, 24 + size * 0.5 + 24, 200, 64), String(CAPTURE_LABELS[_capture_only]).to_upper(), InputManager._control_on(_capture_only), _capture_only, 20)
+
+## One switch on the test card: "<NAME> ON/OFF", lit while on, and under it
+## what it is assigned to (with the live axis value).
+func _draw_switch_pill(c: Control, font: Font, pill: Rect2, title: String, on: bool, prefix: String, font_size: int) -> void:
 	c.draw_style_box(UIKit.box(UIKit.LOGO_GROUND if on else UIKit.BOX, UIKit.LOGO_GROUND if on else UIKit.BORDER, 16), pill)
-	c.draw_string(font, Vector2(ax, pill.position.y + 50), "ARM ON" if on else "ARM OFF", HORIZONTAL_ALIGNMENT_CENTER, 200, 28, Color.WHITE)
-	var arm_live: String = InputManager.arm_control_name()
-	if InputManager.arm_source == "axis" and InputManager.arm_axis >= 0 and InputManager.has_joystick():
-		arm_live += "  (%+.2f)" % InputManager.joy_axis(InputManager.arm_axis)
-	c.draw_string(font, Vector2(ax, pill.end.y + 26), arm_live, HORIZONTAL_ALIGNMENT_CENTER, 200, 14, UIKit.MUTED_LIGHT)
+	c.draw_string(font, Vector2(pill.position.x, pill.get_center().y + font_size * 0.36), "%s %s" % [title, "ON" if on else "OFF"], HORIZONTAL_ALIGNMENT_CENTER, pill.size.x, font_size, Color.WHITE)
+	var live: String = InputManager.arm_control_name() if prefix == "arm" else _current_capture_name()
+	var axis: int = InputManager.get(prefix + "_axis")
+	if InputManager.get(prefix + "_source") == "axis" and axis >= 0 and InputManager.has_joystick():
+		live += "  (%+.2f)" % InputManager.joy_axis(axis)
+	c.draw_string(font, Vector2(pill.position.x, pill.end.y + 20), live, HORIZONTAL_ALIGNMENT_CENTER, pill.size.x, 14, UIKit.MUTED_LIGHT)
 
 func _draw_gimbal(c: Control, font: Font, r: Rect2, x: float, y: float, label: String) -> void:
 	c.draw_style_box(UIKit.box(UIKit.BOX, UIKit.BORDER, 16), r)
